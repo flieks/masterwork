@@ -302,6 +302,24 @@
                             "title": "Project Id"
                         },
                         "description": "Omit for all sessions; \"none\" for global sessions; a uuid for a project."
+                    },
+                    {
+                        "name": "asset_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter to one asset's sessions, e.g. 'claude:agent:architect'. Takes precedence over project_id.",
+                            "title": "Asset Id"
+                        },
+                        "description": "Filter to one asset's sessions, e.g. 'claude:agent:architect'. Takes precedence over project_id."
                     }
                 ],
                 "responses": {
@@ -1673,7 +1691,7 @@
                         "maximum": 20.0,
                         "minimum": 1.0,
                         "title": "Iterations",
-                        "description": "Maximum number of chained runs; stops early when a run has no suggestions.",
+                        "description": "Maximum number of chained runs; stops early when a run has no suggestions. A run that scores 100 instead gets a freshly generated scenario and keeps going.",
                         "default": 5
                     }
                 },
@@ -1785,6 +1803,18 @@
                         "title": "Project Id",
                         "description": "Owning project, or null for global chat."
                     },
+                    "asset_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asset Id",
+                        "description": "Owning asset, or null when the chat is not asset-scoped."
+                    },
                     "created_at": {
                         "type": "string",
                         "format": "date-time",
@@ -1830,6 +1860,18 @@
                         ],
                         "title": "Project Id",
                         "description": "Scope this session to a project."
+                    },
+                    "asset_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asset Id",
+                        "description": "Scope this session to one skill/agent, e.g. 'claude:agent:architect'."
                     }
                 },
                 "type": "object",
@@ -2211,7 +2253,8 @@
                             "$ref": "#/components/schemas/SuggestedLink"
                         },
                         "type": "array",
-                        "title": "Suggestions"
+                        "title": "Suggestions",
+                        "description": "Highest confidence first."
                     }
                 },
                 "type": "object",
@@ -2739,7 +2782,8 @@
                             "update",
                             "create",
                             "delete",
-                            "link"
+                            "link",
+                            "unlink"
                         ],
                         "title": "Action"
                     },
@@ -3022,6 +3066,14 @@
                         "title": "Reason",
                         "description": "One line: why the goal needs this asset.",
                         "default": ""
+                    },
+                    "confidence": {
+                        "type": "integer",
+                        "maximum": 100.0,
+                        "minimum": 0.0,
+                        "title": "Confidence",
+                        "description": "How strongly the goal exercises this asset. >=60 is a recommended link; 40-59 is a borderline candidate listed for the user to judge.",
+                        "default": 70
                     }
                 },
                 "type": "object",
