@@ -37,7 +37,9 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
         <div
           className={cn(
             'rounded-lg px-3 py-2',
-            isError ? 'border border-destructive/30 bg-destructive/10 text-destructive' : 'bg-muted',
+            isError
+              ? 'border border-destructive/30 bg-destructive/10 text-destructive'
+              : 'bg-muted',
           )}
         >
           <MarkdownView content={message.content} />

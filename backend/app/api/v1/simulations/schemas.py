@@ -56,7 +56,7 @@ class SimulationSuggestion(BaseModel):
 class Simulation(BaseModel):
     id: str
     project_id: str
-    status: Literal["running", "completed", "failed"]
+    status: Literal["running", "completed", "failed", "interrupted"]
     scenario: str = Field(..., description="User-provided scenario; empty = derived from goal.")
     score: int | None = Field(..., description="0-100, null until completed.")
     verdict: str | None

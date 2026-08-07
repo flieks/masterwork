@@ -93,12 +93,16 @@ async def delete_simulation(db: AsyncSession, simulation: Simulation) -> None:
     await db.flush()
 
 
-async def fail_all_running(db: AsyncSession, *, error: str) -> None:
-    """Startup sweep: a backend restart orphans any in-flight run."""
+async def interrupt_all_running(db: AsyncSession, *, error: str) -> None:
+    """Startup sweep: a backend restart orphans any in-flight run.
+
+    These are marked `interrupted`, not `failed` — nothing is wrong with the
+    user's assets, the process just went away underneath the run.
+    """
     await db.execute(
         update(Simulation)
         .where(Simulation.status == "running")
-        .values(status="failed", error=error)
+        .values(status="interrupted", error=error)
     )
 
 

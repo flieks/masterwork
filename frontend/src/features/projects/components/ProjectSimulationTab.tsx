@@ -12,6 +12,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  CircleSlash,
   TriangleAlert,
 } from 'lucide-react';
 import type { Project, Simulation, SimulationChange } from '~/api/generated';
@@ -243,7 +244,11 @@ function RunPanel({
         </Button>
         <Button size="sm" variant="outline" onClick={generateScenario} disabled={busy || noAssets}>
           {generating ? <Loader2 className="animate-spin" /> : <Sparkles />}
-          {generating ? 'Generating…' : scenario.trim() ? 'Regenerate scenario' : 'Generate scenario'}
+          {generating
+            ? 'Generating…'
+            : scenario.trim()
+              ? 'Regenerate scenario'
+              : 'Generate scenario'}
         </Button>
         <Button
           size="sm"
@@ -473,6 +478,9 @@ function RunRow({
 function ScoreDot({ simulation }: { simulation: Simulation }) {
   if (simulation.status === 'running') {
     return <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />;
+  }
+  if (simulation.status === 'interrupted') {
+    return <CircleSlash className="size-4 shrink-0 text-muted-foreground" />;
   }
   if (simulation.status === 'failed' || simulation.score == null) {
     return <TriangleAlert className="size-4 shrink-0 text-destructive" />;

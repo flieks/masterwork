@@ -639,3 +639,26 @@ async def test_control_run_can_be_requested_explicitly(
     prompt = runner.calls[1]["prompt"]
     assert "CONTROL RUN" in prompt
     assert "MEMORY OF THE PREVIOUS RUN" not in prompt
+
+
+async def test_startup_sweep_marks_orphaned_runs_interrupted_not_failed(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """A restart is not a failure of the user's assets, and must not read as one."""
+    from app.api.v1.simulations.service import RESTART_ERROR
+    from app.repositories.simulations import interrupt_all_running
+
+    project = (await client.post("/api/v1/projects", json={"name": "p", "goal": "g"})).json()
+
+    async with session_factory() as db:
+        db.add(Simulation(project_id=uuid.UUID(project["id"]), status="running", scenario="s"))
+        await db.commit()
+
+    async with session_factory() as db:
+        await interrupt_all_running(db, error=RESTART_ERROR)
+        await db.commit()
+
+    runs = (await client.get(f"/api/v1/projects/{project['id']}/simulations")).json()
+    assert [r["status"] for r in runs] == ["interrupted"]
+    assert runs[0]["error"] == RESTART_ERROR
+    assert runs[0]["score"] is None

@@ -93,7 +93,5 @@ export const assetDiagramQueryAtom = atomFamily((assetId: string) =>
 export const generateAssetDiagramMutationAtom = atomWithMutation(() => ({
   // One-shot claude -p (up to 300 s) — no client timeout, same as chat sends.
   mutationFn: (assetId: string): Promise<AssetDiagram> =>
-    api.assets
-      .generateAssetDiagram(assetId, { timeout: GENERATE_TIMEOUT_MS })
-      .then((r) => r.data),
+    api.assets.generateAssetDiagram(assetId, { timeout: GENERATE_TIMEOUT_MS }).then((r) => r.data),
 }));

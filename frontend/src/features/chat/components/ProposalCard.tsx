@@ -50,9 +50,7 @@ export function ProposalCard({ proposal, sessionId }: ProposalCardProps) {
   const failed = proposal.status === 'failed';
   const actionable = proposal.status === 'pending' || failed;
   // An update/create without content can never apply — retrying is pointless.
-  const unapplyable = proposal.changes.some(
-    (c) => c.action !== 'delete' && c.new_content == null,
-  );
+  const unapplyable = proposal.changes.some((c) => c.action !== 'delete' && c.new_content == null);
   const statusMeta = STATUS_META[proposal.status];
 
   function applyUpdated(updated: Proposal) {

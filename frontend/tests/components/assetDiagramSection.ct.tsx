@@ -52,9 +52,7 @@ test('fresh: shows the generated caption and no stale hint', async ({ mount, pag
   await openPanel(page);
   await expect(page.getByText(/^Generated/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Regenerate' })).toBeVisible();
-  await expect(
-    page.getByText('The file changed since this diagram was generated.'),
-  ).toHaveCount(0);
+  await expect(page.getByText('The file changed since this diagram was generated.')).toHaveCount(0);
 });
 
 test('stale: shows the amber hint and a Regenerate button', async ({ mount, page }) => {
@@ -70,9 +68,7 @@ test('stale: shows the amber hint and a Regenerate button', async ({ mount, page
   );
 
   await openPanel(page);
-  await expect(
-    page.getByText('The file changed since this diagram was generated.'),
-  ).toBeVisible();
+  await expect(page.getByText('The file changed since this diagram was generated.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Regenerate' })).toBeVisible();
 });
 

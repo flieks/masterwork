@@ -2582,7 +2582,8 @@
                         "enum": [
                             "running",
                             "completed",
-                            "failed"
+                            "failed",
+                            "interrupted"
                         ],
                         "title": "Status"
                     },

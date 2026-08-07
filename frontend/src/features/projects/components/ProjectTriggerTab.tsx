@@ -33,8 +33,8 @@ export function ProjectTriggerTab({ project }: { project: Project }) {
         <div>
           <h2 className="text-lg font-semibold">Trigger guide</h2>
           <p className="text-sm text-muted-foreground">
-            How to phrase a Claude Code prompt so this toolkit fires — entry point, example
-            prompts, and each asset's real trigger phrases.
+            How to phrase a Claude Code prompt so this toolkit fires — entry point, example prompts,
+            and each asset's real trigger phrases.
           </p>
         </div>
         <Button size="sm" onClick={handleGenerate} disabled={isPending}>

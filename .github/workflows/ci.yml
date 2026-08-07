@@ -88,34 +88,36 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
 
-      - name: Boot the backend
-        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+
+      # One step: a server backgrounded in one step and used in another is not
+      # reliably still alive, and can hang the step it was started in.
+      - name: Compare committed spec and client against a live API
         env:
           DATABASE_URL: sqlite+aiosqlite:///./contract.db
         run: |
+          set -euo pipefail
+          cd backend
           uv sync --frozen
           uv run alembic upgrade head
-          nohup uv run uvicorn app.main:app --port 8008 > /tmp/backend.log 2>&1 &
-          disown
+          uv run uvicorn app.main:app --port 8008 &
+          API_PID=$!
+          trap 'kill $API_PID 2>/dev/null || true' EXIT
+
           for i in $(seq 30); do
-            curl -sf http://localhost:8008/openapi.json >/dev/null && exit 0
+            curl -sf http://localhost:8008/openapi.json >/dev/null && break
+            [ "$i" = 30 ] && { echo "backend did not come up"; exit 1; }
             sleep 2
           done
-          echo "backend did not come up"; exit 1
 
-      - name: openapi.json matches the running API
-        working-directory: frontend
-        run: |
+          cd ../frontend
           curl -s http://localhost:8008/openapi.json | python3 -m json.tool > /tmp/live.json
           if ! diff -u openapi.json /tmp/live.json; then
-            echo "::error::frontend/openapi.json is stale — run 'curl -s localhost:8008/openapi.json | python3 -m json.tool > frontend/openapi.json'"
+            echo "::error::frontend/openapi.json is stale — regenerate it from the running backend"
             exit 1
           fi
 
-      - name: Generated client matches openapi.json
-        working-directory: frontend
-        run: |
-          npm ci
           npm run generate:api:local
           rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore
           if ! git diff --quiet -- src/api/generated; then
@@ -133,27 +135,47 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
 
-      - name: Boot the backend against a throwaway SQLite db
-        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      # A runner has no ~/.claude, so the asset list would be empty and the specs
+      # would fail on nothing-to-click. Point the providers at a seeded tree.
+      - name: Seed an asset tree
+        run: |
+          mkdir -p /tmp/assets/skills/frontend-dev /tmp/assets/skills/backend-dev /tmp/assets/agents
+          printf -- '---\nname: frontend-dev\ndescription: React frontend guidelines.\n---\n\n# Frontend\n' \
+            > /tmp/assets/skills/frontend-dev/SKILL.md
+          printf -- '---\nname: backend-dev\ndescription: Python FastAPI guidelines.\n---\n\n# Backend\n' \
+            > /tmp/assets/skills/backend-dev/SKILL.md
+          printf -- '---\nname: architect\ndescription: Plans features before building.\n---\n\n# Architect\n' \
+            > /tmp/assets/agents/architect.md
+          printf -- '# Global instructions\n\nBe concise.\n' > /tmp/assets/CLAUDE.md
+
+      - name: Run the end-to-end specs against a real backend
         env:
           DATABASE_URL: sqlite+aiosqlite:///./e2e.db
+          CLAUDE_SKILLS_ROOT: /tmp/assets/skills
+          CLAUDE_AGENTS_ROOT: /tmp/assets/agents
+          CLAUDE_PLUGINS_ROOT: /tmp/assets/plugins
+          CLAUDE_INSTRUCTIONS_FILE: /tmp/assets/CLAUDE.md
         run: |
+          set -euo pipefail
+          cd backend
           uv sync --frozen
           uv run alembic upgrade head
-          nohup uv run uvicorn app.main:app --port 8008 > /tmp/backend.log 2>&1 &
-          disown
+          uv run uvicorn app.main:app --port 8008 &
+          API_PID=$!
+          trap 'kill $API_PID 2>/dev/null || true' EXIT
+
           for i in $(seq 30); do
-            curl -sf http://localhost:8008/openapi.json >/dev/null && exit 0
+            curl -sf http://localhost:8008/api/v1/assets >/dev/null && break
+            [ "$i" = 30 ] && { echo "backend did not come up"; exit 1; }
             sleep 2
           done
-          echo "backend did not come up"; exit 1
+          curl -s http://localhost:8008/api/v1/assets | head -c 200; echo
 
-      - working-directory: frontend
-        run: npm ci
-      - working-directory: frontend
-        run: npx playwright install --with-deps chromium
-      # BACKEND_URL is what un-skips the e2e specs and starts Vite via webServer.
-      - working-directory: frontend
-        env:
-          BACKEND_URL: http://localhost:8008
-        run: npm run test:e2e
+          # BACKEND_URL un-skips the specs and starts Vite via Playwright's webServer.
+          cd ../frontend
+          BACKEND_URL=http://localhost:8008 npm run test:e2e

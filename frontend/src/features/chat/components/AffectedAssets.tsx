@@ -17,7 +17,10 @@ function affectedAssetsFor(messages: ChatMessage[]): AffectedAsset[] {
     if (!proposal) continue;
     for (const change of proposal.changes) {
       if (!change.asset_id) continue;
-      map.set(change.asset_id, (map.get(change.asset_id) ?? false) || proposal.status === 'applied');
+      map.set(
+        change.asset_id,
+        (map.get(change.asset_id) ?? false) || proposal.status === 'applied',
+      );
     }
   }
   return [...map.entries()].map(([id, applied]) => ({ id, applied }));

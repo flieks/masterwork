@@ -1075,7 +1075,8 @@ export interface Simulation {
 export const SimulationStatusEnum = {
     Running: 'running',
     Completed: 'completed',
-    Failed: 'failed'
+    Failed: 'failed',
+    Interrupted: 'interrupted'
 } as const;
 
 export type SimulationStatusEnum = typeof SimulationStatusEnum[keyof typeof SimulationStatusEnum];
