@@ -16,7 +16,7 @@ export function Layout() {
       <nav className="flex w-56 shrink-0 flex-col border-r bg-card">
         <div className="flex items-center gap-2 px-4 py-4">
           <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            AM
+            MW
           </span>
           <span className="font-semibold tracking-tight">Masterwork</span>
         </div>

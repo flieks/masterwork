@@ -10,6 +10,8 @@ against — that's the hard part. Masterwork is built for that second half.
 
 > Runs entirely on your machine. Your skills never leave it.
 
+![A simulation run scored 100, with its capability checklist](docs/images/simulation.png)
+
 ## What it does
 
 - **Browse & edit** every skill and subagent installed on your machine, with
@@ -31,8 +33,11 @@ against — that's the hard part. Masterwork is built for that second half.
 - macOS or Linux
 - Python 3.13+ and [uv](https://docs.astral.sh/uv/)
 - Node 20+
-- PostgreSQL (stores chat sessions only — your skills stay on disk)
 - The [Claude Code](https://claude.com/claude-code) CLI, signed in
+
+No database server needed — it uses SQLite at `~/.masterwork/masterwork.db` and
+stores only chat sessions and simulation history. Your skills stay on disk.
+Postgres is supported too: set `DATABASE_URL` and the same migrations apply.
 
 The built-in assistant shells out to your local `claude` binary, so it runs on
 your existing subscription. **No API key, no inference bill.**
@@ -40,13 +45,10 @@ your existing subscription. **No API key, no inference bill.**
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/masterwork.git
+git clone https://github.com/flieks/masterwork.git
 cd masterwork
 
-createdb masterwork
-
 cd backend
-cp .env.example .env
 uv sync
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8008
@@ -70,7 +72,7 @@ backend/    FastAPI · Pydantic v2 · SQLAlchemy 2.0 async · Alembic · uv
 docs/       SPEC.md (product spec) · API_CONTRACT.md (the v1 API contract)
 ```
 
-The files on disk are the source of truth. Postgres holds chat sessions and
+The files on disk are the source of truth. The database holds chat sessions and
 simulation history — nothing that can't be rebuilt.
 
 ## Safety model
@@ -90,8 +92,8 @@ No auth, no multi-user: this is a single-user tool bound to localhost.
 - **More agents.** `SKILL.md` is an open standard — Codex, Cursor, Gemini CLI and
   others read the same files. The backend already routes through a provider
   abstraction; adding a provider is the natural first contribution.
-- **One-command install.** Removing the Postgres requirement in favour of SQLite
-  so the whole thing runs from a single command.
+- **One-command install.** A launcher that boots both servers, so getting
+  started is `npx masterwork` rather than two terminals.
 - **A hub.** Publish and pull skills, subagents and projects — with simulation
   scores attached, so you can see what a skill actually does before installing it.
 

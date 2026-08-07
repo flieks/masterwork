@@ -15,19 +15,30 @@ view of it via `VITE_API_URL` in `frontend/.env`.
 
 ## Database
 
-A local Postgres database named `masterwork`, owned by your OS user:
+SQLite by default, at `~/.masterwork/masterwork.db`. Nothing to install:
 
 ```bash
-createdb masterwork
 cd backend && uv run alembic upgrade head
 ```
 
-The default `DATABASE_URL` carries no username, so libpq falls back to your OS
-user — which is what a stock local install expects. Set it explicitly in
-`backend/.env` if your setup differs.
+Three pragmas are set on every SQLite connection, in `app/db/session.py`:
+`foreign_keys=ON` (cascade deletes are silently ignored without it),
+`journal_mode=WAL` (a long simulation write must not block reads), and
+`busy_timeout` (wait rather than raise "database is locked").
 
-Integration tests create and drop their own `masterwork_test` database per run
-and never touch the dev one.
+To use Postgres instead, set `DATABASE_URL` in `backend/.env`:
+
+```
+DATABASE_URL=postgresql+asyncpg://localhost:5432/masterwork
+```
+
+then `createdb masterwork && uv run alembic upgrade head`. The same revisions
+run on both — `JSONColumn` and `UTCDateTime` in `app/db/types.py` absorb the
+dialect differences (JSONB vs JSON, and SQLite's lack of a native timestamptz).
+
+Tests follow whatever `DATABASE_URL` says: a throwaway SQLite file by default,
+or a `masterwork_test` database created and dropped per run on Postgres. Neither
+ever touches your dev database.
 
 ## Regenerating the API client
 

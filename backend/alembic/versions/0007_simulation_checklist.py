@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from app.db.types import JSONColumn
 
 from alembic import op
 
@@ -23,7 +23,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "simulations",
-        sa.Column("checklist", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("checklist", JSONColumn, nullable=True),
     )
 
 

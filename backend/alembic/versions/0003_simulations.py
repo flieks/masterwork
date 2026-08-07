@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from app.db.types import JSONColumn
 
 from alembic import op
 
@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column("analysis", sa.Text(), nullable=True),
         sa.Column("trace_mermaid", sa.Text(), nullable=True),
-        sa.Column("suggestions", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("suggestions", JSONColumn, nullable=False),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column(
             "created_at",

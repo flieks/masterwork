@@ -13,6 +13,7 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "pyyaml>=6.0",
+    "aiosqlite>=0.22.1",
 ]
 
 [dependency-groups]
