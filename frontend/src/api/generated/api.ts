@@ -244,7 +244,7 @@ export interface AutopilotCreateRequest {
      */
     'control_run'?: boolean;
     /**
-     * Maximum number of chained runs; stops early when a run has no suggestions.
+     * Maximum number of chained runs; stops early when a run has no suggestions. A run that scores 100 instead gets a freshly generated scenario and keeps going.
      * @type {number}
      * @memberof AutopilotCreateRequest
      */
@@ -371,6 +371,12 @@ export interface ChatSession {
      * @type {string}
      * @memberof ChatSession
      */
+    'asset_id'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ChatSession
+     */
     'created_at': string;
     /**
      * 
@@ -397,6 +403,12 @@ export interface ChatSessionCreateRequest {
      * @memberof ChatSessionCreateRequest
      */
     'project_id'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ChatSessionCreateRequest
+     */
+    'asset_id'?: string | null;
 }
 /**
  * 
@@ -695,7 +707,7 @@ export interface ProjectGeneralityResponse {
  */
 export interface ProjectSuggestLinksResponse {
     /**
-     * 
+     * Highest confidence first.
      * @type {Array<SuggestedLink>}
      * @memberof ProjectSuggestLinksResponse
      */
@@ -1110,7 +1122,8 @@ export const SimulationChangeActionEnum = {
     Update: 'update',
     Create: 'create',
     Delete: 'delete',
-    Link: 'link'
+    Link: 'link',
+    Unlink: 'unlink'
 } as const;
 
 export type SimulationChangeActionEnum = typeof SimulationChangeActionEnum[keyof typeof SimulationChangeActionEnum];
@@ -1319,6 +1332,12 @@ export interface SuggestedLink {
      * @memberof SuggestedLink
      */
     'reason'?: string;
+    /**
+     * How strongly the goal exercises this asset. >=60 is a recommended link; 40-59 is a borderline candidate listed for the user to judge.
+     * @type {number}
+     * @memberof SuggestedLink
+     */
+    'confidence'?: number;
 }
 /**
  * 
@@ -1921,10 +1940,11 @@ export const ChatApiAxiosParamCreator = function (configuration?: Configuration)
          * 
          * @summary List Chat Sessions
          * @param {string | null} [projectId] Omit for all sessions; \&quot;none\&quot; for global sessions; a uuid for a project.
+         * @param {string | null} [assetId] Filter to one asset\&#39;s sessions, e.g. \&#39;claude:agent:architect\&#39;. Takes precedence over project_id.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listChatSessions: async (projectId?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listChatSessions: async (projectId?: string | null, assetId?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/chat/sessions`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -1939,6 +1959,10 @@ export const ChatApiAxiosParamCreator = function (configuration?: Configuration)
 
             if (projectId !== undefined) {
                 localVarQueryParameter['project_id'] = projectId;
+            }
+
+            if (assetId !== undefined) {
+                localVarQueryParameter['asset_id'] = assetId;
             }
 
 
@@ -2059,11 +2083,12 @@ export const ChatApiFp = function(configuration?: Configuration) {
          * 
          * @summary List Chat Sessions
          * @param {string | null} [projectId] Omit for all sessions; \&quot;none\&quot; for global sessions; a uuid for a project.
+         * @param {string | null} [assetId] Filter to one asset\&#39;s sessions, e.g. \&#39;claude:agent:architect\&#39;. Takes precedence over project_id.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listChatSessions(projectId?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ChatSession>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listChatSessions(projectId, options);
+        async listChatSessions(projectId?: string | null, assetId?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ChatSession>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listChatSessions(projectId, assetId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['ChatApi.listChatSessions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2137,11 +2162,12 @@ export const ChatApiFactory = function (configuration?: Configuration, basePath?
          * 
          * @summary List Chat Sessions
          * @param {string | null} [projectId] Omit for all sessions; \&quot;none\&quot; for global sessions; a uuid for a project.
+         * @param {string | null} [assetId] Filter to one asset\&#39;s sessions, e.g. \&#39;claude:agent:architect\&#39;. Takes precedence over project_id.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listChatSessions(projectId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<ChatSession>> {
-            return localVarFp.listChatSessions(projectId, options).then((request) => request(axios, basePath));
+        listChatSessions(projectId?: string | null, assetId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<ChatSession>> {
+            return localVarFp.listChatSessions(projectId, assetId, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -2217,12 +2243,13 @@ export class ChatApi extends BaseAPI {
      * 
      * @summary List Chat Sessions
      * @param {string | null} [projectId] Omit for all sessions; \&quot;none\&quot; for global sessions; a uuid for a project.
+     * @param {string | null} [assetId] Filter to one asset\&#39;s sessions, e.g. \&#39;claude:agent:architect\&#39;. Takes precedence over project_id.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof ChatApi
      */
-    public listChatSessions(projectId?: string | null, options?: RawAxiosRequestConfig) {
-        return ChatApiFp(this.configuration).listChatSessions(projectId, options).then((request) => request(this.axios, this.basePath));
+    public listChatSessions(projectId?: string | null, assetId?: string | null, options?: RawAxiosRequestConfig) {
+        return ChatApiFp(this.configuration).listChatSessions(projectId, assetId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
