@@ -30,10 +30,7 @@ export function AgentSkillsUsed({ content }: { content: string }) {
           key={s.id}
           to={assetDetailPath('skill', s.name, s.provider)}
           title={s.description || undefined}
-          className={cn(
-            badgeVariants({ variant: 'secondary' }),
-            'font-mono hover:bg-secondary/70',
-          )}
+          className={cn(badgeVariants({ variant: 'secondary' }), 'font-mono hover:bg-secondary/70')}
         >
           {s.name}
         </Link>

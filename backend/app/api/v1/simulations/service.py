@@ -611,13 +611,18 @@ async def start_simulation(
 
 
 async def _fail_running_row(
-    session_factory: async_sessionmaker[AsyncSession], simulation_id: uuid.UUID, error: str
+    session_factory: async_sessionmaker[AsyncSession],
+    simulation_id: uuid.UUID,
+    error: str,
+    *,
+    status: str = "failed",
 ) -> None:
+    """End an in-flight run. `interrupted` means nobody's assets are at fault."""
     async with session_factory() as db:
         simulation = await simulation_repo.get_simulation(db, simulation_id)
         if simulation is None or simulation.status != "running":
             return
-        simulation.status = "failed"
+        simulation.status = status
         simulation.error = error
         simulation.completed_at = _utcnow()
         await db.commit()
@@ -699,7 +704,12 @@ async def _run_autopilot(
     try:
         for iteration in range(1, total + 1):
             if run_id in _cancelled_autopilots:
-                await _fail_running_row(session_factory, simulation_id, "autopilot stopped by user")
+                await _fail_running_row(
+                    session_factory,
+                    simulation_id,
+                    "autopilot stopped by user",
+                    status="interrupted",
+                )
                 return
 
             async with session_factory() as db:

@@ -47,7 +47,16 @@ your existing subscription. **No API key, no inference bill.**
 ```bash
 git clone https://github.com/flieks/masterwork.git
 cd masterwork
+npm start
+```
 
+That installs dependencies, migrates the database, starts both servers and opens
+the browser. Ctrl-C stops everything.
+
+<details>
+<summary>Or run the two servers yourself</summary>
+
+```bash
 cd backend
 uv sync
 uv run alembic upgrade head
@@ -58,6 +67,8 @@ cd frontend
 npm install
 npm run dev        # http://localhost:5192
 ```
+
+</details>
 
 ## How it works
 
@@ -92,8 +103,8 @@ No auth, no multi-user: this is a single-user tool bound to localhost.
 - **More agents.** `SKILL.md` is an open standard — Codex, Cursor, Gemini CLI and
   others read the same files. The backend already routes through a provider
   abstraction; adding a provider is the natural first contribution.
-- **One-command install.** A launcher that boots both servers, so getting
-  started is `npx masterwork` rather than two terminals.
+- **`npx masterwork`.** The launcher exists (`npm start` in a checkout); what's
+  left is publishing it so there's nothing to clone at all.
 - **A hub.** Publish and pull skills, subagents and projects — with simulation
   scores attached, so you can see what a skill actually does before installing it.
 

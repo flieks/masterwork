@@ -1,0 +1,27 @@
+{
+  "name": "masterwork",
+  "version": "0.1.0",
+  "description": "A local workbench for AI-coding agent skills and subagents — browse, edit, AI-refine, and prove them with scored simulation runs.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "masterwork": "bin/masterwork.mjs"
+  },
+  "scripts": {
+    "start": "node bin/masterwork.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flieks/masterwork.git"
+  },
+  "keywords": [
+    "claude-code",
+    "agent-skills",
+    "skill-md",
+    "ai-agents",
+    "developer-tools"
+  ]
+}

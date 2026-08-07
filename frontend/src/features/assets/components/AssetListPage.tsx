@@ -15,8 +15,16 @@ import { AssetTable } from './AssetTable';
 import { AssetListSkeleton } from './AssetListSkeleton';
 
 const COPY: Record<AssetKind, { title: string; noun: string; placeholder: string }> = {
-  skill: { title: 'Skills', noun: 'skills', placeholder: 'Search skills by name, description, or content…' },
-  agent: { title: 'Agents', noun: 'agents', placeholder: 'Search agents by name, description, or content…' },
+  skill: {
+    title: 'Skills',
+    noun: 'skills',
+    placeholder: 'Search skills by name, description, or content…',
+  },
+  agent: {
+    title: 'Agents',
+    noun: 'agents',
+    placeholder: 'Search agents by name, description, or content…',
+  },
 };
 
 export function AssetListPage({ kind }: { kind: AssetKind }) {
@@ -41,7 +49,8 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
           ) : null}
         </div>
         <p className="text-sm text-muted-foreground">
-          Globally installed Claude {copy.noun}. Search matches title, description, and file content.
+          Globally installed Claude {copy.noun}. Search matches title, description, and file
+          content.
         </p>
       </header>
 

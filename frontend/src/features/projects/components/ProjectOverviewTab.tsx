@@ -133,7 +133,12 @@ function EditableGoal({ project }: { project: Project }) {
         <h2 className="text-sm font-semibold">Goal</h2>
         {editing ? (
           <div className="flex gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={isPending}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditing(false)}
+              disabled={isPending}
+            >
               <X /> Cancel
             </Button>
             <Button size="sm" onClick={save} disabled={isPending}>
@@ -159,8 +164,8 @@ function EditableGoal({ project }: { project: Project }) {
         <MarkdownView content={project.goal} />
       ) : (
         <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          No goal yet. Describe the scenario you want your skills and agents to support — you can use
-          markdown and Mermaid diagrams.
+          No goal yet. Describe the scenario you want your skills and agents to support — you can
+          use markdown and Mermaid diagrams.
         </p>
       )}
     </section>

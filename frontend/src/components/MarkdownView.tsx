@@ -12,7 +12,9 @@ const MERMAID_CLASS = 'language-mermaid';
 
 /** True for a hast <pre> whose only child is a <code class="language-mermaid">. */
 function preWrapsMermaid(node: unknown): boolean {
-  const el = node as { children?: Array<{ tagName?: string; properties?: { className?: unknown } }> };
+  const el = node as {
+    children?: Array<{ tagName?: string; properties?: { className?: unknown } }>;
+  };
   const first = el?.children?.[0];
   if (!first || first.tagName !== 'code') return false;
   const cls = first.properties?.className;

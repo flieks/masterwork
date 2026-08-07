@@ -26,15 +26,15 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
-    # A restart orphans in-flight background simulations; mark them failed so
-    # they don't poll forever. Best-effort: never block startup on it.
+    # A restart orphans in-flight background simulations; mark them interrupted
+    # so they don't poll forever. Best-effort: never block startup on it.
     try:
         from app.api.v1.simulations.service import RESTART_ERROR
         from app.db.session import AsyncSessionLocal
-        from app.repositories.simulations import fail_all_running
+        from app.repositories.simulations import interrupt_all_running
 
         async with AsyncSessionLocal() as session:
-            await fail_all_running(session, error=RESTART_ERROR)
+            await interrupt_all_running(session, error=RESTART_ERROR)
             await session.commit()
     except Exception:
         logger.warning("could not sweep orphaned simulations at startup", exc_info=True)

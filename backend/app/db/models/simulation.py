@@ -27,7 +27,8 @@ class Simulation(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running|completed|failed
+    # running | completed | failed | interrupted (cut short, not the assets' fault)
+    status: Mapped[str] = mapped_column(String(20), default="running")
     scenario: Mapped[str] = mapped_column(Text, default="")
 
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)

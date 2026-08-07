@@ -15,7 +15,8 @@ export function useDebouncedValue<T>(value: T, delay = 300): T {
 /** Tracks the OS `prefers-color-scheme: dark` media query. */
 export function usePrefersDark(): boolean {
   const [dark, setDark] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
+    () =>
+      typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
   );
 
   useEffect(() => {

@@ -11,6 +11,7 @@ import {
   FileCode2,
   Loader2,
   MinusCircle,
+  CircleSlash,
   TriangleAlert,
   Wand2,
   XCircle,
@@ -48,6 +49,24 @@ export function SimulationDetail({
       <section className="flex items-center gap-3 rounded-md border border-dashed p-6 text-sm text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
         Simulation in progress — Claude is reading the linked assets and walking the scenario…
+      </section>
+    );
+  }
+
+  // Interrupted ≠ failed: the run was cut short (restart, or stopped by hand),
+  // which says nothing about the assets. Keep it neutral so it doesn't read as
+  // a problem with the toolkit.
+  if (simulation.status === 'interrupted') {
+    return (
+      <section className="flex items-start gap-3 rounded-md border bg-muted/40 p-4">
+        <CircleSlash className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 text-sm">
+          <p className="font-medium">This simulation was interrupted</p>
+          <p className="mt-1 text-muted-foreground">
+            {simulation.error ?? 'The run ended before it finished.'} Nothing is wrong with your
+            assets — run it again to get a score.
+          </p>
+        </div>
       </section>
     );
   }
