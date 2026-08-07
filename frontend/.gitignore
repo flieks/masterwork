@@ -8,8 +8,12 @@ dist
 dist-ssr
 *.local
 
-# generated API client (regenerate with `npm run generate:api:local`)
-src/api/generated
+# The generated API client IS committed: openapi-generator-cli needs a JDK, and
+# requiring Java just to get a working checkout is too much friction. Regenerate
+# with `npm run generate:api:local` after changing the backend's schema.
+src/api/generated/.openapi-generator
+src/api/generated/.openapi-generator-ignore
+src/api/generated/git_push.sh
 
 # playwright
 /test-results
