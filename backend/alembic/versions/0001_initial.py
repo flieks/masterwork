@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from app.db.types import JSONColumn
 
 from alembic import op
 
@@ -64,7 +64,7 @@ def upgrade() -> None:
         sa.Column("message_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("summary", sa.Text(), nullable=False),
-        sa.Column("changes", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("changes", JSONColumn, nullable=False),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column("applied_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(

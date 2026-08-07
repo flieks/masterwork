@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import UTCDateTime
 
 
 class AssetDiagram(Base):
@@ -22,6 +23,4 @@ class AssetDiagram(Base):
     # sha256 of the asset file at generation time; drives the `stale` flag.
     file_hash: Mapped[str] = mapped_column(String)
     mermaid: Mapped[str] = mapped_column(Text)
-    generated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    generated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())

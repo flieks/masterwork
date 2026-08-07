@@ -1,30 +1,40 @@
 """Shared test fixtures.
 
-Integration tests run against a dedicated real Postgres database
-(`masterwork_test`) created/dropped per session — never the dev database and
-never a mock. Asset providers and the claude runner are overridden per test.
+Integration tests run against a real database, never a mock — SQLite in a
+throwaway file by default, or a dedicated `masterwork_test` Postgres database
+when DATABASE_URL points at Postgres. Never the dev database either way.
+Asset providers and the claude runner are overridden per test.
 """
 
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.pool import NullPool
 
 from app.api.deps import get_db
 from app.config import settings
 from app.db.base import Base
+from app.db.session import make_engine
 from app.main import app
 
 TEST_DB_NAME = "masterwork_test"
+_IS_POSTGRES = settings.database_url.startswith("postgresql")
 _BASE_URL = settings.database_url.rsplit("/", 1)[0]
-TEST_DB_URL = f"{_BASE_URL}/{TEST_DB_NAME}"
+_TMPDIR = tempfile.TemporaryDirectory(prefix="masterwork-test-")
+
+TEST_DB_URL = (
+    f"{_BASE_URL}/{TEST_DB_NAME}"
+    if _IS_POSTGRES
+    else f"sqlite+aiosqlite:///{Path(_TMPDIR.name) / 'test.db'}"
+)
 
 
 def _run(cmd: list[str]) -> None:
@@ -33,6 +43,13 @@ def _run(cmd: list[str]) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_database() -> Iterator[None]:
+    if not _IS_POSTGRES:
+        try:
+            yield
+        finally:
+            _TMPDIR.cleanup()
+        return
+
     # Guard: only ever touch a local database whose name ends with _test.
     assert "localhost" in TEST_DB_URL, "refusing to run against a non-local DB"
     assert TEST_DB_NAME.endswith("_test")
@@ -47,7 +64,7 @@ def _test_database() -> Iterator[None]:
 
 @pytest_asyncio.fixture
 async def engine() -> AsyncIterator[object]:
-    eng = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+    eng = make_engine(TEST_DB_URL, poolclass=NullPool)
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     try:

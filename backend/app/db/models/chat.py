@@ -10,11 +10,11 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import JSONColumn, UTCDateTime
 
 DEFAULT_SESSION_TITLE = "New chat"
 
@@ -33,9 +33,9 @@ class ChatSession(Base):
     asset_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
     # Internal: the claude CLI session id used for --resume. Never exposed in the API.
     claude_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UTCDateTime, server_default=func.now(), onupdate=func.now()
     )
 
     messages: Mapped[list[ChatMessage]] = relationship(
@@ -55,7 +55,7 @@ class ChatMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(16))  # "user" | "assistant" | "error"
     content: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
     proposal: Mapped[Proposal | None] = relationship(
@@ -76,12 +76,12 @@ class Proposal(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     summary: Mapped[str] = mapped_column(Text, default="")
     # List of ProposalChange dicts (path, action, new_content, description, asset_id).
-    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSONColumn, default=list)
     # ProjectUpdate dict (project_id, name, goal, flow_mermaid, asset_ids, description)
     # or null. A proposal carries file changes, a project update, or both.
-    project_update: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    project_update: Mapped[dict[str, Any] | None] = mapped_column(JSONColumn, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     message: Mapped[ChatMessage] = relationship(back_populates="proposal")
