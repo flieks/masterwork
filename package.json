@@ -23,5 +23,25 @@
     "skill-md",
     "ai-agents",
     "developer-tools"
+  ],
+  "files": [
+    "bin",
+    "backend",
+    "frontend",
+    "README.md",
+    "LICENSE",
+    "!**/tests/**",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/.pytest_cache/**",
+    "!**/.ruff_cache/**",
+    "!**/.mypy_cache/**",
+    "!backend/.venv/**",
+    "!frontend/playwright/**",
+    "!frontend/playwright*.config.ts",
+    "!frontend/tsconfig.test.json",
+    "!frontend/tsconfig.client.json",
+    "!frontend/eslint.config.js",
+    "!**/*.db"
   ]
 }
