@@ -24,7 +24,9 @@ def upgrade() -> None:
     op.add_column("simulations", sa.Column("autopilot_iteration", sa.Integer(), nullable=True))
     op.add_column("simulations", sa.Column("autopilot_total", sa.Integer(), nullable=True))
     op.add_column("projects", sa.Column("change_summary", sa.Text(), nullable=True))
-    op.add_column("projects", sa.Column("change_summary_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "projects", sa.Column("change_summary_at", sa.DateTime(timezone=True), nullable=True)
+    )
 
 
 def downgrade() -> None:

@@ -22,9 +22,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "simulations",
-        sa.Column(
-            "control_run", sa.Boolean(), nullable=False, server_default=sa.text("false")
-        ),
+        sa.Column("control_run", sa.Boolean(), nullable=False, server_default=sa.text("false")),
     )
 
 
