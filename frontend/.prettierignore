@@ -1,0 +1,6 @@
+dist
+node_modules
+src/api/generated
+playwright-report
+test-results
+openapi.json
