@@ -1,5 +1,9 @@
 # Masterwork
 
+[![npm](https://img.shields.io/npm/v/masterwork?color=cb3837&logo=npm)](https://www.npmjs.com/package/masterwork)
+[![CI](https://github.com/flieks/masterwork/actions/workflows/ci.yml/badge.svg)](https://github.com/flieks/masterwork/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A local workbench for the skills and subagents your AI coding agent uses — browse
 them, edit them, refine them with AI, and **prove they work** with scored
 simulation runs.
@@ -45,16 +49,22 @@ your existing subscription. **No API key, no inference bill.**
 ## Quick start
 
 ```bash
-git clone https://github.com/flieks/masterwork.git
-cd masterwork
-npm start
+npx masterwork
 ```
 
-That installs dependencies, migrates the database, starts both servers and opens
-the browser. Ctrl-C stops everything.
+That's it — nothing to clone. It installs what it needs, migrates the database,
+starts both servers and opens the browser. Ctrl-C stops everything.
 
 <details>
-<summary>Or run the two servers yourself</summary>
+<summary>From a clone, if you want to hack on it</summary>
+
+```bash
+git clone https://github.com/flieks/masterwork.git
+cd masterwork
+npm start          # same launcher
+```
+
+Or run the two servers yourself:
 
 ```bash
 cd backend
@@ -103,8 +113,9 @@ No auth, no multi-user: this is a single-user tool bound to localhost.
 - **More agents.** `SKILL.md` is an open standard — Codex, Cursor, Gemini CLI and
   others read the same files. The backend already routes through a provider
   abstraction; adding a provider is the natural first contribution.
-- **`npx masterwork`.** The launcher exists (`npm start` in a checkout); what's
-  left is publishing it so there's nothing to clone at all.
+- **A faster first run.** `npx masterwork` currently runs the frontend through
+  Vite's dev server, so the very first launch waits on a full install. Shipping a
+  pre-built frontend would cut that to seconds.
 - **A hub.** Publish and pull skills, subagents and projects — with simulation
   scores attached, so you can see what a skill actually does before installing it.
 
