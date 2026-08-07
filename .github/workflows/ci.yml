@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-lint:
+    name: backend lint + types
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app
+
+  backend-tests:
+    # Both dialects: SQLite is what a fresh install gets, Postgres is what the
+    # author runs. A change that works on one and breaks the other must fail here.
+    name: backend tests (${{ matrix.dialect }})
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dialect: sqlite
+            database_url: sqlite+aiosqlite:///./ci.db
+          - dialect: postgres
+            database_url: postgresql+asyncpg://postgres:postgres@localhost:5432/masterwork
+    env:
+      DATABASE_URL: ${{ matrix.database_url }}
+      # conftest shells out to createdb/dropdb for the Postgres leg.
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres
+        if: matrix.dialect == 'postgres'
+        run: |
+          docker run -d --name pg -p 5432:5432 \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
+            postgres:16
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+          for i in $(seq 30); do pg_isready -h localhost -U postgres && break; sleep 2; done
+          createdb masterwork
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run alembic upgrade head
+      - run: uv run pytest -q
+
+  frontend:
+    name: frontend typecheck + build + component tests
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ct
+
+  contract:
+    # The generated client is committed, so it can silently drift from the API.
+    # Regenerate both from a live backend and fail if anything differs.
+    name: openapi contract is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+
+      - name: Boot the backend
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./contract.db
+        run: |
+          uv sync --frozen
+          uv run alembic upgrade head
+          nohup uv run uvicorn app.main:app --port 8008 > /tmp/backend.log 2>&1 &
+          disown
+          for i in $(seq 30); do
+            curl -sf http://localhost:8008/openapi.json >/dev/null && exit 0
+            sleep 2
+          done
+          echo "backend did not come up"; exit 1
+
+      - name: openapi.json matches the running API
+        working-directory: frontend
+        run: |
+          curl -s http://localhost:8008/openapi.json | python3 -m json.tool > /tmp/live.json
+          if ! diff -u openapi.json /tmp/live.json; then
+            echo "::error::frontend/openapi.json is stale — run 'curl -s localhost:8008/openapi.json | python3 -m json.tool > frontend/openapi.json'"
+            exit 1
+          fi
+
+      - name: Generated client matches openapi.json
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run generate:api:local
+          rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore
+          if ! git diff --quiet -- src/api/generated; then
+            git diff --stat -- src/api/generated
+            echo "::error::the committed API client is stale — run 'npm run generate:api:local' and commit"
+            exit 1
+          fi
+
+  e2e:
+    name: end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+
+      - name: Boot the backend against a throwaway SQLite db
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./e2e.db
+        run: |
+          uv sync --frozen
+          uv run alembic upgrade head
+          nohup uv run uvicorn app.main:app --port 8008 > /tmp/backend.log 2>&1 &
+          disown
+          for i in $(seq 30); do
+            curl -sf http://localhost:8008/openapi.json >/dev/null && exit 0
+            sleep 2
+          done
+          echo "backend did not come up"; exit 1
+
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      # BACKEND_URL is what un-skips the e2e specs and starts Vite via webServer.
+      - working-directory: frontend
+        env:
+          BACKEND_URL: http://localhost:8008
+        run: npm run test:e2e

@@ -10,9 +10,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from app.db.types import JSONColumn
 
 from alembic import op
+from app.db.types import JSONColumn
 
 revision: str = "0003_simulations"
 down_revision: str | None = "0002_projects_diagrams"

@@ -1,0 +1,48 @@
+name: Bug report
+description: Something doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations: { required: true }
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the Skills page
+        2. …
+    validations: { required: true }
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options: [SQLite (default), Postgres]
+    validations: { required: true }
+
+  - type: input
+    id: versions
+    attributes:
+      label: OS, Python and Node versions
+      placeholder: "macOS 15.3, Python 3.13.1, Node 20.11"
+    validations: { required: true }
+
+  - type: input
+    id: agent
+    attributes:
+      label: Which agent's assets
+      description: Whose skills/subagents were you pointing at, and where do they live?
+      placeholder: "Claude Code, ~/.claude/skills"
+    validations: { required: true }
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend traceback or browser console output, if any. Redact anything private.
+      render: shell
