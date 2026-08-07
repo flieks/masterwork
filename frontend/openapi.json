@@ -1,0 +1,3075 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "masterwork",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/health": {
+            "get": {
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health",
+                "operationId": "health",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object",
+                                    "title": "Response Health"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/assets": {
+            "get": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "List Assets",
+                "operationId": "listAssets",
+                "parameters": [
+                    {
+                        "name": "kind",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/AssetKind"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Filter by asset kind.",
+                            "title": "Kind"
+                        },
+                        "description": "Filter by asset kind."
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Case-insensitive search over name, title, description, and content.",
+                            "title": "Q"
+                        },
+                        "description": "Case-insensitive search over name, title, description, and content."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/AssetSummary"
+                                    },
+                                    "title": "Response Listassets"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/assets/{asset_id}": {
+            "get": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Get Asset",
+                "operationId": "getAsset",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Update Asset",
+                "operationId": "updateAsset",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AssetUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/assets/{asset_id}/diagram": {
+            "get": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Get Asset Diagram",
+                "operationId": "getAssetDiagram",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetDiagram"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Generate Asset Diagram",
+                "operationId": "generateAssetDiagram",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetDiagram"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chat/sessions": {
+            "get": {
+                "tags": [
+                    "chat"
+                ],
+                "summary": "List Chat Sessions",
+                "operationId": "listChatSessions",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Omit for all sessions; \"none\" for global sessions; a uuid for a project.",
+                            "title": "Project Id"
+                        },
+                        "description": "Omit for all sessions; \"none\" for global sessions; a uuid for a project."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ChatSession"
+                                    },
+                                    "title": "Response Listchatsessions"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Create Chat Session",
+                "operationId": "createChatSession",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChatSessionCreateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ChatSession"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chat/sessions/{session_id}": {
+            "patch": {
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Update Chat Session",
+                "operationId": "updateChatSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChatSessionUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ChatSession"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Delete Chat Session",
+                "operationId": "deleteChatSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chat/sessions/{session_id}/messages": {
+            "get": {
+                "tags": [
+                    "chat"
+                ],
+                "summary": "List Chat Messages",
+                "operationId": "listChatMessages",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ChatMessage"
+                                    },
+                                    "title": "Response Listchatmessages"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Create Chat Message",
+                "operationId": "createChatMessage",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChatMessageCreateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ChatExchange"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/instructions": {
+            "get": {
+                "tags": [
+                    "instructions"
+                ],
+                "summary": "Get Instructions",
+                "operationId": "getInstructions",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstructionsDoc"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "instructions"
+                ],
+                "summary": "Update Instructions",
+                "operationId": "updateInstructions",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InstructionsUpdateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstructionsDoc"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects": {
+            "get": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "List Projects",
+                "operationId": "listProjects",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/Project"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listprojects"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Create Project",
+                "operationId": "createProject",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProjectCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Project"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}": {
+            "get": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Get Project",
+                "operationId": "getProject",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Project"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Update Project",
+                "operationId": "updateProject",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProjectUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Project"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Delete Project",
+                "operationId": "deleteProject",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/summary": {
+            "post": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Generate Summary",
+                "operationId": "generateProjectSummary",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProjectSummaryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/cross-changes": {
+            "get": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "List Cross Changes",
+                "operationId": "listProjectCrossChanges",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProjectCrossChangesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/suggest-links": {
+            "post": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Suggest Links",
+                "operationId": "suggestProjectLinks",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProjectSuggestLinksResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/trigger": {
+            "post": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Generate Trigger",
+                "operationId": "generateProjectTrigger",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProjectTriggerResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/generality-audit": {
+            "post": {
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Audit Generality",
+                "operationId": "auditProjectGenerality",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProjectGeneralityResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/proposals/{proposal_id}/accept": {
+            "post": {
+                "tags": [
+                    "proposals"
+                ],
+                "summary": "Accept Proposal",
+                "operationId": "acceptProposal",
+                "parameters": [
+                    {
+                        "name": "proposal_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Proposal Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Proposal"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/proposals/{proposal_id}/reject": {
+            "post": {
+                "tags": [
+                    "proposals"
+                ],
+                "summary": "Reject Proposal",
+                "operationId": "rejectProposal",
+                "parameters": [
+                    {
+                        "name": "proposal_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Proposal Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Proposal"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/simulations": {
+            "get": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "List Simulations",
+                "operationId": "listSimulations",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Simulation"
+                                    },
+                                    "title": "Response Listsimulations"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Create Simulation",
+                "operationId": "createSimulation",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SimulationCreateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "202": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Simulation"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/simulations/autopilot": {
+            "post": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Start Autopilot",
+                "operationId": "startSimulationAutopilot",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AutopilotCreateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "202": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Simulation"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/simulations/autopilot/{run_id}/stop": {
+            "post": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Stop Autopilot",
+                "operationId": "stopSimulationAutopilot",
+                "parameters": [
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Run Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{project_id}/simulations/scenario": {
+            "post": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Generate Scenario",
+                "operationId": "generateSimulationScenario",
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Project Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ScenarioGenerateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/simulations/{simulation_id}": {
+            "get": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Get Simulation",
+                "operationId": "getSimulation",
+                "parameters": [
+                    {
+                        "name": "simulation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Simulation Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Simulation"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Delete Simulation",
+                "operationId": "deleteSimulation",
+                "parameters": [
+                    {
+                        "name": "simulation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Simulation Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/simulations/{simulation_id}/suggestions/{suggestion_index}/apply": {
+            "post": {
+                "tags": [
+                    "simulations"
+                ],
+                "summary": "Apply Suggestion",
+                "operationId": "applySimulationSuggestion",
+                "parameters": [
+                    {
+                        "name": "simulation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Simulation Id"
+                        }
+                    },
+                    {
+                        "name": "suggestion_index",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Suggestion Index"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Simulation"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AssetDetail": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Stable slug, e.g. \"claude:skill:frontend-dev\"."
+                    },
+                    "kind": {
+                        "$ref": "#/components/schemas/AssetKind"
+                    },
+                    "provider": {
+                        "type": "string",
+                        "title": "Provider",
+                        "description": "Owning tool: \"claude\" or \"claude-plugin\"."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Filename/dir-derived asset name."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title",
+                        "description": "Frontmatter name/title, or the name as fallback."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "Frontmatter description, \"\" if none."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "Frontmatter model, null when the asset inherits the session model."
+                    },
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path to the file on disk."
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At",
+                        "description": "File modification time."
+                    },
+                    "read_only": {
+                        "type": "boolean",
+                        "title": "Read Only",
+                        "description": "True for plugin-provided assets; PUT is rejected with 403."
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "Full markdown, including frontmatter."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "provider",
+                    "name",
+                    "title",
+                    "description",
+                    "path",
+                    "updated_at",
+                    "read_only",
+                    "content"
+                ],
+                "title": "AssetDetail"
+            },
+            "AssetDiagram": {
+                "properties": {
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id"
+                    },
+                    "mermaid": {
+                        "type": "string",
+                        "title": "Mermaid",
+                        "description": "Mermaid flowchart source."
+                    },
+                    "generated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Generated At"
+                    },
+                    "stale": {
+                        "type": "boolean",
+                        "title": "Stale",
+                        "description": "True when the file changed since generation."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset_id",
+                    "mermaid",
+                    "generated_at",
+                    "stale"
+                ],
+                "title": "AssetDiagram"
+            },
+            "AssetKind": {
+                "type": "string",
+                "enum": [
+                    "skill",
+                    "agent"
+                ],
+                "title": "AssetKind"
+            },
+            "AssetSummary": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Stable slug, e.g. \"claude:skill:frontend-dev\"."
+                    },
+                    "kind": {
+                        "$ref": "#/components/schemas/AssetKind"
+                    },
+                    "provider": {
+                        "type": "string",
+                        "title": "Provider",
+                        "description": "Owning tool: \"claude\" or \"claude-plugin\"."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Filename/dir-derived asset name."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title",
+                        "description": "Frontmatter name/title, or the name as fallback."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "Frontmatter description, \"\" if none."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "Frontmatter model, null when the asset inherits the session model."
+                    },
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path to the file on disk."
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At",
+                        "description": "File modification time."
+                    },
+                    "read_only": {
+                        "type": "boolean",
+                        "title": "Read Only",
+                        "description": "True for plugin-provided assets; PUT is rejected with 403."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "provider",
+                    "name",
+                    "title",
+                    "description",
+                    "path",
+                    "updated_at",
+                    "read_only"
+                ],
+                "title": "AssetSummary"
+            },
+            "AssetUpdateRequest": {
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "Full new file content to write."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "content"
+                ],
+                "title": "AssetUpdateRequest"
+            },
+            "AutopilotCreateRequest": {
+                "properties": {
+                    "scenario": {
+                        "type": "string",
+                        "title": "Scenario",
+                        "description": "Optional scenario to simulate; empty lets the model derive one from the goal.",
+                        "default": ""
+                    },
+                    "control_run": {
+                        "type": "boolean",
+                        "title": "Control Run",
+                        "description": "Build the capability checklist from scratch instead of re-grading the previous run's. Forced anyway when the last run of this scenario scored 100. Applies to the first iteration only.",
+                        "default": false
+                    },
+                    "iterations": {
+                        "type": "integer",
+                        "maximum": 20.0,
+                        "minimum": 1.0,
+                        "title": "Iterations",
+                        "description": "Maximum number of chained runs; stops early when a run has no suggestions.",
+                        "default": 5
+                    }
+                },
+                "type": "object",
+                "title": "AutopilotCreateRequest"
+            },
+            "ChangeAction": {
+                "type": "string",
+                "enum": [
+                    "update",
+                    "create",
+                    "delete"
+                ],
+                "title": "ChangeAction"
+            },
+            "ChatExchange": {
+                "properties": {
+                    "user_message": {
+                        "$ref": "#/components/schemas/ChatMessage"
+                    },
+                    "assistant_message": {
+                        "$ref": "#/components/schemas/ChatMessage"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "user_message",
+                    "assistant_message"
+                ],
+                "title": "ChatExchange"
+            },
+            "ChatMessage": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "role": {
+                        "$ref": "#/components/schemas/MessageRole"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "Markdown; proposal block already stripped."
+                    },
+                    "proposal": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/Proposal"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Only on assistant messages that propose changes."
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "session_id",
+                    "role",
+                    "content",
+                    "created_at"
+                ],
+                "title": "ChatMessage"
+            },
+            "ChatMessageCreateRequest": {
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "content"
+                ],
+                "title": "ChatMessageCreateRequest"
+            },
+            "ChatSession": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "project_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Project Id",
+                        "description": "Owning project, or null for global chat."
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "title",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "ChatSession"
+            },
+            "ChatSessionCreateRequest": {
+                "properties": {
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "Defaults to \"New chat\"; retitled from the first message."
+                    },
+                    "project_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Project Id",
+                        "description": "Scope this session to a project."
+                    }
+                },
+                "type": "object",
+                "title": "ChatSessionCreateRequest"
+            },
+            "ChatSessionUpdateRequest": {
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "title"
+                ],
+                "title": "ChatSessionUpdateRequest"
+            },
+            "CrossChange": {
+                "properties": {
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id"
+                    },
+                    "action": {
+                        "type": "string",
+                        "title": "Action"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "simulation",
+                            "proposal"
+                        ],
+                        "title": "Source"
+                    },
+                    "project_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Project Id",
+                        "description": "Null when a global (unscoped) chat did it."
+                    },
+                    "project_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Project Name"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title",
+                        "description": "The applied suggestion's title or proposal's summary."
+                    },
+                    "applied_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Applied At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset_id",
+                    "action",
+                    "source",
+                    "project_id",
+                    "project_name",
+                    "title",
+                    "applied_at"
+                ],
+                "title": "CrossChange",
+                "description": "A modification another project made to an asset this project links."
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "InstructionsDoc": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path to the global CLAUDE.md."
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "Full markdown, \"\" when the file does not exist yet."
+                    },
+                    "exists": {
+                        "type": "boolean",
+                        "title": "Exists",
+                        "description": "False when no file is on disk; a PUT creates it."
+                    },
+                    "updated_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated At",
+                        "description": "File mtime, null when absent."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "content",
+                    "exists"
+                ],
+                "title": "InstructionsDoc"
+            },
+            "InstructionsUpdateRequest": {
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "Full new file content to write."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "content"
+                ],
+                "title": "InstructionsUpdateRequest"
+            },
+            "MessageRole": {
+                "type": "string",
+                "enum": [
+                    "user",
+                    "assistant",
+                    "error"
+                ],
+                "title": "MessageRole"
+            },
+            "Project": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Project uuid."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "goal": {
+                        "type": "string",
+                        "title": "Goal",
+                        "description": "Scenario description, markdown."
+                    },
+                    "flow_mermaid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Flow Mermaid",
+                        "description": "Mermaid source: how the linked assets work together."
+                    },
+                    "asset_ids": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Asset Ids",
+                        "description": "Linked asset ids, e.g. \"claude:skill:azure-deploy\"."
+                    },
+                    "scenario": {
+                        "type": "string",
+                        "title": "Scenario",
+                        "description": "Last simulation scenario used/generated; markdown/plain text."
+                    },
+                    "change_summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Change Summary",
+                        "description": "Last generated summary of all applied asset changes; markdown."
+                    },
+                    "change_summary_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Change Summary At",
+                        "description": "When change_summary was generated; null when never."
+                    },
+                    "trigger_guide": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Trigger Guide",
+                        "description": "Last generated guide on how to trigger this toolkit; markdown."
+                    },
+                    "trigger_guide_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Trigger Guide At",
+                        "description": "When trigger_guide was generated; null when never."
+                    },
+                    "generality_report": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Generality Report",
+                        "description": "Last generality audit of the linked assets; markdown."
+                    },
+                    "generality_report_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Generality Report At",
+                        "description": "When generality_report was generated; null when never."
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "goal",
+                    "flow_mermaid",
+                    "asset_ids",
+                    "scenario",
+                    "change_summary",
+                    "change_summary_at",
+                    "trigger_guide",
+                    "trigger_guide_at",
+                    "generality_report",
+                    "generality_report_at",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "Project"
+            },
+            "ProjectCreateRequest": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "goal": {
+                        "type": "string",
+                        "title": "Goal",
+                        "description": "Optional scenario description; defaults to empty.",
+                        "default": ""
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "ProjectCreateRequest"
+            },
+            "ProjectCrossChangesResponse": {
+                "properties": {
+                    "since": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Since",
+                        "description": "This project's last completed run; null = no runs, nothing to invalidate."
+                    },
+                    "changes": {
+                        "items": {
+                            "$ref": "#/components/schemas/CrossChange"
+                        },
+                        "type": "array",
+                        "title": "Changes",
+                        "description": "Newest first."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "since",
+                    "changes"
+                ],
+                "title": "ProjectCrossChangesResponse"
+            },
+            "ProjectGeneralityResponse": {
+                "properties": {
+                    "generality_report": {
+                        "type": "string",
+                        "title": "Generality Report",
+                        "description": "The generated audit, saved on the project."
+                    },
+                    "generated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Generated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "generality_report",
+                    "generated_at"
+                ],
+                "title": "ProjectGeneralityResponse"
+            },
+            "ProjectSuggestLinksResponse": {
+                "properties": {
+                    "suggestions": {
+                        "items": {
+                            "$ref": "#/components/schemas/SuggestedLink"
+                        },
+                        "type": "array",
+                        "title": "Suggestions"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "suggestions"
+                ],
+                "title": "ProjectSuggestLinksResponse",
+                "description": "The complete recommended toolkit; nothing is saved until the user does."
+            },
+            "ProjectSummaryResponse": {
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "title": "Summary",
+                        "description": "The generated change summary, saved on the project."
+                    },
+                    "generated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Generated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "summary",
+                    "generated_at"
+                ],
+                "title": "ProjectSummaryResponse"
+            },
+            "ProjectTriggerResponse": {
+                "properties": {
+                    "trigger_guide": {
+                        "type": "string",
+                        "title": "Trigger Guide",
+                        "description": "The generated guide, saved on the project."
+                    },
+                    "generated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Generated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "trigger_guide",
+                    "generated_at"
+                ],
+                "title": "ProjectTriggerResponse"
+            },
+            "ProjectUpdate": {
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "title": "Project Id"
+                    },
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    },
+                    "goal": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Goal"
+                    },
+                    "flow_mermaid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Flow Mermaid"
+                    },
+                    "asset_ids": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asset Ids"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "Human-readable summary of the update.",
+                        "default": ""
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_id"
+                ],
+                "title": "ProjectUpdate",
+                "description": "A project update proposed by the chatbot (proposal payload).\n\n`null` on any field means leave it unchanged. `asset_ids`, when present, is\nthe COMPLETE new list of linked assets (not a delta)."
+            },
+            "ProjectUpdateRequest": {
+                "properties": {
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    },
+                    "goal": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Goal"
+                    },
+                    "flow_mermaid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Flow Mermaid"
+                    },
+                    "asset_ids": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asset Ids"
+                    },
+                    "scenario": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Scenario"
+                    }
+                },
+                "type": "object",
+                "title": "ProjectUpdateRequest",
+                "description": "Partial update. Only fields present in the request body are changed;\n`flow_mermaid` is explicitly nullable (send null to clear the diagram)."
+            },
+            "Proposal": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/ProposalStatus"
+                    },
+                    "summary": {
+                        "type": "string",
+                        "title": "Summary"
+                    },
+                    "changes": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProposalChange"
+                        },
+                        "type": "array",
+                        "title": "Changes"
+                    },
+                    "project_update": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ProjectUpdate"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "A proposed project update; carried alongside or instead of file changes."
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error",
+                        "description": "Set when status is 'failed'."
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "status",
+                    "summary",
+                    "changes",
+                    "created_at"
+                ],
+                "title": "Proposal"
+            },
+            "ProposalChange": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute target path."
+                    },
+                    "action": {
+                        "$ref": "#/components/schemas/ChangeAction"
+                    },
+                    "new_content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "New Content",
+                        "description": "Full new file content; null for a delete."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "What this change does.",
+                        "default": ""
+                    },
+                    "asset_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asset Id",
+                        "description": "Set when the path maps to a known asset."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "action"
+                ],
+                "title": "ProposalChange"
+            },
+            "ProposalStatus": {
+                "type": "string",
+                "enum": [
+                    "pending",
+                    "applied",
+                    "rejected",
+                    "failed"
+                ],
+                "title": "ProposalStatus"
+            },
+            "ScenarioGenerateResponse": {
+                "properties": {
+                    "scenario": {
+                        "type": "string",
+                        "title": "Scenario",
+                        "description": "The generated scenario, saved on the project."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "scenario"
+                ],
+                "title": "ScenarioGenerateResponse"
+            },
+            "Simulation": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "title": "Project Id"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "running",
+                            "completed",
+                            "failed"
+                        ],
+                        "title": "Status"
+                    },
+                    "scenario": {
+                        "type": "string",
+                        "title": "Scenario",
+                        "description": "User-provided scenario; empty = derived from goal."
+                    },
+                    "score": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Score",
+                        "description": "0-100, null until completed."
+                    },
+                    "verdict": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Verdict"
+                    },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "Markdown: what the simulated run did."
+                    },
+                    "analysis": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Analysis",
+                        "description": "Markdown: strengths, gaps, failure points."
+                    },
+                    "trace_mermaid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Trace Mermaid",
+                        "description": "Mermaid trace of the simulated run."
+                    },
+                    "checklist": {
+                        "items": {
+                            "$ref": "#/components/schemas/SimulationChecklistItem"
+                        },
+                        "type": "array",
+                        "title": "Checklist",
+                        "description": "Capability checklist the score is computed from; [] for pre-v1.7 runs."
+                    },
+                    "suggestions": {
+                        "items": {
+                            "$ref": "#/components/schemas/SimulationSuggestion"
+                        },
+                        "type": "array",
+                        "title": "Suggestions"
+                    },
+                    "control_run": {
+                        "type": "boolean",
+                        "title": "Control Run",
+                        "description": "True when this run built its checklist from scratch instead of re-grading the previous run's; forced automatically after a run scores 100."
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "completed_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Completed At"
+                    },
+                    "autopilot_run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Autopilot Run Id",
+                        "description": "Set when this run is one iteration of an autopilot chain."
+                    },
+                    "autopilot_iteration": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Autopilot Iteration",
+                        "description": "1-based iteration number."
+                    },
+                    "autopilot_total": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Autopilot Total",
+                        "description": "Requested iteration count."
+                    },
+                    "stats": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/SimulationStats"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "CLI-reported run metadata; null for runs before v1.6."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "project_id",
+                    "status",
+                    "scenario",
+                    "score",
+                    "verdict",
+                    "summary",
+                    "analysis",
+                    "trace_mermaid",
+                    "checklist",
+                    "suggestions",
+                    "control_run",
+                    "error",
+                    "created_at",
+                    "completed_at",
+                    "autopilot_run_id",
+                    "autopilot_iteration",
+                    "autopilot_total",
+                    "stats"
+                ],
+                "title": "Simulation"
+            },
+            "SimulationChange": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path"
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "update",
+                            "create",
+                            "delete",
+                            "link"
+                        ],
+                        "title": "Action"
+                    },
+                    "new_content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "New Content"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "asset_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asset Id",
+                        "description": "Set when path maps to a known asset."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "action",
+                    "new_content",
+                    "description",
+                    "asset_id"
+                ],
+                "title": "SimulationChange",
+                "description": "One change carried by a suggestion (same shape as ProposalChange).\n`link` adds an existing unlinked asset to the project \u2014 no file write."
+            },
+            "SimulationChecklistItem": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "weight": {
+                        "type": "integer",
+                        "maximum": 3.0,
+                        "minimum": 1.0,
+                        "title": "Weight",
+                        "description": "Importance to the goal, 1-3."
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pass",
+                            "partial",
+                            "fail",
+                            "na"
+                        ],
+                        "title": "Status"
+                    },
+                    "evidence": {
+                        "type": "string",
+                        "title": "Evidence",
+                        "description": "Asset/file that covers it, or the gap."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "title",
+                    "weight",
+                    "status",
+                    "evidence"
+                ],
+                "title": "SimulationChecklistItem",
+                "description": "One capability the toolkit must have for the scenario. The run's score is\nthe weighted share of these that pass (partial = half; `na` excluded)."
+            },
+            "SimulationCreateRequest": {
+                "properties": {
+                    "scenario": {
+                        "type": "string",
+                        "title": "Scenario",
+                        "description": "Optional scenario to simulate; empty lets the model derive one from the goal.",
+                        "default": ""
+                    },
+                    "control_run": {
+                        "type": "boolean",
+                        "title": "Control Run",
+                        "description": "Build the capability checklist from scratch instead of re-grading the previous run's. Forced anyway when the last run of this scenario scored 100.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "title": "SimulationCreateRequest"
+            },
+            "SimulationStats": {
+                "properties": {
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model"
+                    },
+                    "duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Ms"
+                    },
+                    "num_turns": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Num Turns"
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "input_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Input Tokens"
+                    },
+                    "output_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Output Tokens"
+                    },
+                    "cache_read_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cache Read Tokens"
+                    },
+                    "cache_creation_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cache Creation Tokens"
+                    }
+                },
+                "type": "object",
+                "title": "SimulationStats",
+                "description": "Run metadata reported by the claude CLI; every field is best-effort."
+            },
+            "SimulationSuggestion": {
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "impact": {
+                        "type": "string",
+                        "enum": [
+                            "high",
+                            "medium",
+                            "low"
+                        ],
+                        "title": "Impact"
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "title": "Rationale",
+                        "description": "Markdown: why this improves goal achievement."
+                    },
+                    "changes": {
+                        "items": {
+                            "$ref": "#/components/schemas/SimulationChange"
+                        },
+                        "type": "array",
+                        "title": "Changes"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "applied",
+                            "failed"
+                        ],
+                        "title": "Status"
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error"
+                    },
+                    "applied_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Applied At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "title",
+                    "impact",
+                    "rationale",
+                    "changes",
+                    "status",
+                    "error",
+                    "applied_at"
+                ],
+                "title": "SimulationSuggestion"
+            },
+            "SuggestedLink": {
+                "properties": {
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "title": "Reason",
+                        "description": "One line: why the goal needs this asset.",
+                        "default": ""
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset_id"
+                ],
+                "title": "SuggestedLink"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}

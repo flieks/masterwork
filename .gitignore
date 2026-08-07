@@ -1,0 +1,5 @@
+.dev-logs/
+.DS_Store
+
+# local scratch files, not part of the project
+yt.html
