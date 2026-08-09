@@ -1,5 +1,11 @@
 .dev-logs/
 .DS_Store
 
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
 # local scratch files, not part of the project
 yt.html

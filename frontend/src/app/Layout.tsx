@@ -1,13 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Boxes, Bot, MessageSquare, FolderKanban, FileText } from 'lucide-react';
+import { Boxes, Bot, MessageSquare, FolderKanban, FileText, Activity } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { Logo } from './Logo';
 
 const NAV = [
   { to: '/skills', label: 'Skills', icon: Boxes },
   { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/instructions', label: 'CLAUDE.md', icon: FileText },
+  { to: '/sessions', label: 'Sessions', icon: Activity },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/instructions', label: 'CLAUDE.md', icon: FileText },
 ];
 
 export function Layout() {
@@ -15,9 +17,7 @@ export function Layout() {
     <div className="flex h-screen">
       <nav className="flex w-56 shrink-0 flex-col border-r bg-card">
         <div className="flex items-center gap-2 px-4 py-4">
-          <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            MW
-          </span>
+          <Logo />
           <span className="font-semibold tracking-tight">Masterwork</span>
         </div>
 

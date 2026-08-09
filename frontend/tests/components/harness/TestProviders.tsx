@@ -18,12 +18,15 @@ function Hydrate({ children }: PropsWithChildren) {
 }
 
 /** Mirrors the app's providers so mounted components have jotai + query + router. */
-export function TestProviders({ children }: PropsWithChildren) {
+export function TestProviders({
+  children,
+  initialEntries,
+}: PropsWithChildren<{ initialEntries?: string[] }>) {
   return (
     <JotaiProvider>
       <QueryClientProvider client={client}>
         <Hydrate>
-          <MemoryRouter>{children}</MemoryRouter>
+          <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
         </Hydrate>
       </QueryClientProvider>
     </JotaiProvider>

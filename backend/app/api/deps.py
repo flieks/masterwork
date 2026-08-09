@@ -14,12 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.db.session import AsyncSessionLocal, get_db
+from app.observability.base import Integration
+from app.observability.registry import build_integrations
 from app.providers.base import Provider
 from app.providers.registry import build_providers
 from app.services.claude_runner import ClaudeRunner
 
 __all__ = [
     "get_db",
+    "get_integrations",
     "get_providers",
     "get_instructions_path",
     "get_claude_runner",
@@ -31,6 +34,12 @@ __all__ = [
 
 def get_providers() -> list[Provider]:
     return build_providers(settings)
+
+
+def get_integrations() -> list[Integration]:
+    """Agents that can be wired to report their sessions; tests point these at a
+    temp config file so no test ever edits the real ~/.claude/settings.json."""
+    return build_integrations(settings)
 
 
 def get_instructions_path() -> Path:

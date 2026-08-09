@@ -24,6 +24,153 @@ import type { RequestArgs } from './base';
 import { BASE_PATH, COLLECTION_FORMATS, BaseAPI, RequiredError, operationServerMap } from './base';
 
 /**
+ * One lane of the run as a hook reports it; same partial-update rules.
+ * @export
+ * @interface AgentIn
+ */
+export interface AgentIn {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentIn
+     */
+    'name'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentIn
+     */
+    'model'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentIn
+     */
+    'color'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentIn
+     */
+    'context_tokens'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentIn
+     */
+    'context_window'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentIn
+     */
+    'cost_usd'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentIn
+     */
+    'tokens_in'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentIn
+     */
+    'tokens_out'?: number | null;
+}
+/**
+ * One horizontal lane of the run\'s timeline.
+ * @export
+ * @interface AgentLane
+ */
+export interface AgentLane {
+    /**
+     * \"main\", a subagent type, or a pipeline stage.
+     * @type {string}
+     * @memberof AgentLane
+     */
+    'name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentLane
+     */
+    'model': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentLane
+     */
+    'color': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentLane
+     */
+    'context_tokens': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentLane
+     */
+    'context_window': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentLane
+     */
+    'cost_usd': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentLane
+     */
+    'tokens_in': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentLane
+     */
+    'tokens_out': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentLane
+     */
+    'turns': number;
+}
+/**
+ * One recorded call of an asset, and what the caller handed it.
+ * @export
+ * @interface AssetCall
+ */
+export interface AssetCall {
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetCall
+     */
+    'used_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetCall
+     */
+    'lane': string | null;
+    /**
+     * Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief) | skill_read (a SKILL.md read, carries only the path) | subagent_stop (a finished subagent, carries nothing).
+     * @type {string}
+     * @memberof AssetCall
+     */
+    'source': string;
+    /**
+     * 
+     * @type {{ [key: string]: string; }}
+     * @memberof AssetCall
+     */
+    'input': { [key: string]: string; } | null;
+}
+/**
  * 
  * @export
  * @interface AssetDetail
@@ -144,6 +291,73 @@ export type AssetKind = typeof AssetKind[keyof typeof AssetKind];
 
 
 /**
+ * One run that used an asset, and the calls it made.
+ * @export
+ * @interface AssetSessionUse
+ */
+export interface AssetSessionUse {
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'session_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'title': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'git_repo': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'cwd': string;
+    /**
+     * Derived run status, not the stored one.
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'status': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'started_at': string;
+    /**
+     * Calls this run made, across all of its lanes.
+     * @type {number}
+     * @memberof AssetSessionUse
+     */
+    'uses': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'first_used_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSessionUse
+     */
+    'last_used_at': string;
+    /**
+     * The individual calls, newest first. Capped across the whole response, so it can hold fewer entries than `uses` — and none at all for a run recorded before the log shipped, until it is backfilled.
+     * @type {Array<AssetCall>}
+     * @memberof AssetSessionUse
+     */
+    'calls': Array<AssetCall>;
+}
+/**
  * 
  * @export
  * @interface AssetSummary
@@ -226,6 +440,43 @@ export interface AssetUpdateRequest {
     'content': string;
 }
 /**
+ * One skill or subagent this run reached for, and how often.
+ * @export
+ * @interface AssetUse
+ */
+export interface AssetUse {
+    /**
+     * \"skill\" or \"agent\".
+     * @type {string}
+     * @memberof AssetUse
+     */
+    'kind': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetUse
+     */
+    'name': string;
+    /**
+     * \"claude:skill:<name>\" / \"claude:agent:<name>\" — links to the asset page.
+     * @type {string}
+     * @memberof AssetUse
+     */
+    'asset_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetUse
+     */
+    'lane': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AssetUse
+     */
+    'uses': number;
+}
+/**
  * 
  * @export
  * @interface AutopilotCreateRequest
@@ -249,6 +500,80 @@ export interface AutopilotCreateRequest {
      * @memberof AutopilotCreateRequest
      */
     'iterations'?: number;
+}
+/**
+ * What rebuilding one session\'s derived rows produced.
+ * @export
+ * @interface BackfillResult
+ */
+export interface BackfillResult {
+    /**
+     * 
+     * @type {string}
+     * @memberof BackfillResult
+     */
+    'session_id': string;
+    /**
+     * Events replayed through the live derivation.
+     * @type {number}
+     * @memberof BackfillResult
+     */
+    'events': number;
+    /**
+     * Stages the replay rebuilt.
+     * @type {number}
+     * @memberof BackfillResult
+     */
+    'phases': number;
+    /**
+     * Lanes the replay rebuilt.
+     * @type {number}
+     * @memberof BackfillResult
+     */
+    'agents': number;
+    /**
+     * Skill and subagent uses the replay rebuilt.
+     * @type {number}
+     * @memberof BackfillResult
+     */
+    'assets': number;
+}
+/**
+ * The same, summed over a whole-history rebuild.
+ * @export
+ * @interface BackfillTotals
+ */
+export interface BackfillTotals {
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'sessions': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'events': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'phases': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'agents': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'assets': number;
 }
 /**
  * 
@@ -424,6 +749,593 @@ export interface ChatSessionUpdateRequest {
     'title': string;
 }
 /**
+ * One asset\'s usage across every run — the flywheel view.
+ * @export
+ * @interface CodingAssetUsage
+ */
+export interface CodingAssetUsage {
+    /**
+     * \"skill\" or \"agent\".
+     * @type {string}
+     * @memberof CodingAssetUsage
+     */
+    'kind': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingAssetUsage
+     */
+    'name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingAssetUsage
+     */
+    'asset_id': string;
+    /**
+     * Distinct runs that used it.
+     * @type {number}
+     * @memberof CodingAssetUsage
+     */
+    'sessions': number;
+    /**
+     * Total uses across those runs.
+     * @type {number}
+     * @memberof CodingAssetUsage
+     */
+    'uses': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingAssetUsage
+     */
+    'last_used_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface CodingEvent
+ */
+export interface CodingEvent {
+    /**
+     * Monotonic cursor; pass the last one back as `after`.
+     * @type {number}
+     * @memberof CodingEvent
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingEvent
+     */
+    'session_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingEvent
+     */
+    'event_type': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingEvent
+     */
+    'tool_name': string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof CodingEvent
+     */
+    'payload': { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingEvent
+     */
+    'created_at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingEvent
+     */
+    'phase_id': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingEvent
+     */
+    'agent': string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CodingEvent
+     */
+    'ok': boolean | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingEvent
+     */
+    'duration_ms': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingEvent
+     */
+    'ended_at': string | null;
+}
+/**
+ * The full stage row, for the detail waterfall.
+ * @export
+ * @interface CodingPhase
+ */
+export interface CodingPhase {
+    /**
+     * Position in the run.
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'seq': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'agent': string | null;
+    /**
+     * running | passed | failed | skipped | abandoned
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'status': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'started_at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'duration_ms': number | null;
+    /**
+     * What an event\'s phase_id points at.
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'kind': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'description': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'ended_at': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'cost_usd': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'tokens_in': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'tokens_out': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'corrections': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingPhase
+     */
+    'commit_sha': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'gates_passed': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingPhase
+     */
+    'gates_failed': number;
+}
+/**
+ * 
+ * @export
+ * @interface CodingSession
+ */
+export interface CodingSession {
+    /**
+     * Claude Code session id.
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'id': string;
+    /**
+     * Working directory, \"\" if no event carried one.
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'cwd': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'git_repo': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'model': string | null;
+    /**
+     * Event producer; always \"claude-code\" today.
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'source': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'launch_mode': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'title': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'title_source': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'parent_session_id': string | null;
+    /**
+     * Runs this one launched.
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'child_count': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'workflow': string | null;
+    /**
+     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live.
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'status': string;
+    /**
+     * First event seen for this session.
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'started_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'last_event_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'ended_at': string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof CodingSession
+     */
+    'stats': { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'cost_usd': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'tokens_total': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'tokens_in': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'tokens_out': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'cache_read_tokens': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'event_count': number;
+    /**
+     * Events with event_type PostToolUse.
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'tool_call_count': number;
+    /**
+     * started_at → ended_at, or → last_event_at while still open.
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'duration_seconds': number;
+    /**
+     * duration_seconds in milliseconds — the clock on the wall.
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'wall_ms': number;
+    /**
+     * Time the run was actually working: the sum of the gaps between consecutive events, discarding any gap over 60 s. A pipeline run prefers the measured sum of its stage durations. Lead with this, not wall_ms.
+     * @type {number}
+     * @memberof CodingSession
+     */
+    'active_ms': number;
+    /**
+     * Ordered by seq.
+     * @type {Array<PhaseSummary>}
+     * @memberof CodingSession
+     */
+    'phases': Array<PhaseSummary>;
+    /**
+     * Lanes, in the order they first appeared.
+     * @type {Array<AgentLane>}
+     * @memberof CodingSession
+     */
+    'agents': Array<AgentLane>;
+    /**
+     * Skills and subagents used, most-used first.
+     * @type {Array<AssetUse>}
+     * @memberof CodingSession
+     */
+    'assets': Array<AssetUse>;
+}
+/**
+ * The same session with whole phase rows instead of card summaries.
+ * @export
+ * @interface CodingSessionDetail
+ */
+export interface CodingSessionDetail {
+    /**
+     * Claude Code session id.
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'id': string;
+    /**
+     * Working directory, \"\" if no event carried one.
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'cwd': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'git_repo': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'model': string | null;
+    /**
+     * Event producer; always \"claude-code\" today.
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'source': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'launch_mode': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'title': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'title_source': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'parent_session_id': string | null;
+    /**
+     * Runs this one launched.
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'child_count': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'workflow': string | null;
+    /**
+     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live.
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'status': string;
+    /**
+     * First event seen for this session.
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'started_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'last_event_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'ended_at': string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof CodingSessionDetail
+     */
+    'stats': { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'cost_usd': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'tokens_total': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'tokens_in': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'tokens_out': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'cache_read_tokens': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'event_count': number;
+    /**
+     * Events with event_type PostToolUse.
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'tool_call_count': number;
+    /**
+     * started_at → ended_at, or → last_event_at while still open.
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'duration_seconds': number;
+    /**
+     * duration_seconds in milliseconds — the clock on the wall.
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'wall_ms': number;
+    /**
+     * Time the run was actually working: the sum of the gaps between consecutive events, discarding any gap over 60 s. A pipeline run prefers the measured sum of its stage durations. Lead with this, not wall_ms.
+     * @type {number}
+     * @memberof CodingSessionDetail
+     */
+    'active_ms': number;
+    /**
+     * Ordered by seq.
+     * @type {Array<CodingPhase>}
+     * @memberof CodingSessionDetail
+     */
+    'phases': Array<CodingPhase>;
+    /**
+     * Lanes, in the order they first appeared.
+     * @type {Array<AgentLane>}
+     * @memberof CodingSessionDetail
+     */
+    'agents': Array<AgentLane>;
+    /**
+     * Skills and subagents used, most-used first.
+     * @type {Array<AssetUse>}
+     * @memberof CodingSessionDetail
+     */
+    'assets': Array<AssetUse>;
+}
+/**
  * A modification another project made to an asset this project links.
  * @export
  * @interface CrossChange
@@ -494,6 +1406,103 @@ export interface HTTPValidationError {
     'detail'?: Array<ValidationError>;
 }
 /**
+ * One hook firing. Deliberately permissive: everything but `session_id` and `event_type` is optional, over-long values are truncated rather than rejected, and an optional field whose value will not validate is dropped rather than answered with a 422 — a hook never fails a Claude Code run, including when the backend has moved on and it has not.
+ * @export
+ * @interface HookEventRequest
+ */
+export interface HookEventRequest {
+    /**
+     * Claude Code session id.
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'session_id': string;
+    /**
+     * Hook name, e.g. \"PreToolUse\"; any string is accepted.
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'event_type': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'cwd'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'model'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'tool_name'?: string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof HookEventRequest
+     */
+    'payload'?: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof HookEventRequest
+     */
+    'stats'?: { [key: string]: any; } | null;
+    /**
+     * True on the last event of the session.
+     * @type {boolean}
+     * @memberof HookEventRequest
+     */
+    'ended'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'title'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'workflow'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'status'?: string | null;
+    /**
+     * 
+     * @type {PhaseIn}
+     * @memberof HookEventRequest
+     */
+    'phase'?: PhaseIn | null;
+    /**
+     * 
+     * @type {AgentIn}
+     * @memberof HookEventRequest
+     */
+    'agent'?: AgentIn | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof HookEventRequest
+     */
+    'ok'?: boolean | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof HookEventRequest
+     */
+    'duration_ms'?: number | null;
+}
+/**
  * 
  * @export
  * @interface InstructionsDoc
@@ -552,6 +1561,199 @@ export const MessageRole = {
 export type MessageRole = typeof MessageRole[keyof typeof MessageRole];
 
 
+/**
+ * One coding agent and whether it is reporting its sessions here.
+ * @export
+ * @interface ObservabilityIntegration
+ */
+export interface ObservabilityIntegration {
+    /**
+     * Stable integration id, e.g. \"claude-code\".
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'id': string;
+    /**
+     * Agent name to show in the UI.
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'label': string;
+    /**
+     * connected: recording. outdated: wired to an older hook set or a missing script — connect repairs it. disconnected: nothing installed. unavailable: cannot be connected on this machine; `detail` says why.
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'state': ObservabilityIntegrationStateEnum;
+    /**
+     * One sentence for the user explaining the state.
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'detail': string;
+    /**
+     * Where the agent\'s hooks post their events.
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'ingest_url': string;
+    /**
+     * The agent events subscribed once connected.
+     * @type {Array<string>}
+     * @memberof ObservabilityIntegration
+     */
+    'events': Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'config_path'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'script_path'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'backup_path'?: string | null;
+}
+
+export const ObservabilityIntegrationStateEnum = {
+    Connected: 'connected',
+    Outdated: 'outdated',
+    Disconnected: 'disconnected',
+    Unavailable: 'unavailable'
+} as const;
+
+export type ObservabilityIntegrationStateEnum = typeof ObservabilityIntegrationStateEnum[keyof typeof ObservabilityIntegrationStateEnum];
+
+/**
+ * One stage of the run as a hook reports it. Every field is optional: a later event fills in what the first one could not know yet, and an absent field never clears what is already stored.
+ * @export
+ * @interface PhaseIn
+ */
+export interface PhaseIn {
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseIn
+     */
+    'name'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseIn
+     */
+    'seq'?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseIn
+     */
+    'kind'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseIn
+     */
+    'agent'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseIn
+     */
+    'description'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseIn
+     */
+    'status'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseIn
+     */
+    'duration_ms'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseIn
+     */
+    'cost_usd'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseIn
+     */
+    'tokens_in'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseIn
+     */
+    'tokens_out'?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseIn
+     */
+    'corrections'?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseIn
+     */
+    'commit_sha'?: string | null;
+}
+/**
+ * Just enough of a stage to draw the mini-lane chart on a session card.
+ * @export
+ * @interface PhaseSummary
+ */
+export interface PhaseSummary {
+    /**
+     * Position in the run.
+     * @type {number}
+     * @memberof PhaseSummary
+     */
+    'seq': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseSummary
+     */
+    'name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseSummary
+     */
+    'agent': string | null;
+    /**
+     * running | passed | failed | skipped | abandoned
+     * @type {string}
+     * @memberof PhaseSummary
+     */
+    'status': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PhaseSummary
+     */
+    'started_at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof PhaseSummary
+     */
+    'duration_ms': number | null;
+}
 /**
  * 
  * @export
@@ -2270,6 +3472,621 @@ export class ChatApi extends BaseAPI {
 
 
 /**
+ * CodingApi - axios parameter creator
+ * @export
+ */
+export const CodingApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * Replay the stored stream through the current derivation.  Stages, lanes and assets are derived, so a fix to how they are derived does nothing for a run already recorded until its events are replayed. Idempotent: the derived rows are dropped and rebuilt, never updated. The event stream itself is never touched — it is the record this rebuilds from.
+         * @summary Rebuild one session\'s derived rows from its stored events
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        backfillCodingSession: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('backfillCodingSession', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/coding-sessions/{session_id}/backfill`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Rebuild every session\'s derived rows from its stored events
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        backfillCodingSessions: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-sessions/backfill`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get Coding Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCodingSession: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('getCodingSession', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/coding-sessions/{session_id}`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+         * @summary The runs that used one asset, with the arguments each call carried
+         * @param {string} assetId 
+         * @param {number} [limit] 
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAssetSessionUses: async (assetId: string, limit?: number, includeInspection?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'assetId' is not null or undefined
+            assertParamExists('listAssetSessionUses', 'assetId', assetId)
+            const localVarPath = `/api/v1/coding-assets/{asset_id}/sessions`
+                .replace(`{${"asset_id"}}`, encodeURIComponent(String(assetId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+            if (includeInspection !== undefined) {
+                localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Coding Asset Usage
+         * @param {string | null} [since] Only count assets used at or after this instant.
+         * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listCodingAssetUsage: async (since?: string | null, kind?: string | null, includeInspection?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-assets`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (since !== undefined) {
+                localVarQueryParameter['since'] = (since as any instanceof Date) ?
+                    (since as any).toISOString() :
+                    since;
+            }
+
+            if (kind !== undefined) {
+                localVarQueryParameter['kind'] = kind;
+            }
+
+            if (includeInspection !== undefined) {
+                localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Coding Session Events
+         * @param {string} sessionId 
+         * @param {number} [after] Last event id already held; 0 loads from the start.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listCodingSessionEvents: async (sessionId: string, after?: number, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('listCodingSessionEvents', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/coding-sessions/{session_id}/events`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (after !== undefined) {
+                localVarQueryParameter['after'] = after;
+            }
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Coding Sessions
+         * @param {number} [limit] 
+         * @param {number} [offset] 
+         * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
+         * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+         * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listCodingSessions: async (limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-sessions`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+            if (offset !== undefined) {
+                localVarQueryParameter['offset'] = offset;
+            }
+
+            if (includeEmpty !== undefined) {
+                localVarQueryParameter['include_empty'] = includeEmpty;
+            }
+
+            if (includeAutomated !== undefined) {
+                localVarQueryParameter['include_automated'] = includeAutomated;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (status !== undefined) {
+                localVarQueryParameter['status'] = status;
+            }
+
+            if (rootsOnly !== undefined) {
+                localVarQueryParameter['roots_only'] = rootsOnly;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * CodingApi - functional programming interface
+ * @export
+ */
+export const CodingApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = CodingApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * Replay the stored stream through the current derivation.  Stages, lanes and assets are derived, so a fix to how they are derived does nothing for a run already recorded until its events are replayed. Idempotent: the derived rows are dropped and rebuilt, never updated. The event stream itself is never touched — it is the record this rebuilds from.
+         * @summary Rebuild one session\'s derived rows from its stored events
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async backfillCodingSession(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<BackfillResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.backfillCodingSession(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.backfillCodingSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Rebuild every session\'s derived rows from its stored events
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async backfillCodingSessions(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<BackfillTotals>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.backfillCodingSessions(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.backfillCodingSessions']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Get Coding Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCodingSession(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CodingSessionDetail>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCodingSession(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.getCodingSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+         * @summary The runs that used one asset, with the arguments each call carried
+         * @param {string} assetId 
+         * @param {number} [limit] 
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<AssetSessionUse>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAssetSessionUses(assetId, limit, includeInspection, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listAssetSessionUses']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Coding Asset Usage
+         * @param {string | null} [since] Only count assets used at or after this instant.
+         * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingAssetUsage>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingAssetUsage(since, kind, includeInspection, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingAssetUsage']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Coding Session Events
+         * @param {string} sessionId 
+         * @param {number} [after] Last event id already held; 0 loads from the start.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listCodingSessionEvents(sessionId: string, after?: number, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingEvent>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingSessionEvents(sessionId, after, limit, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingSessionEvents']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Coding Sessions
+         * @param {number} [limit] 
+         * @param {number} [offset] 
+         * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
+         * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+         * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingSession>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingSessions']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * CodingApi - factory interface
+ * @export
+ */
+export const CodingApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = CodingApiFp(configuration)
+    return {
+        /**
+         * Replay the stored stream through the current derivation.  Stages, lanes and assets are derived, so a fix to how they are derived does nothing for a run already recorded until its events are replayed. Idempotent: the derived rows are dropped and rebuilt, never updated. The event stream itself is never touched — it is the record this rebuilds from.
+         * @summary Rebuild one session\'s derived rows from its stored events
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        backfillCodingSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<BackfillResult> {
+            return localVarFp.backfillCodingSession(sessionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Rebuild every session\'s derived rows from its stored events
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        backfillCodingSessions(options?: RawAxiosRequestConfig): AxiosPromise<BackfillTotals> {
+            return localVarFp.backfillCodingSessions(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Get Coding Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCodingSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<CodingSessionDetail> {
+            return localVarFp.getCodingSession(sessionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+         * @summary The runs that used one asset, with the arguments each call carried
+         * @param {string} assetId 
+         * @param {number} [limit] 
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<AssetSessionUse>> {
+            return localVarFp.listAssetSessionUses(assetId, limit, includeInspection, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Coding Asset Usage
+         * @param {string | null} [since] Only count assets used at or after this instant.
+         * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingAssetUsage>> {
+            return localVarFp.listCodingAssetUsage(since, kind, includeInspection, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Coding Session Events
+         * @param {string} sessionId 
+         * @param {number} [after] Last event id already held; 0 loads from the start.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listCodingSessionEvents(sessionId: string, after?: number, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingEvent>> {
+            return localVarFp.listCodingSessionEvents(sessionId, after, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Coding Sessions
+         * @param {number} [limit] 
+         * @param {number} [offset] 
+         * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
+         * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+         * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingSession>> {
+            return localVarFp.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * CodingApi - object-oriented interface
+ * @export
+ * @class CodingApi
+ * @extends {BaseAPI}
+ */
+export class CodingApi extends BaseAPI {
+    /**
+     * Replay the stored stream through the current derivation.  Stages, lanes and assets are derived, so a fix to how they are derived does nothing for a run already recorded until its events are replayed. Idempotent: the derived rows are dropped and rebuilt, never updated. The event stream itself is never touched — it is the record this rebuilds from.
+     * @summary Rebuild one session\'s derived rows from its stored events
+     * @param {string} sessionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public backfillCodingSession(sessionId: string, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).backfillCodingSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Rebuild every session\'s derived rows from its stored events
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public backfillCodingSessions(options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).backfillCodingSessions(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Get Coding Session
+     * @param {string} sessionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public getCodingSession(sessionId: string, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).getCodingSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+     * @summary The runs that used one asset, with the arguments each call carried
+     * @param {string} assetId 
+     * @param {number} [limit] 
+     * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listAssetSessionUses(assetId, limit, includeInspection, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Coding Asset Usage
+     * @param {string | null} [since] Only count assets used at or after this instant.
+     * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
+     * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listCodingAssetUsage(since, kind, includeInspection, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Coding Session Events
+     * @param {string} sessionId 
+     * @param {number} [after] Last event id already held; 0 loads from the start.
+     * @param {number} [limit] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listCodingSessionEvents(sessionId: string, after?: number, limit?: number, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listCodingSessionEvents(sessionId, after, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Coding Sessions
+     * @param {number} [limit] 
+     * @param {number} [offset] 
+     * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
+     * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+     * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
  * HealthApi - axios parameter creator
  * @export
  */
@@ -2365,6 +4182,116 @@ export class HealthApi extends BaseAPI {
      */
     public health(options?: RawAxiosRequestConfig) {
         return HealthApiFp(this.configuration).health(options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * HooksApi - axios parameter creator
+ * @export
+ */
+export const HooksApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Ingest Hook Event
+         * @param {HookEventRequest} hookEventRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        ingestHookEvent: async (hookEventRequest: HookEventRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'hookEventRequest' is not null or undefined
+            assertParamExists('ingestHookEvent', 'hookEventRequest', hookEventRequest)
+            const localVarPath = `/api/v1/hooks/events`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(hookEventRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * HooksApi - functional programming interface
+ * @export
+ */
+export const HooksApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = HooksApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Ingest Hook Event
+         * @param {HookEventRequest} hookEventRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async ingestHookEvent(hookEventRequest: HookEventRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.ingestHookEvent(hookEventRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['HooksApi.ingestHookEvent']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * HooksApi - factory interface
+ * @export
+ */
+export const HooksApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = HooksApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Ingest Hook Event
+         * @param {HookEventRequest} hookEventRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        ingestHookEvent(hookEventRequest: HookEventRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+            return localVarFp.ingestHookEvent(hookEventRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * HooksApi - object-oriented interface
+ * @export
+ * @class HooksApi
+ * @extends {BaseAPI}
+ */
+export class HooksApi extends BaseAPI {
+    /**
+     * 
+     * @summary Ingest Hook Event
+     * @param {HookEventRequest} hookEventRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof HooksApi
+     */
+    public ingestHookEvent(hookEventRequest: HookEventRequest, options?: RawAxiosRequestConfig) {
+        return HooksApiFp(this.configuration).ingestHookEvent(hookEventRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
@@ -2537,6 +4464,245 @@ export class InstructionsApi extends BaseAPI {
      */
     public updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, options?: RawAxiosRequestConfig) {
         return InstructionsApiFp(this.configuration).updateInstructions(instructionsUpdateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * ObservabilityApi - axios parameter creator
+ * @export
+ */
+export const ObservabilityApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * Idempotent. Backs the agent\'s config up before writing, and touches only the entries that run masterwork\'s forwarder.
+         * @summary Install (or repair) the agent\'s hooks so its sessions land here
+         * @param {string} integrationId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        connectObservabilityIntegration: async (integrationId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('connectObservabilityIntegration', 'integrationId', integrationId)
+            const localVarPath = `/api/v1/observability/integrations/{integration_id}/connect`
+                .replace(`{${"integration_id"}}`, encodeURIComponent(String(integrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Remove the agent\'s hooks; recorded sessions are kept
+         * @param {string} integrationId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        disconnectObservabilityIntegration: async (integrationId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('disconnectObservabilityIntegration', 'integrationId', integrationId)
+            const localVarPath = `/api/v1/observability/integrations/{integration_id}/disconnect`
+                .replace(`{${"integration_id"}}`, encodeURIComponent(String(integrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Every coding agent masterwork can record, and whether it is recording
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listObservabilityIntegrations: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/observability/integrations`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * ObservabilityApi - functional programming interface
+ * @export
+ */
+export const ObservabilityApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = ObservabilityApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * Idempotent. Backs the agent\'s config up before writing, and touches only the entries that run masterwork\'s forwarder.
+         * @summary Install (or repair) the agent\'s hooks so its sessions land here
+         * @param {string} integrationId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async connectObservabilityIntegration(integrationId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ObservabilityIntegration>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.connectObservabilityIntegration(integrationId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['ObservabilityApi.connectObservabilityIntegration']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Remove the agent\'s hooks; recorded sessions are kept
+         * @param {string} integrationId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async disconnectObservabilityIntegration(integrationId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ObservabilityIntegration>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.disconnectObservabilityIntegration(integrationId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['ObservabilityApi.disconnectObservabilityIntegration']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Every coding agent masterwork can record, and whether it is recording
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listObservabilityIntegrations(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ObservabilityIntegration>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listObservabilityIntegrations(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['ObservabilityApi.listObservabilityIntegrations']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * ObservabilityApi - factory interface
+ * @export
+ */
+export const ObservabilityApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = ObservabilityApiFp(configuration)
+    return {
+        /**
+         * Idempotent. Backs the agent\'s config up before writing, and touches only the entries that run masterwork\'s forwarder.
+         * @summary Install (or repair) the agent\'s hooks so its sessions land here
+         * @param {string} integrationId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        connectObservabilityIntegration(integrationId: string, options?: RawAxiosRequestConfig): AxiosPromise<ObservabilityIntegration> {
+            return localVarFp.connectObservabilityIntegration(integrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Remove the agent\'s hooks; recorded sessions are kept
+         * @param {string} integrationId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        disconnectObservabilityIntegration(integrationId: string, options?: RawAxiosRequestConfig): AxiosPromise<ObservabilityIntegration> {
+            return localVarFp.disconnectObservabilityIntegration(integrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Every coding agent masterwork can record, and whether it is recording
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listObservabilityIntegrations(options?: RawAxiosRequestConfig): AxiosPromise<Array<ObservabilityIntegration>> {
+            return localVarFp.listObservabilityIntegrations(options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * ObservabilityApi - object-oriented interface
+ * @export
+ * @class ObservabilityApi
+ * @extends {BaseAPI}
+ */
+export class ObservabilityApi extends BaseAPI {
+    /**
+     * Idempotent. Backs the agent\'s config up before writing, and touches only the entries that run masterwork\'s forwarder.
+     * @summary Install (or repair) the agent\'s hooks so its sessions land here
+     * @param {string} integrationId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ObservabilityApi
+     */
+    public connectObservabilityIntegration(integrationId: string, options?: RawAxiosRequestConfig) {
+        return ObservabilityApiFp(this.configuration).connectObservabilityIntegration(integrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Remove the agent\'s hooks; recorded sessions are kept
+     * @param {string} integrationId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ObservabilityApi
+     */
+    public disconnectObservabilityIntegration(integrationId: string, options?: RawAxiosRequestConfig) {
+        return ObservabilityApiFp(this.configuration).disconnectObservabilityIntegration(integrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Every coding agent masterwork can record, and whether it is recording
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ObservabilityApi
+     */
+    public listObservabilityIntegrations(options?: RawAxiosRequestConfig) {
+        return ObservabilityApiFp(this.configuration).listObservabilityIntegrations(options).then((request) => request(this.axios, this.basePath));
     }
 }
 

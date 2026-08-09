@@ -9,7 +9,7 @@ from app.core.exceptions import AssetNotFoundError, InvalidAssetIdError, ReadOnl
 from app.providers.base import Provider, ScannedAsset, resolve_within_roots
 
 
-def _parse_asset_id(asset_id: str) -> tuple[str, str, str]:
+def parse_asset_id(asset_id: str) -> tuple[str, str, str]:
     # maxsplit keeps colons inside the name (plugin skills: "vercel:bootstrap").
     parts = asset_id.split(":", 2)
     if len(parts) != 3 or not all(parts):
@@ -66,7 +66,7 @@ def list_assets(
 
 def find_asset(providers: Iterable[Provider], asset_id: str) -> ScannedAsset:
     """Return the asset with this id, or raise (400 malformed / 404 unknown)."""
-    _parse_asset_id(asset_id)  # 400 on malformed
+    parse_asset_id(asset_id)  # 400 on malformed
     for asset in _scan_all(providers):
         if asset.id == asset_id:
             return asset

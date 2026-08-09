@@ -3,6 +3,7 @@ import { AssetDetailPage, AssetListPage } from '~/features/assets';
 import { ChatPage } from '~/features/chat';
 import { InstructionsPage } from '~/features/instructions';
 import { ProjectsListPage, ProjectDetailPage } from '~/features/projects';
+import { SessionsListPage, SessionDetailPage } from '~/features/sessions';
 import { Layout } from './Layout';
 import { NotFound } from './NotFound';
 
@@ -18,6 +19,8 @@ export const router = createBrowserRouter([
       { path: 'agents/:name', element: <AssetDetailPage kind="agent" /> },
       { path: 'projects', element: <ProjectsListPage /> },
       { path: 'projects/:id', element: <ProjectDetailPage /> },
+      { path: 'sessions', element: <SessionsListPage /> },
+      { path: 'sessions/:id', element: <SessionDetailPage /> },
       { path: 'instructions', element: <InstructionsPage /> },
       { path: 'chat', element: <ChatPage /> },
       { path: 'chat/:sessionId', element: <ChatPage /> },

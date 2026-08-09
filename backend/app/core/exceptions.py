@@ -40,6 +40,24 @@ class SessionNotFoundError(DomainError):
     status_code = 404
 
 
+class IntegrationNotFoundError(DomainError):
+    """No observability integration with this id is registered."""
+
+    status_code = 404
+
+
+class ObservabilityUnavailableError(DomainError):
+    """The agent can't be wired up here — not installed, or its config is unreadable."""
+
+    status_code = 409
+
+
+class ObservabilityIOError(DomainError):
+    """The agent's config file could not be read or written."""
+
+    status_code = 500
+
+
 class ProjectNotFoundError(DomainError):
     status_code = 404
 
@@ -53,6 +71,12 @@ class ProposalNotPendingError(DomainError):
 
 
 class DiagramNotFoundError(DomainError):
+    status_code = 404
+
+
+class CodingSessionNotFoundError(DomainError):
+    """No Claude Code session with this id has sent an event."""
+
     status_code = 404
 
 

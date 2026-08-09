@@ -29,6 +29,9 @@ against — that's the hard part. Masterwork is built for that second half.
   concrete diff you accept or reject. It never writes files on its own.
 - **Projects** — group assets around a goal, with generated summaries and Mermaid
   diagrams of how they fit together.
+- **Sessions** — record the runs your coding agent actually does: which skills
+  and subagents each one used, where the time went, what it cost. One click to
+  switch on.
 - **Global instructions** — edit your agent's root instructions file in the same
   place as everything else.
 
@@ -80,16 +83,44 @@ npm run dev        # http://localhost:5192
 
 </details>
 
+## Session recording
+
+The **Sessions** screen is empty until your coding agent tells masterwork that a
+run happened. Open it and click **Connect** — that is the whole setup. It:
+
+- copies a small forwarder script to `~/.masterwork/hooks/`,
+- adds seven hooks to `~/.claude/settings.json` that run it (backing the file up
+  to `settings.json.masterwork.bak` first),
+- leaves every other hook in that file exactly as it was.
+
+From then on each session posts its start, prompts, tool calls, subagent spawns
+and exit to `http://localhost:8008/api/v1/hooks/events`. **Disconnect** in the
+same place removes those seven entries and nothing else; the runs already
+recorded are kept.
+
+Nothing is installed without that click, and nothing is sent anywhere but your
+own machine. Prefer the terminal?
+
+```bash
+cd backend && uv run python -m app.observability.cli connect
+```
+
+Claude Code is the only agent wired up today. `SKILL.md` is an open standard and
+so is this: an agent that can run a command on session events is an
+`Integration` implementation in `backend/app/observability/` and a line in its
+registry — the API, the screen and the button already handle the rest.
+
 ## How it works
 
 ```
 frontend/   React + Vite + TS · Jotai + jotai-tanstack-query · react-router-dom · shadcn/ui
             API client generated (typescript-axios) from the backend's /openapi.json
 backend/    FastAPI · Pydantic v2 · SQLAlchemy 2.0 async · Alembic · uv
-            - assets:       scans provider roots (~/.claude/skills, ~/.claude/agents)
-            - instructions: the global CLAUDE.md
-            - chat:         claude -p subprocess runner, proposals, apply-changes
-            - simulations:  scored dry-runs with checklist grading and run memory
+            - assets:        scans provider roots (~/.claude/skills, ~/.claude/agents)
+            - instructions:  the global CLAUDE.md
+            - chat:          claude -p subprocess runner, proposals, apply-changes
+            - simulations:   scored dry-runs with checklist grading and run memory
+            - sessions:      hook ingest, plus the per-agent wiring that installs it
 docs/       SPEC.md (product spec) · API_CONTRACT.md (the v1 API contract)
 ```
 
@@ -101,6 +132,8 @@ simulation history — nothing that can't be rebuilt.
 This tool edits files in your home directory, so the boundaries are explicit:
 
 - The assistant is given **read-only tools**. It cannot write anything.
+- The only file outside masterwork's own home it ever writes is your agent's
+  hook config, only when you click **Connect**, and only after backing it up.
 - Every change arrives as a **proposal** you review and accept.
 - Applies are performed by the backend, against a validated path allowlist.
 - Each accepted change is committed as a git snapshot, so you can always go back.
@@ -112,7 +145,8 @@ No auth, no multi-user: this is a single-user tool bound to localhost.
 
 - **More agents.** `SKILL.md` is an open standard — Codex, Cursor, Gemini CLI and
   others read the same files. The backend already routes through a provider
-  abstraction; adding a provider is the natural first contribution.
+  abstraction for assets and an integration abstraction for session recording;
+  adding an agent to either is the natural first contribution.
 - **A faster first run.** `npx masterwork` currently runs the frontend through
   Vite's dev server, so the very first launch waits on a full install. Shipping a
   pre-built frontend would cut that to seconds.

@@ -126,7 +126,12 @@ process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
 console.log(`${c.dim('→')} starting the API on :${API_PORT}`);
-start('api', 'uv', ['run', 'uvicorn', 'app.main:app', '--port', String(API_PORT)], BACKEND);
+// The API needs to know its own port: the hook command it writes into a coding
+// agent's config has the ingest URL baked in, and uvicorn's --port isn't visible
+// from inside the app.
+start('api', 'uv', ['run', 'uvicorn', 'app.main:app', '--port', String(API_PORT)], BACKEND, {
+  MASTERWORK_API_PORT: String(API_PORT),
+});
 
 if (!(await waitForHttp(`http://127.0.0.1:${API_PORT}/openapi.json`))) {
   die('The API did not start in time.');
@@ -137,9 +142,28 @@ start('web', 'npm', ['run', 'dev', '--', '--port', String(WEB_PORT)], FRONTEND, 
   VITE_API_URL: `http://localhost:${API_PORT}`,
 });
 
+/** One line about session recording, so a fresh install knows the Sessions tab
+ * needs a click before it fills up. Never installs anything by itself. */
+async function trackingHint() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${API_PORT}/api/v1/observability/integrations`);
+    if (!res.ok) return null;
+    const integrations = await res.json();
+    if (integrations.some((i) => i.state === 'connected')) return null;
+    const repairable = integrations.some((i) => i.state === 'outdated');
+    return repairable
+      ? `${c.yellow('!')} Session recording needs repairing — open Sessions and click Reconnect.`
+      : `${c.dim('·')} ${c.dim('Session recording is off. Open Sessions and click Connect to record your coding sessions.')}`;
+  } catch {
+    return null;
+  }
+}
+
 const url = `http://localhost:${WEB_PORT}`;
 if (await waitForHttp(url)) {
   console.log(`\n${c.green('✓')} Masterwork is running at ${c.bold(url)}`);
+  const hint = await trackingHint();
+  if (hint) console.log(`  ${hint}`);
   console.log(c.dim('  Ctrl-C to stop.\n'));
   const opener =
     process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';

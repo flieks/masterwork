@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-# Kept outside the repo so the database survives a re-clone and never lands in git.
-DEFAULT_DB_PATH = Path.home() / ".masterwork" / "masterwork.db"
+# Kept outside the repo so these survive a re-clone (or an npx cache prune) and
+# never land in git.
+MASTERWORK_HOME = Path.home() / ".masterwork"
+DEFAULT_DB_PATH = MASTERWORK_HOME / "masterwork.db"
 
 
 class Settings(BaseSettings):
@@ -42,10 +44,23 @@ class Settings(BaseSettings):
     claude_skills_root: Path = Path.home() / ".claude" / "skills"
     claude_agents_root: Path = Path.home() / ".claude" / "agents"
     claude_plugins_root: Path = Path.home() / ".claude" / "plugins"
+    # Claude Code's own settings file — where the observability hooks are written.
+    claude_settings_file: Path = Path.home() / ".claude" / "settings.json"
+    # Everything masterwork installs on disk (database, forwarder scripts).
+    masterwork_home: Path = MASTERWORK_HOME
+    # The port uvicorn was actually started on, so the hook command a connected
+    # agent runs posts to this backend and not to a stale default. The launcher
+    # passes it through; running uvicorn by hand on another port needs it set.
+    api_port: int = Field(8008, validation_alias="MASTERWORK_API_PORT")
     # Global instructions file — not an asset (it sits outside the provider
     # roots, so chat proposals can never write it), edited through its own
     # endpoint.
     claude_instructions_file: Path = Path.home() / ".claude" / "CLAUDE.md"
+
+    @property
+    def ingest_url(self) -> str:
+        """Where a connected agent's hooks post their events."""
+        return f"http://localhost:{self.api_port}/api/v1/hooks/events"
 
     @field_validator("cors_origins", mode="before")
     @classmethod

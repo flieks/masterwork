@@ -1,39 +1,20 @@
 import { atomFamily } from 'jotai/utils';
 import { atomWithQuery, atomWithMutation } from 'jotai-tanstack-query';
 import { api, GENERATE_TIMEOUT_MS, isNotFoundError } from '~/api/client';
-import type { AssetDetail, AssetDiagram } from '~/api/generated';
+import type { AssetDetail, AssetDiagram, AssetSessionUse, CodingAssetUsage } from '~/api/generated';
+import type { AssetKind } from './paths';
 
-export type AssetKind = 'skill' | 'agent';
-
-/** Default provider; plugin assets use "claude-plugin" (read-only). */
-export const PROVIDER = 'claude';
-
-export function buildAssetId(kind: AssetKind, name: string, provider = PROVIDER): string {
-  return `${provider}:${kind}:${name}`;
-}
-
-export interface ParsedAssetId {
-  provider: string;
-  kind: AssetKind;
-  name: string;
-}
-
-/** Parse a `{provider}:{kind}:{name}` slug; null when it isn't skill/agent. */
-export function parseAssetId(id: string): ParsedAssetId | null {
-  const [provider, kind, ...rest] = id.split(':');
-  if (!provider || (kind !== 'skill' && kind !== 'agent') || rest.length === 0) return null;
-  return { provider, kind, name: rest.join(':') };
-}
-
-export function assetListPath(kind: AssetKind): string {
-  return kind === 'skill' ? '/skills' : '/agents';
-}
-
-/** Detail URL; non-default providers travel in the `p` search param. */
-export function assetDetailPath(kind: AssetKind, name: string, provider = PROVIDER): string {
-  const base = `${assetListPath(kind)}/${encodeURIComponent(name)}`;
-  return provider === PROVIDER ? base : `${base}?p=${encodeURIComponent(provider)}`;
-}
+// Identity and URLs live in a client-free leaf so the sessions screen can link
+// to an asset without importing the API client.
+export {
+  PROVIDER,
+  buildAssetId,
+  parseAssetId,
+  assetListPath,
+  assetDetailPath,
+  type AssetKind,
+  type ParsedAssetId,
+} from './paths';
 
 interface AssetsListKey {
   kind: AssetKind;
@@ -86,6 +67,35 @@ export const assetDiagramQueryAtom = atomFamily((assetId: string) =>
         throw err;
       }
     },
+    enabled: assetId.length > 0,
+  })),
+);
+
+/**
+ * How much every installed asset of one kind has actually been used, keyed by
+ * the name the runs recorded — which is what a card and a table row read.
+ *
+ * Keyed by name rather than by asset id: a plugin asset is recorded under the
+ * name Claude Code calls it by ("vercel:deploy"), while its id names the
+ * provider that installed it. `sessions.ts` shares this query's key, so the
+ * Sessions rollup and these pages hit one cache entry.
+ */
+export const assetUsageByNameAtom = atomFamily((kind: AssetKind) =>
+  atomWithQuery(() => ({
+    queryKey: ['codingAssetUsage', 'all', kind],
+    queryFn: async (): Promise<Map<string, CodingAssetUsage>> => {
+      const { data } = await api.coding.listCodingAssetUsage(undefined, kind);
+      return new Map(data.map((row) => [row.name, row]));
+    },
+  })),
+);
+
+/** The runs that used one asset, newest first, each with the calls it made. */
+export const assetSessionUsesQueryAtom = atomFamily((assetId: string) =>
+  atomWithQuery(() => ({
+    queryKey: ['assetSessionUses', assetId],
+    queryFn: async (): Promise<AssetSessionUse[]> =>
+      (await api.coding.listAssetSessionUses(assetId)).data,
     enabled: assetId.length > 0,
   })),
 );

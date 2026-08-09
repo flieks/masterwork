@@ -12,7 +12,10 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.assets.routes import router as assets_router
 from app.api.v1.chat.routes import router as chat_router
+from app.api.v1.coding.routes import hooks_router
+from app.api.v1.coding.routes import router as coding_router
 from app.api.v1.instructions.routes import router as instructions_router
+from app.api.v1.observability.routes import router as observability_router
 from app.api.v1.projects.routes import router as projects_router
 from app.api.v1.proposals.routes import router as proposals_router
 from app.api.v1.simulations.routes import router as simulations_router
@@ -67,7 +70,10 @@ def create_app() -> FastAPI:
 
     app.include_router(assets_router, prefix=API_PREFIX)
     app.include_router(chat_router, prefix=API_PREFIX)
+    app.include_router(coding_router, prefix=API_PREFIX)
+    app.include_router(hooks_router, prefix=API_PREFIX)
     app.include_router(instructions_router, prefix=API_PREFIX)
+    app.include_router(observability_router, prefix=API_PREFIX)
     app.include_router(projects_router, prefix=API_PREFIX)
     app.include_router(proposals_router, prefix=API_PREFIX)
     app.include_router(simulations_router, prefix=API_PREFIX)

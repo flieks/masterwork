@@ -570,6 +570,506 @@
                 }
             }
         },
+        "/api/v1/coding-sessions": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "List Coding Sessions",
+                "operationId": "listCodingSessions",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "title": "Offset"
+                        }
+                    },
+                    {
+                        "name": "include_empty",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include sessions that ended without running a tool \u2014 mostly the desktop app's discarded startup processes, hidden by default.",
+                            "default": false,
+                            "title": "Include Empty"
+                        },
+                        "description": "Include sessions that ended without running a tool \u2014 mostly the desktop app's discarded startup processes, hidden by default."
+                    },
+                    {
+                        "name": "include_automated",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default.",
+                            "default": false,
+                            "title": "Include Automated"
+                        },
+                        "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default."
+                    },
+                    {
+                        "name": "workflow",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "title": "Workflow"
+                        },
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.",
+                            "title": "Status"
+                        },
+                        "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one."
+                    },
+                    {
+                        "name": "roots_only",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards.",
+                            "default": false,
+                            "title": "Roots Only"
+                        },
+                        "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CodingSession"
+                                    },
+                                    "title": "Response Listcodingsessions"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-assets": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "List Coding Asset Usage",
+                "operationId": "listCodingAssetUsage",
+                "parameters": [
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Only count assets used at or after this instant.",
+                            "title": "Since"
+                        },
+                        "description": "Only count assets used at or after this instant."
+                    },
+                    {
+                        "name": "kind",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only \"skill\" or only \"agent\".",
+                            "title": "Kind"
+                        },
+                        "description": "Keep only \"skill\" or only \"agent\"."
+                    },
+                    {
+                        "name": "include_inspection",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use.",
+                            "default": false,
+                            "title": "Include Inspection"
+                        },
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CodingAssetUsage"
+                                    },
+                                    "title": "Response Listcodingassetusage"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-assets/{asset_id}/sessions": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "The runs that used one asset, with the arguments each call carried",
+                "description": "Matched on the id's kind and name, so a plugin asset's own id works too.",
+                "operationId": "listAssetSessionUses",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "include_inspection",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets.",
+                            "default": false,
+                            "title": "Include Inspection"
+                        },
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/AssetSessionUse"
+                                    },
+                                    "title": "Response Listassetsessionuses"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-sessions/backfill": {
+            "post": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Rebuild every session's derived rows from its stored events",
+                "operationId": "backfillCodingSessions",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackfillTotals"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-sessions/{session_id}/backfill": {
+            "post": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Rebuild one session's derived rows from its stored events",
+                "description": "Replay the stored stream through the current derivation.\n\nStages, lanes and assets are derived, so a fix to how they are derived does\nnothing for a run already recorded until its events are replayed. Idempotent:\nthe derived rows are dropped and rebuilt, never updated. The event stream\nitself is never touched \u2014 it is the record this rebuilds from.",
+                "operationId": "backfillCodingSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackfillResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-sessions/{session_id}": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Get Coding Session",
+                "operationId": "getCodingSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CodingSessionDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-sessions/{session_id}/events": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "List Coding Session Events",
+                "operationId": "listCodingSessionEvents",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Last event id already held; 0 loads from the start.",
+                            "default": 0,
+                            "title": "After"
+                        },
+                        "description": "Last event id already held; 0 loads from the start."
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 1000,
+                            "minimum": 1,
+                            "default": 500,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CodingEvent"
+                                    },
+                                    "title": "Response Listcodingsessionevents"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/hooks/events": {
+            "post": {
+                "tags": [
+                    "hooks"
+                ],
+                "summary": "Ingest Hook Event",
+                "operationId": "ingestHookEvent",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/HookEventRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/instructions": {
             "get": {
                 "tags": [
@@ -613,6 +1113,116 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/InstructionsDoc"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/observability/integrations": {
+            "get": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Every coding agent masterwork can record, and whether it is recording",
+                "operationId": "listObservabilityIntegrations",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/ObservabilityIntegration"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listobservabilityintegrations"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/observability/integrations/{integration_id}/connect": {
+            "post": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Install (or repair) the agent's hooks so its sessions land here",
+                "description": "Idempotent. Backs the agent's config up before writing, and touches only\nthe entries that run masterwork's forwarder.",
+                "operationId": "connectObservabilityIntegration",
+                "parameters": [
+                    {
+                        "name": "integration_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Integration Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ObservabilityIntegration"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/observability/integrations/{integration_id}/disconnect": {
+            "post": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Remove the agent's hooks; recorded sessions are kept",
+                "operationId": "disconnectObservabilityIntegration",
+                "parameters": [
+                    {
+                        "name": "integration_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Integration Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ObservabilityIntegration"
                                 }
                             }
                         }
@@ -1467,6 +2077,257 @@
     },
     "components": {
         "schemas": {
+            "AgentIn": {
+                "properties": {
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model"
+                    },
+                    "color": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Color"
+                    },
+                    "context_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Tokens"
+                    },
+                    "context_window": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Window",
+                        "description": "With context_tokens, the context bar."
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    }
+                },
+                "type": "object",
+                "title": "AgentIn",
+                "description": "One lane of the run as a hook reports it; same partial-update rules."
+            },
+            "AgentLane": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "\"main\", a subagent type, or a pipeline stage."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model"
+                    },
+                    "color": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Color"
+                    },
+                    "context_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Tokens"
+                    },
+                    "context_window": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Window",
+                        "description": "Null when nobody reported one."
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    },
+                    "turns": {
+                        "type": "integer",
+                        "title": "Turns"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "model",
+                    "color",
+                    "context_tokens",
+                    "context_window",
+                    "cost_usd",
+                    "tokens_in",
+                    "tokens_out",
+                    "turns"
+                ],
+                "title": "AgentLane",
+                "description": "One horizontal lane of the run's timeline."
+            },
+            "AssetCall": {
+                "properties": {
+                    "used_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Used At"
+                    },
+                    "lane": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Lane",
+                        "description": "The lane that made the call; null when it had none."
+                    },
+                    "source": {
+                        "type": "string",
+                        "title": "Source",
+                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief) | skill_read (a SKILL.md read, carries only the path) | subagent_stop (a finished subagent, carries nothing)."
+                    },
+                    "input": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Input",
+                        "description": "The call's arguments, truncated to 2 000 characters per key. Null when the signal carried none \u2014 a skill loaded by being read has no arguments."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "used_at",
+                    "lane",
+                    "source",
+                    "input"
+                ],
+                "title": "AssetCall",
+                "description": "One recorded call of an asset, and what the caller handed it."
+            },
             "AssetDetail": {
                 "properties": {
                     "id": {
@@ -1585,6 +2446,89 @@
                 ],
                 "title": "AssetKind"
             },
+            "AssetSessionUse": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "The run's title, derived the same way the Sessions screen derives it."
+                    },
+                    "git_repo": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Git Repo"
+                    },
+                    "cwd": {
+                        "type": "string",
+                        "title": "Cwd"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "Derived run status, not the stored one."
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Started At"
+                    },
+                    "uses": {
+                        "type": "integer",
+                        "title": "Uses",
+                        "description": "Calls this run made, across all of its lanes."
+                    },
+                    "first_used_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "First Used At"
+                    },
+                    "last_used_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Last Used At"
+                    },
+                    "calls": {
+                        "items": {
+                            "$ref": "#/components/schemas/AssetCall"
+                        },
+                        "type": "array",
+                        "title": "Calls",
+                        "description": "The individual calls, newest first. Capped across the whole response, so it can hold fewer entries than `uses` \u2014 and none at all for a run recorded before the log shipped, until it is backfilled."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "title",
+                    "git_repo",
+                    "cwd",
+                    "status",
+                    "started_at",
+                    "uses",
+                    "first_used_at",
+                    "last_used_at",
+                    "calls"
+                ],
+                "title": "AssetSessionUse",
+                "description": "One run that used an asset, and the calls it made."
+            },
             "AssetSummary": {
                 "properties": {
                     "id": {
@@ -1672,6 +2616,50 @@
                 ],
                 "title": "AssetUpdateRequest"
             },
+            "AssetUse": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind",
+                        "description": "\"skill\" or \"agent\"."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id",
+                        "description": "\"claude:skill:<name>\" / \"claude:agent:<name>\" \u2014 links to the asset page."
+                    },
+                    "lane": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Lane",
+                        "description": "The lane that used it; null when it had none."
+                    },
+                    "uses": {
+                        "type": "integer",
+                        "title": "Uses"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "asset_id",
+                    "lane",
+                    "uses"
+                ],
+                "title": "AssetUse",
+                "description": "One skill or subagent this run reached for, and how often."
+            },
             "AutopilotCreateRequest": {
                 "properties": {
                     "scenario": {
@@ -1697,6 +2685,78 @@
                 },
                 "type": "object",
                 "title": "AutopilotCreateRequest"
+            },
+            "BackfillResult": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "events": {
+                        "type": "integer",
+                        "title": "Events",
+                        "description": "Events replayed through the live derivation."
+                    },
+                    "phases": {
+                        "type": "integer",
+                        "title": "Phases",
+                        "description": "Stages the replay rebuilt."
+                    },
+                    "agents": {
+                        "type": "integer",
+                        "title": "Agents",
+                        "description": "Lanes the replay rebuilt."
+                    },
+                    "assets": {
+                        "type": "integer",
+                        "title": "Assets",
+                        "description": "Skill and subagent uses the replay rebuilt."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "events",
+                    "phases",
+                    "agents",
+                    "assets"
+                ],
+                "title": "BackfillResult",
+                "description": "What rebuilding one session's derived rows produced."
+            },
+            "BackfillTotals": {
+                "properties": {
+                    "sessions": {
+                        "type": "integer",
+                        "title": "Sessions"
+                    },
+                    "events": {
+                        "type": "integer",
+                        "title": "Events"
+                    },
+                    "phases": {
+                        "type": "integer",
+                        "title": "Phases"
+                    },
+                    "agents": {
+                        "type": "integer",
+                        "title": "Agents"
+                    },
+                    "assets": {
+                        "type": "integer",
+                        "title": "Assets"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "sessions",
+                    "events",
+                    "phases",
+                    "agents",
+                    "assets"
+                ],
+                "title": "BackfillTotals",
+                "description": "The same, summed over a whole-history rebuild."
             },
             "ChangeAction": {
                 "type": "string",
@@ -1890,6 +2950,905 @@
                 ],
                 "title": "ChatSessionUpdateRequest"
             },
+            "CodingAssetUsage": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind",
+                        "description": "\"skill\" or \"agent\"."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id"
+                    },
+                    "sessions": {
+                        "type": "integer",
+                        "title": "Sessions",
+                        "description": "Distinct runs that used it."
+                    },
+                    "uses": {
+                        "type": "integer",
+                        "title": "Uses",
+                        "description": "Total uses across those runs."
+                    },
+                    "last_used_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Last Used At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "asset_id",
+                    "sessions",
+                    "uses",
+                    "last_used_at"
+                ],
+                "title": "CodingAssetUsage",
+                "description": "One asset's usage across every run \u2014 the flywheel view."
+            },
+            "CodingEvent": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id",
+                        "description": "Monotonic cursor; pass the last one back as `after`."
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "event_type": {
+                        "type": "string",
+                        "title": "Event Type"
+                    },
+                    "tool_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tool Name"
+                    },
+                    "payload": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Payload"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "phase_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase Id",
+                        "description": "The stage this event happened in."
+                    },
+                    "agent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Agent",
+                        "description": "The lane this event happened in."
+                    },
+                    "ok": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ok"
+                    },
+                    "duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Ms"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At",
+                        "description": "When the reported work finished; span start is ended_at - duration_ms."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "session_id",
+                    "event_type",
+                    "tool_name",
+                    "payload",
+                    "created_at",
+                    "phase_id",
+                    "agent",
+                    "ok",
+                    "duration_ms",
+                    "ended_at"
+                ],
+                "title": "CodingEvent"
+            },
+            "CodingPhase": {
+                "properties": {
+                    "seq": {
+                        "type": "integer",
+                        "title": "Seq",
+                        "description": "Position in the run."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "agent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Agent",
+                        "description": "Lane this stage belongs to."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "running | passed | failed | skipped | abandoned"
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Started At"
+                    },
+                    "duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Ms",
+                        "description": "Reported, or started_at \u2192 ended_at."
+                    },
+                    "id": {
+                        "type": "integer",
+                        "title": "Id",
+                        "description": "What an event's phase_id points at."
+                    },
+                    "kind": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Kind",
+                        "description": "engineer | agent | code | git"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At",
+                        "description": "Null while the stage is running."
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    },
+                    "corrections": {
+                        "type": "integer",
+                        "title": "Corrections"
+                    },
+                    "commit_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Commit Sha"
+                    },
+                    "gates_passed": {
+                        "type": "integer",
+                        "title": "Gates Passed"
+                    },
+                    "gates_failed": {
+                        "type": "integer",
+                        "title": "Gates Failed"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seq",
+                    "name",
+                    "agent",
+                    "status",
+                    "started_at",
+                    "duration_ms",
+                    "id",
+                    "kind",
+                    "description",
+                    "ended_at",
+                    "cost_usd",
+                    "tokens_in",
+                    "tokens_out",
+                    "corrections",
+                    "commit_sha",
+                    "gates_passed",
+                    "gates_failed"
+                ],
+                "title": "CodingPhase",
+                "description": "The full stage row, for the detail waterfall."
+            },
+            "CodingSession": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Claude Code session id."
+                    },
+                    "cwd": {
+                        "type": "string",
+                        "title": "Cwd",
+                        "description": "Working directory, \"\" if no event carried one."
+                    },
+                    "git_repo": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Git Repo",
+                        "description": "Repo folder name derived from cwd."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model"
+                    },
+                    "source": {
+                        "type": "string",
+                        "title": "Source",
+                        "description": "Event producer; always \"claude-code\" today."
+                    },
+                    "launch_mode": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Launch Mode",
+                        "description": "\"automated\" when a `claude -p` one-shot (script, hook, scheduler) started the run, \"interactive\" when a person did, null when unknown."
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "The run's request or first prompt."
+                    },
+                    "title_source": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Source",
+                        "description": "Where `title` came from: prompt | factory | provenance | cwd. Null when the session has no title at all."
+                    },
+                    "parent_session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent Session Id",
+                        "description": "The run that launched this one \u2014 a pipeline stage's parent."
+                    },
+                    "child_count": {
+                        "type": "integer",
+                        "title": "Child Count",
+                        "description": "Runs this one launched."
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow",
+                        "description": "\"factory\", or null/\"chat\" for a plain session."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live."
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Started At",
+                        "description": "First event seen for this session."
+                    },
+                    "last_event_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Last Event At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At",
+                        "description": "Set by an event with ended=true."
+                    },
+                    "stats": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stats",
+                        "description": "Merged free-form counters."
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_total": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Total"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    },
+                    "cache_read_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cache Read Tokens"
+                    },
+                    "event_count": {
+                        "type": "integer",
+                        "title": "Event Count"
+                    },
+                    "tool_call_count": {
+                        "type": "integer",
+                        "title": "Tool Call Count",
+                        "description": "Events with event_type PostToolUse."
+                    },
+                    "duration_seconds": {
+                        "type": "number",
+                        "title": "Duration Seconds",
+                        "description": "started_at \u2192 ended_at, or \u2192 last_event_at while still open."
+                    },
+                    "wall_ms": {
+                        "type": "integer",
+                        "title": "Wall Ms",
+                        "description": "duration_seconds in milliseconds \u2014 the clock on the wall."
+                    },
+                    "active_ms": {
+                        "type": "integer",
+                        "title": "Active Ms",
+                        "description": "Time the run was actually working: the sum of the gaps between consecutive events, discarding any gap over 60 s. A pipeline run prefers the measured sum of its stage durations. Lead with this, not wall_ms."
+                    },
+                    "phases": {
+                        "items": {
+                            "$ref": "#/components/schemas/PhaseSummary"
+                        },
+                        "type": "array",
+                        "title": "Phases",
+                        "description": "Ordered by seq."
+                    },
+                    "agents": {
+                        "items": {
+                            "$ref": "#/components/schemas/AgentLane"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Lanes, in the order they first appeared."
+                    },
+                    "assets": {
+                        "items": {
+                            "$ref": "#/components/schemas/AssetUse"
+                        },
+                        "type": "array",
+                        "title": "Assets",
+                        "description": "Skills and subagents used, most-used first."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "cwd",
+                    "git_repo",
+                    "model",
+                    "source",
+                    "launch_mode",
+                    "title",
+                    "title_source",
+                    "parent_session_id",
+                    "child_count",
+                    "workflow",
+                    "status",
+                    "started_at",
+                    "last_event_at",
+                    "ended_at",
+                    "stats",
+                    "cost_usd",
+                    "tokens_total",
+                    "tokens_in",
+                    "tokens_out",
+                    "cache_read_tokens",
+                    "event_count",
+                    "tool_call_count",
+                    "duration_seconds",
+                    "wall_ms",
+                    "active_ms",
+                    "phases",
+                    "agents",
+                    "assets"
+                ],
+                "title": "CodingSession"
+            },
+            "CodingSessionDetail": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Claude Code session id."
+                    },
+                    "cwd": {
+                        "type": "string",
+                        "title": "Cwd",
+                        "description": "Working directory, \"\" if no event carried one."
+                    },
+                    "git_repo": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Git Repo",
+                        "description": "Repo folder name derived from cwd."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model"
+                    },
+                    "source": {
+                        "type": "string",
+                        "title": "Source",
+                        "description": "Event producer; always \"claude-code\" today."
+                    },
+                    "launch_mode": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Launch Mode",
+                        "description": "\"automated\" when a `claude -p` one-shot (script, hook, scheduler) started the run, \"interactive\" when a person did, null when unknown."
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "The run's request or first prompt."
+                    },
+                    "title_source": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title Source",
+                        "description": "Where `title` came from: prompt | factory | provenance | cwd. Null when the session has no title at all."
+                    },
+                    "parent_session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent Session Id",
+                        "description": "The run that launched this one \u2014 a pipeline stage's parent."
+                    },
+                    "child_count": {
+                        "type": "integer",
+                        "title": "Child Count",
+                        "description": "Runs this one launched."
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow",
+                        "description": "\"factory\", or null/\"chat\" for a plain session."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live."
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Started At",
+                        "description": "First event seen for this session."
+                    },
+                    "last_event_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Last Event At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At",
+                        "description": "Set by an event with ended=true."
+                    },
+                    "stats": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stats",
+                        "description": "Merged free-form counters."
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_total": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Total"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    },
+                    "cache_read_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cache Read Tokens"
+                    },
+                    "event_count": {
+                        "type": "integer",
+                        "title": "Event Count"
+                    },
+                    "tool_call_count": {
+                        "type": "integer",
+                        "title": "Tool Call Count",
+                        "description": "Events with event_type PostToolUse."
+                    },
+                    "duration_seconds": {
+                        "type": "number",
+                        "title": "Duration Seconds",
+                        "description": "started_at \u2192 ended_at, or \u2192 last_event_at while still open."
+                    },
+                    "wall_ms": {
+                        "type": "integer",
+                        "title": "Wall Ms",
+                        "description": "duration_seconds in milliseconds \u2014 the clock on the wall."
+                    },
+                    "active_ms": {
+                        "type": "integer",
+                        "title": "Active Ms",
+                        "description": "Time the run was actually working: the sum of the gaps between consecutive events, discarding any gap over 60 s. A pipeline run prefers the measured sum of its stage durations. Lead with this, not wall_ms."
+                    },
+                    "phases": {
+                        "items": {
+                            "$ref": "#/components/schemas/CodingPhase"
+                        },
+                        "type": "array",
+                        "title": "Phases",
+                        "description": "Ordered by seq."
+                    },
+                    "agents": {
+                        "items": {
+                            "$ref": "#/components/schemas/AgentLane"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Lanes, in the order they first appeared."
+                    },
+                    "assets": {
+                        "items": {
+                            "$ref": "#/components/schemas/AssetUse"
+                        },
+                        "type": "array",
+                        "title": "Assets",
+                        "description": "Skills and subagents used, most-used first."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "cwd",
+                    "git_repo",
+                    "model",
+                    "source",
+                    "launch_mode",
+                    "title",
+                    "title_source",
+                    "parent_session_id",
+                    "child_count",
+                    "workflow",
+                    "status",
+                    "started_at",
+                    "last_event_at",
+                    "ended_at",
+                    "stats",
+                    "cost_usd",
+                    "tokens_total",
+                    "tokens_in",
+                    "tokens_out",
+                    "cache_read_tokens",
+                    "event_count",
+                    "tool_call_count",
+                    "duration_seconds",
+                    "wall_ms",
+                    "active_ms",
+                    "phases",
+                    "agents",
+                    "assets"
+                ],
+                "title": "CodingSessionDetail",
+                "description": "The same session with whole phase rows instead of card summaries."
+            },
             "CrossChange": {
                 "properties": {
                     "asset_id": {
@@ -1968,6 +3927,179 @@
                 "type": "object",
                 "title": "HTTPValidationError"
             },
+            "HookEventRequest": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Session Id",
+                        "description": "Claude Code session id."
+                    },
+                    "event_type": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Event Type",
+                        "description": "Hook name, e.g. \"PreToolUse\"; any string is accepted."
+                    },
+                    "cwd": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cwd",
+                        "description": "Working directory; used on first sight only."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "Model id; the latest value wins."
+                    },
+                    "tool_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tool Name",
+                        "description": "Tool the event is about, when it is one."
+                    },
+                    "payload": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Payload",
+                        "description": "Free-form hook input; truncated past 32 KB serialized."
+                    },
+                    "stats": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stats",
+                        "description": "Free-form counters shallow-merged into the session's stats."
+                    },
+                    "ended": {
+                        "type": "boolean",
+                        "title": "Ended",
+                        "description": "True on the last event of the session.",
+                        "default": false
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "The run's request; kept from the first one seen."
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow",
+                        "description": "\"factory\" for a pipeline run."
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "running | success | failed | interrupted"
+                    },
+                    "phase": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/PhaseIn"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Stage to upsert and link this event to."
+                    },
+                    "agent": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/AgentIn"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Lane to upsert."
+                    },
+                    "ok": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ok",
+                        "description": "Did the thing this event reports succeed?"
+                    },
+                    "duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Ms",
+                        "description": "How long it took, when the hook knows."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "event_type"
+                ],
+                "title": "HookEventRequest",
+                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
+            },
             "InstructionsDoc": {
                 "properties": {
                     "path": {
@@ -2029,6 +4161,299 @@
                     "error"
                 ],
                 "title": "MessageRole"
+            },
+            "ObservabilityIntegration": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Stable integration id, e.g. \"claude-code\"."
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label",
+                        "description": "Agent name to show in the UI."
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "connected",
+                            "outdated",
+                            "disconnected",
+                            "unavailable"
+                        ],
+                        "title": "State",
+                        "description": "connected: recording. outdated: wired to an older hook set or a missing script \u2014 connect repairs it. disconnected: nothing installed. unavailable: cannot be connected on this machine; `detail` says why."
+                    },
+                    "detail": {
+                        "type": "string",
+                        "title": "Detail",
+                        "description": "One sentence for the user explaining the state."
+                    },
+                    "ingest_url": {
+                        "type": "string",
+                        "title": "Ingest Url",
+                        "description": "Where the agent's hooks post their events."
+                    },
+                    "events": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Events",
+                        "description": "The agent events subscribed once connected."
+                    },
+                    "config_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Config Path",
+                        "description": "The agent config file that is edited."
+                    },
+                    "script_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Script Path",
+                        "description": "Where the forwarder script is installed on disk."
+                    },
+                    "backup_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Backup Path",
+                        "description": "Backup of the agent config taken before the last write, if any."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "state",
+                    "detail",
+                    "ingest_url",
+                    "events"
+                ],
+                "title": "ObservabilityIntegration",
+                "description": "One coding agent and whether it is reporting its sessions here."
+            },
+            "PhaseIn": {
+                "properties": {
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name",
+                        "description": "Stage name \u2014 plan, build, review, \u2026"
+                    },
+                    "seq": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Seq",
+                        "description": "Position in the run; appended when omitted."
+                    },
+                    "kind": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Kind",
+                        "description": "engineer | agent | code | git"
+                    },
+                    "agent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Agent",
+                        "description": "Lane owner; matches an agent name."
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "running | passed | failed | skipped | abandoned"
+                    },
+                    "duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Ms"
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    },
+                    "corrections": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Corrections",
+                        "description": "Retries this stage cost."
+                    },
+                    "commit_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Commit Sha"
+                    }
+                },
+                "type": "object",
+                "title": "PhaseIn",
+                "description": "One stage of the run as a hook reports it. Every field is optional: a\nlater event fills in what the first one could not know yet, and an absent\nfield never clears what is already stored."
+            },
+            "PhaseSummary": {
+                "properties": {
+                    "seq": {
+                        "type": "integer",
+                        "title": "Seq",
+                        "description": "Position in the run."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "agent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Agent",
+                        "description": "Lane this stage belongs to."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "running | passed | failed | skipped | abandoned"
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Started At"
+                    },
+                    "duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Ms",
+                        "description": "Reported, or started_at \u2192 ended_at."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seq",
+                    "name",
+                    "agent",
+                    "status",
+                    "started_at",
+                    "duration_ms"
+                ],
+                "title": "PhaseSummary",
+                "description": "Just enough of a stage to draw the mini-lane chart on a session card."
             },
             "Project": {
                 "properties": {

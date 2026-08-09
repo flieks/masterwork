@@ -19,6 +19,7 @@ import { ProviderBadge } from './ProviderBadge';
 import { ModelBadge } from './ModelBadge';
 import { AssetDiagramSection } from './AssetDiagramSection';
 import { AgentSkillsUsed } from './AgentSkillsUsed';
+import { AssetUsageLog } from './AssetUsageLog';
 import {
   assetDetailQueryAtom,
   assetListPath,
@@ -156,6 +157,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
 
       {mode === 'view' ? (
         <div className="space-y-4">
+          <AssetUsageLog assetId={assetId} />
           <AssetDiagramSection assetId={assetId} kind={kind} />
           {frontmatter ? (
             <details className="rounded-md border bg-muted/30">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Returns `value` delayed by `delay` ms, resetting the timer on every change. */
 export function useDebouncedValue<T>(value: T, delay = 300): T {
@@ -10,6 +10,33 @@ export function useDebouncedValue<T>(value: T, delay = 300): T {
   }, [value, delay]);
 
   return debounced;
+}
+
+/**
+ * The element's current width in pixels, 0 until it is measured.
+ *
+ * For layout that has to reason in both units at once: a chart placing bars by
+ * percentage still owes each one a minimum number of pixels, and only the real
+ * width converts between the two.
+ */
+export function useElementWidth<T extends HTMLElement>(): [(node: T | null) => void, number] {
+  const [width, setWidth] = useState(0);
+  const observer = useRef<ResizeObserver | null>(null);
+
+  // A callback ref, not a ref + effect: StrictMode runs effects twice, and an
+  // effect cleanup that disconnects would leave the observer dead for the rest
+  // of the page's life — every track measuring 0 and every bar falling back to
+  // its floor. React calls this with null on unmount, which is the teardown.
+  const ref = useCallback((node: T | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!node) return;
+    setWidth(node.getBoundingClientRect().width);
+    observer.current = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.current.observe(node);
+  }, []);
+
+  return [ref, width];
 }
 
 /** Tracks the OS `prefers-color-scheme: dark` media query. */

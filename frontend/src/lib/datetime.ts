@@ -28,6 +28,21 @@ export function absoluteDateTime(iso: string): string {
   return format(d, 'MMM d, yyyy, HH:mm');
 }
 
+/** Compact elapsed time from a second count: "45s", "12m 5s", "2h 5m". */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
+  const total = Math.floor(seconds);
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) {
+    const rest = total % 60;
+    return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
 /** Human day label for a chat date separator: Today / Yesterday / full date. */
 export function dayLabel(iso: string): string {
   const d = new Date(iso);

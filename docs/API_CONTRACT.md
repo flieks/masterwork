@@ -659,3 +659,602 @@ description text changed.
 - **New stop condition**: the scenario could not be generated (CLI failure or an
   empty reply). The pre-created next row is marked `failed` with
   `autopilot stopped: could not generate a new scenario after a perfect score: …`.
+
+---
+
+# API Contract v1.12 — Claude Code session observability (FROZEN additions)
+
+Additive on top of v1.11. Claude Code hooks post their firings to the backend,
+which keeps one row per session plus its raw event stream; the Sessions screen
+reads them back and polls live through an integer cursor.
+
+## New schemas
+
+```
+HookEventRequest {
+  session_id: string                  // Claude Code session id
+  event_type: string                  // "PreToolUse", "Stop", … — free string, never validated
+  cwd?: string | null                 // used on first sight of the session
+  model?: string | null               // latest value wins
+  tool_name?: string | null
+  payload?: object | null             // free-form hook input
+  stats?: object | null               // free-form counters, shallow-merged into the session
+  ended?: boolean                     // default false; true stamps ended_at
+}
+
+CodingSession {
+  id: string                          // the Claude Code session id, not a uuid
+  cwd: string                         // "" if no event carried one
+  git_repo: string | null             // repo folder name derived from cwd
+  model: string | null
+  source: string                      // "claude-code"
+  started_at: string
+  last_event_at: string
+  ended_at: string | null
+  stats: object | null                // merged free-form counters
+  event_count: number                 // derived
+  tool_call_count: number             // derived: events with event_type == "PostToolUse"
+  duration_seconds: number            // derived: started_at → ended_at ?? last_event_at
+}
+
+CodingEvent {
+  id: number                          // monotonic; the poll cursor
+  session_id: string
+  event_type: string
+  tool_name: string | null
+  payload: object | null
+  created_at: string
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| POST `/api/v1/hooks/events` | `ingestHookEvent` | `HookEventRequest` | `204` (no body; 422 only when `session_id` or `event_type` is missing/empty) |
+| GET `/api/v1/coding-sessions?limit=50&offset=0&include_empty=false&include_automated=false` | `listCodingSessions` | query: `limit` 1-200, `offset` >= 0, `include_empty` bool, `include_automated` bool | `CodingSession[]` (last_event_at desc) |
+| GET `/api/v1/coding-sessions/{session_id}` | `getCodingSession` | — | `CodingSession` (404 if unknown) |
+| GET `/api/v1/coding-sessions/{session_id}/events?after=0&limit=500` | `listCodingSessionEvents` | query: `after` >= 0, `limit` 1-1000 | `CodingEvent[]` (id asc; 404 unknown session) |
+
+## Behavior
+
+- **Ingest is an upsert plus an insert, and nothing else.** It sits in the
+  critical path of every hook firing, so no CLI call, no network, and a
+  filesystem touch only on the first event of a session. First sight creates the
+  session row from `cwd`/`model`; every event bumps `last_event_at`; `ended:
+  true` stamps `ended_at`. `cwd` is kept from the first event that carried one
+  (a session's directory does not move), `model` takes the newest value (`/model`
+  mid-session).
+- **Empty sessions are hidden from the list.** The Claude desktop app spawns a
+  headless `claude` per open directory and discards it, producing a `SessionStart`
+  (plus a `SessionEnd`, when the async hook outlives the process) with no turn and
+  no transcript — about three quarters of all rows. `listCodingSessions` therefore
+  leaves out any session with no `UserPromptSubmit` and no `PostToolUse` that is
+  also finished: `ended_at` set, **or** silent for more than 2 minutes, since a
+  ghost is not reliably closed. A session that was prompted or ran a tool is never
+  hidden, however long it then goes quiet, and neither is one in its first two
+  minutes — that is indistinguishable from a real session starting up. Hidden is
+  not dropped: ingest still stores it, `getCodingSession` still serves it, and
+  `include_empty=true` puts it back in the list.
+- **Automated runs are labelled and hidden by default.** The `SessionStart` hook
+  reports the launcher chain in `payload.launched_by`; if any ancestor is a
+  `claude` invoked with `-p`/`--print`, the run had no one at the keyboard — a
+  wrapper script, a hook, a scheduler — and the session is stored with
+  `launch_mode: "automated"`. A chain without that flag gives `"interactive"`; no
+  chain at all (every session recorded before the hook shipped) leaves it null.
+  `listCodingSessions` omits `automated` rows unless `include_automated=true`;
+  null is treated as unknown and always listed. The field is on `CodingSession`,
+  so the detail view can badge it.
+- **Tolerant by design**: `event_type` is a free string with no enum, so a hook
+  type that does not exist yet still records. Over-long values are truncated to
+  the column width rather than rejected — a hook must never fail a Claude Code
+  run. Only a missing/empty `session_id` or `event_type` is a 422.
+- **Size cap**: `payload` and `stats` are capped at 32 768 serialized characters
+  each. Past that the stored value becomes
+  `{_truncated: true, _chars: <n>, _preview: <first 2 000 chars>}`, so one
+  runaway hook cannot bloat the database. `stats` is shallow-merged (newest key
+  wins) and the merged result is capped the same way.
+- **git_repo**: the name of the nearest ancestor directory of `cwd` containing a
+  `.git`, resolved once on first sight. No subprocess, no remote lookup; null
+  outside a repo.
+- **Cursor**: `coding_events.id` is a plain autoincrementing integer, which is
+  what makes history and live polling the same query —
+  `WHERE session_id = ? AND id > ? ORDER BY id LIMIT ?`. The client keeps the
+  last id it holds and passes it as `after`; `after=0` loads from the start.
+- **Derived fields** are computed per request, not stored: counts by one grouped
+  aggregate over `coding_events`, duration in Python (SQLite and Postgres have no
+  shared interval arithmetic).
+- **No auth**, like the rest of this API — single user, localhost.
+- **DB**: `coding_sessions` (session id as TEXT PK) and `coding_events`
+  (autoincrement PK, FK → coding_sessions ON DELETE CASCADE, index on
+  `(session_id, id)`; `coding_sessions.last_event_at` indexed for the list
+  order). Alembic migration 0012.
+
+---
+
+# API Contract v1.13 — Run-centric coding sessions (FROZEN additions)
+
+Additive on top of v1.12. A session stops being a flat event log and becomes a
+**run**: a request, an outcome, a cost, a set of **agent lanes**, and a sequence
+of **phases** on a time axis. Phase, agent, cost and context used to live inside
+`coding_events.payload`; they are rows now, so a card grid and a per-lane
+waterfall both render without the client parsing JSON.
+
+## Changed schemas
+
+```
+CodingSession += {
+  title: string | null                // the run's request: first prompt, or the factory's
+  workflow: string | null             // "factory"; null (or "chat") = plain Claude Code session
+  status: string                      // running | success | failed | interrupted
+  cost_usd: number | null
+  tokens_total: number | null
+  tokens_in: number | null
+  tokens_out: number | null
+  cache_read_tokens: number | null
+  phases: PhaseSummary[]              // ordered by seq — enough to draw the card's lane chart
+  agents: AgentLane[]                 // ordered by first appearance
+}
+
+CodingEvent += {
+  phase_id: number | null             // the phase this event happened in
+  agent: string | null                // the lane it happened in
+  ok: boolean | null                  // did the reported thing succeed
+  duration_ms: number | null
+  ended_at: string | null             // when the reported work finished; span = ended_at - duration_ms
+}
+
+HookEventRequest += {
+  title?: string | null
+  workflow?: string | null
+  status?: string | null
+  phase?: PhaseIn | string | null     // a bare string means { name: <string> }
+  agent?: AgentIn | string | null     // idem
+  ok?: boolean | null
+  duration_ms?: number | null
+}
+```
+
+## New schemas
+
+```
+PhaseIn {                             // every field optional; absent never clears
+  name?, kind?, agent?, description?, status?, commit_sha?: string | null
+  seq?, duration_ms?, tokens_in?, tokens_out?, corrections?: number | null
+  cost_usd?: number | null
+}
+
+AgentIn {                             // every field optional; absent never clears
+  name?, model?, color?: string | null
+  context_tokens?, context_window?, cost_usd?, tokens_in?, tokens_out?: number | null
+}
+
+PhaseSummary {                        // what a card needs, and nothing else
+  seq: number                         // position in the run
+  name: string                        // plan | build | checks | review | document | "turn 3" | …
+  agent: string | null                // lane owner
+  status: string                      // running | passed | failed | skipped | abandoned
+  started_at: string
+  duration_ms: number | null          // reported, or started_at → ended_at
+}
+
+CodingPhase extends PhaseSummary {    // the detail waterfall's row
+  id: number                          // what CodingEvent.phase_id points at
+  kind: string | null                 // engineer | agent | code | git
+  description: string | null
+  ended_at: string | null             // null while running
+  cost_usd: number | null
+  tokens_in: number | null
+  tokens_out: number | null
+  corrections: number                 // retries this stage cost
+  commit_sha: string | null
+  gates_passed: number
+  gates_failed: number
+}
+
+AgentLane {
+  name: string                        // "main", a subagent type, or a pipeline stage
+  model: string | null
+  color: string | null
+  context_tokens: number | null       // with context_window, the context bar
+  context_window: number | null       // null when nobody reported one
+  cost_usd: number | null
+  tokens_in: number | null
+  tokens_out: number | null
+  turns: number
+}
+
+CodingSessionDetail extends CodingSession {
+  phases: CodingPhase[]               // whole rows instead of card summaries
+}
+```
+
+## Changed endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| POST `/api/v1/hooks/events` | `ingestHookEvent` | `HookEventRequest` (all new fields optional) | `204` (unchanged: 422 only when `session_id` or `event_type` is missing/empty) |
+| GET `/api/v1/coding-sessions?limit=50&offset=0&include_empty=false&include_automated=false&workflow=&status=` | `listCodingSessions` | query: v1.12's four, plus `workflow` and `status` | `CodingSession[]` (last_event_at desc) |
+| GET `/api/v1/coding-sessions/{session_id}` | `getCodingSession` | — | **`CodingSessionDetail`** (was `CodingSession`; 404 if unknown) |
+| GET `/api/v1/coding-sessions/{session_id}/events?after=0&limit=500` | `listCodingSessionEvents` | unchanged | `CodingEvent[]` (id asc, now with the five new fields) |
+
+## Behavior
+
+- **The ingest stays additive and unfailable.** A v1.12 body behaves exactly as
+  it did. New fields are optional, unknown keys are ignored, and — new in v1.13
+  — an optional field whose value cannot be validated is **dropped rather than
+  422'd**, so a hook never fails because the backend evolved and it did not.
+  `session_id` and `event_type` remain the only 422.
+- **Upsert, partially.** `phase` is upserted on `(session_id, seq)` when a seq
+  is given and on `(session_id, name)` otherwise, appending a new seq when
+  neither matches; `agent` is upserted on `(session_id, name)`. An absent field
+  is silence, never an instruction to clear — which is what lets one event open
+  a stage and a later one close it. `gates_passed`/`gates_failed` and a lane's
+  `turns` are the exception: they are counted across events, not reported as
+  totals. A stage that reaches a terminal status
+  (`passed`/`failed`/`skipped`/`abandoned`) gets `ended_at` stamped, and a
+  `duration_ms` computed from `started_at` if the producer did not report one.
+- **A turn cannot outlive the next one on its lane.** A dropped `Stop` hook
+  leaves a `main` turn open, which would otherwise claim the rest of the run and
+  sit under every later turn. The prompt that opens the next `main` turn closes
+  the previous one as `abandoned` — it ended, but not when. Subagent lanes are
+  left alone: several agents of one type run at once, so two open turns there
+  are two agents working.
+- **The event is linked to the stage it happened in.** With a `phase` block, to
+  that stage; without one, to whichever stage of the run is still open. `agent`,
+  `ok` and `duration_ms` are stored on the event, and `ended_at` is set equal to
+  `created_at` when a duration was reported — a hook reports a duration for work
+  that has just finished, so the span runs `ended_at - duration_ms → ended_at`.
+- **The run's totals are the sum of its phases**, recomputed whenever a phase is
+  written, plus any `stats` key that has a column of its own (`cost_usd`,
+  `total_cost_usd`, `tokens_total`/`total_tokens`, `tokens_in`/`input_tokens`,
+  `tokens_out`/`output_tokens`, `cache_read_tokens`/`cache_read_input_tokens`).
+  `stats` itself is unchanged — still the free-form overflow, still shallow-merged.
+- **Derivation for a plain Claude Code session.** Its hooks name no stage and no
+  lane, so the backend synthesizes both, incrementally, during ingest — never in
+  the frontend: lane `main` (running the session's model) plus one lane per
+  distinct subagent type seen (a `Task`/`Agent` call's `tool_input.subagent_type`,
+  or a `SubagentStop`'s `agent_type`, or that stop's transcript sidecar, or the
+  literal `subagent` when nothing could name it — more than half of real stops
+  carry only a transcript path, and dropping them left their turns attributed to
+  nobody); one phase per round trip, `passed` once closed and `running` until
+  then, kind `agent`. Two round trips produce one: `UserPromptSubmit` → `Stop` on
+  `main`, named `turn N`, and `PreToolUse` on the spawn tool → `SubagentStop` on
+  the subagent's own lane, named after the call's `description`. **N counts that
+  lane's phases, not `seq`** — a span opening between two prompts takes a `seq`,
+  so `seq` stopped being able to double as the turn number. A `Stop` closes only
+  `main`'s stage and a `SubagentStop` only its own lane's, since a subagent runs
+  *alongside* a turn rather than inside one; likewise an unlabelled event lands
+  on its own lane's open stage, falling back to the newest open one only for a
+  producer that names stages but no lanes. A `SubagentStop` with no stage open on
+  its lane — every session recorded before the `PreToolUse` hook existed — gets a
+  zero-length stage stamped at the moment it ended, described `start not
+  recorded`: the honest shape of an end without a start, and the reason those
+  lanes used to render as blank rows. `title` from the first prompt, truncated to
+  300 characters; `status` `success` on `SessionEnd` (or any `ended: true`),
+  running while open. A session that only ever emitted lifecycle events — three
+  quarters of all rows — gets no lanes and no phases at all.
+  The `PreToolUse` hook is subscribed for `Task|Agent` alone: it is the only
+  event that knows when a subagent *started* (`PostToolUse` fires when the call
+  returns, which for a background agent is long before the agent is done), and
+  matching every tool would double the event stream to learn nothing.
+- **Derivation for a factory run.** The pipeline runner predates these fields
+  and reports its stage and lane inside `payload` (`{event, phase, agent,
+  result, detail, cost_usd, tokens_in, tokens_out, duration_ms}`); an event
+  whose payload echoes its own `event_type` and names a `phase` is read that
+  way, so an unchanged runner populates the same tables. Its synthetic `run`
+  phase is the run envelope, not a stage: the `phase_start` detail becomes the
+  session `title`, and `run_end` sets `status` from `result` and promotes its
+  `stats`. `phase_start` decides a stage's `kind` (`agent` when a lane owns it,
+  `code` when none does), `phase_end` its status, duration, cost, corrections
+  and commit; `agent_turn` accumulates the stage's tokens and the lane's turns,
+  cost and context; `gate_pass`/`gate_fail` count. Explicit `phase`/`agent`
+  blocks always outrank what the payload implies.
+- **Filters**: `workflow=factory` matches only pipeline runs; `workflow=chat`
+  matches plain sessions **and** the ones that never claimed a workflow, since
+  nothing writes `"chat"`. `status` is exact equality. Both compose with
+  `include_empty` and `include_automated`.
+- **Rebuild**: `service.backfill_session(db, session_id)` replays a session's
+  stored events through the same derivation the live ingest uses, which is what
+  gives a pre-v1.13 session the same shape as a new run. It is idempotent by
+  construction — the derived rows are dropped and rebuilt rather than updated,
+  so the counters do not double — and it unlinks events explicitly rather than
+  trusting `ON DELETE SET NULL`, which SQLite only enforces on request.
+- **DB**: `coding_sessions` gains `title`, `workflow`, `status` (NOT NULL
+  DEFAULT `running`), `cost_usd`, `tokens_total`, `tokens_in`, `tokens_out`,
+  `cache_read_tokens`. New `coding_phases` (autoincrement PK, FK →
+  coding_sessions ON DELETE CASCADE, UNIQUE `(session_id, seq)`) and
+  `coding_agents` (same FK, UNIQUE `(session_id, name)`). `coding_events` gains
+  `phase_id` (FK → coding_phases ON DELETE SET NULL), `agent`, `ok`,
+  `duration_ms`, `ended_at`; its `(session_id, id)` index is untouched and stays
+  the poll cursor. Alembic migration **0014_coding_run_model** — 0013 was
+  already taken by `launch_mode`, which the v1.12 section documents.
+
+---
+
+# API Contract v1.14 — Honest runs and asset attribution (FROZEN additions)
+
+Additive on top of v1.13, and the reason the feature exists: a run now reports
+**which skills and which subagents it actually used**, and stops lying about
+what it is doing and how long it took.
+
+## New schemas
+
+```
+AssetUse {                            // one asset, as one run used it
+  kind: string                        // "skill" | "agent"
+  name: string
+  asset_id: string                    // "claude:skill:<name>" / "claude:agent:<name>"
+  lane: string | null                 // the lane that used it
+  uses: number
+}
+
+CodingAssetUsage {                    // the same asset, across every run
+  kind: string
+  name: string
+  asset_id: string
+  sessions: number                    // distinct runs that used it
+  uses: number
+  last_used_at: string
+}
+```
+
+## Changed schemas
+
+```
+CodingSession += {
+  title_source: string | null         // prompt | factory | provenance | cwd; null when untitled
+  parent_session_id: string | null    // the run that launched this one
+  child_count: number                 // runs this one launched
+  active_ms: number                   // time actually working — lead with this
+  wall_ms: number                     // duration_seconds in ms; the clock on the wall
+  assets: AssetUse[]                  // most-used first
+}
+
+CodingSession.status                  // now also "abandoned" — derived, never stored
+```
+
+## Changed and new endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-sessions?…&roots_only=false` | `listCodingSessions` | v1.13's six, plus `roots_only` bool | `CodingSession[]` (**live first**, then last_event_at desc) |
+| GET `/api/v1/coding-sessions/{session_id}` | `getCodingSession` | — | `CodingSessionDetail` (unchanged shape, new fields) |
+| GET `/api/v1/coding-assets?since=&kind=` | `listCodingAssetUsage` | query: `since` datetime, `kind` `skill`\|`agent` | `CodingAssetUsage[]` (uses desc, then name) |
+
+## Behavior
+
+- **`running` now means live, and nothing else.** `SessionEnd` rides an async
+  hook that the dying process outruns, so most runs never close themselves — 78
+  of 113 stored rows claimed `running`, the oldest last heard from a day and a
+  half earlier. The stored column is unchanged; the **serializer** derives what
+  it reports: a run still stored `running`, with no `ended_at`, whose
+  `last_event_at` is older than **2 minutes** (`IDLE_WINDOW`, the same window
+  that hides ghosts) reports `status: "abandoned"`. A run that *did* report an
+  outcome keeps it however old it is — only the absence of one is filled in from
+  silence. One helper (`serializers.derived_status`) serves list and detail, so
+  the two can never disagree, and the `status` query filter matches the derived
+  value: `status=abandoned` finds the stale ones, `status=running` only the live.
+- **`active_ms` is the honest duration.** `wall_ms`/`duration_seconds` measure
+  the clock, which turns a closed laptop into a 34-hour session. `active_ms`
+  sums the gaps between consecutive events and throws away any gap longer than
+  **60 s** (`ACTIVE_GAP`) — a pause is not work. A **factory run prefers the sum
+  of its stages' `duration_ms`** when it has any, because the runner measures
+  those rather than inferring them. Computed in Python over two loaded columns,
+  like `duration_seconds`: SQLite and Postgres share no interval arithmetic.
+  Both fields are always present; the UI leads with `active_ms`.
+- **Live runs sort first.** `last_event_at DESC` alone buries a run that is
+  working right now under one that spoke a minute later and then died. The order
+  is: open **and** recent first, then everything by `last_event_at DESC`.
+- **Titles have a provenance, and prompt-less runs get one.** `title_source`
+  says which signal won, and they are ranked — `factory` > `provenance` >
+  `prompt` — with an equal-ranked title never replacing one already stored (the
+  *first* prompt is the request; the fifth is a follow-up).
+  - `prompt` — the first `UserPromptSubmit`, truncated to 300 characters.
+  - `factory` — the pipeline runner's statement of the request: an explicit
+    `title` on the hook body, or the run envelope's `detail`.
+  - `provenance` — read off the `launched_by` ancestry the `SessionStart` hook
+    records. A `factory/run.py` ancestor means this run **is a pipeline stage**:
+    the parent is the factory run that owned the same working directory at that
+    instant, the stage is the parent's most recently started phase, and the title
+    is `"<stage> stage · factory-<run-id>"`. It outranks the prompt on purpose —
+    every stage child is prompted with the same wall of boilerplate ("You are the
+    BUILD stage of…"), and the provenance name is what identifies it.
+  - `cwd` — the last resort for a run with no title at all, derived at read time
+    (never stored): the repo or working-directory name, or
+    `"headless run · <name>"` when `launch_mode` is `automated`.
+- **Parents and children.** `parent_session_id` is set once, at the first event
+  carrying a `launched_by` chain, and `child_count` is counted per request. It is
+  deliberately **not** a foreign key: a self-referential FK would force SQLite to
+  rebuild `coding_sessions` under three child tables, and an unresolvable parent
+  should simply leave the child shown as a root. `roots_only=true` hides every
+  run that has a parent, so a pipeline's five headless stages collapse into their
+  parent instead of showing as five orphan chat cards. Default `false`.
+- **Asset attribution — four signals, because the obvious one barely fires.**
+  Across 2 237 recorded tool calls there were **two** explicit `Skill` calls and
+  **zero** `Task` calls, so path-sniffing and transcript-reading are what make
+  the feature real. Counted during ingest, per completed tool call:
+  - `tool_name == "Skill"` → skill, named by `payload.tool_input.skill`.
+  - `Read` or `Glob` whose target path matches
+    `**/.claude/skills/<name>/SKILL.md` → skill `<name>`. This is how a skill
+    actually loads. `Edit`/`Write` are excluded: authoring an asset is not using
+    one, and `PreToolUse` is excluded because it fires before the permission
+    answer.
+  - `tool_name` in `{"Task", "Agent"}` → agent, named by
+    `payload.tool_input.subagent_type`. Both names, because the harness has
+    shipped the spawn tool as each — matching `Task` alone missed every spawn in
+    the sessions that actually had them.
+  - `SubagentStop` → agent. The hook rarely carries `agent_type`, so the
+    `agent_transcript_path` it does carry is used: the sidecar beside it
+    (`<transcript>.meta.json`) names the `agentType`. Reading it is the one
+    filesystem touch outside a session's first event — legitimate for a
+    single-user local tool that already reads `~/.claude`, capped at 64 KB, and
+    never able to fail an ingest: a missing, oversized or malformed sidecar
+    degrades to the name `"subagent"`.
+
+  `lane` is the event's lane — `main` for a plain session's own tool calls, the
+  stage's lane for a pipeline run, null when the event belonged to no lane.
+  Names match masterwork's own asset ids (`claude:skill:<name>`,
+  `claude:agent:<name>`), served alongside the raw name so a card links straight
+  to the asset page. Plugin-provided skills are not path-sniffed.
+- **The rollup** groups `coding_assets` by `(kind, name)`: distinct `sessions`,
+  total `uses`, and the newest `last_seen_at`, ordered by uses descending with
+  the name breaking ties so the ranking is stable. `since` filters on
+  `last_seen_at`; `kind` narrows to skills or agents. This is the flywheel view —
+  which assets earn their keep.
+- **Rebuild**: `service.backfill_session` now clears and replays assets, title
+  provenance and the parent link along with phases and lanes, so it stays
+  idempotent (uses do not double). `service.backfill_all` replays every stored
+  session **oldest first**, which is what lets a pipeline run's stages exist by
+  the time its children look for the stage they belong to.
+- **DB**: `coding_sessions` gains `title_source` and `parent_session_id` (plain
+  indexed column, no FK — see above). New `coding_assets` (autoincrement PK, FK →
+  coding_sessions ON DELETE CASCADE, UNIQUE `(session_id, kind, name, lane)`,
+  indexes on `(kind, name)` and `last_seen_at`). The unique constraint cannot
+  enforce the null-lane case in either dialect, so the upsert matches
+  `lane IS NULL` itself. Alembic migration **0015_coding_assets**.
+
+---
+
+# API Contract v1.15 — Asset usage on the asset pages (FROZEN additions)
+
+Additive on top of v1.14. v1.14 answered "what did this run use?"; v1.15 answers
+the question from the other end — **who used this skill, and what did they pass
+it?** — so the Skills and Agents pages carry their own usage instead of it
+living only on the Sessions screen.
+
+## New schemas
+
+```
+AssetCall {                           // one recorded call of one asset
+  used_at: string
+  lane: string | null                 // the lane that made the call
+  source: string                      // which signal named it, see below
+  input: { [key: string]: string } | null   // the call's arguments, truncated
+}
+
+AssetSessionUse {                     // one run that used the asset
+  session_id: string
+  title: string | null                // derived like the Sessions screen derives it
+  git_repo: string | null
+  cwd: string
+  status: string                      // derived run status, not the stored one
+  started_at: string
+  uses: number                        // calls this run made, across all its lanes
+  first_used_at: string
+  last_used_at: string
+  calls: AssetCall[]                  // newest first, capped — see below
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-assets/{asset_id}/sessions?limit=50&include_inspection=false` | `listAssetSessionUses` | path: asset id slug; query: `limit` 1–200, `include_inspection` bool | `AssetSessionUse[]` (last used desc) |
+
+## Behavior
+
+- **Matched on `(kind, name)`, not on the whole id.** A plugin skill is recorded
+  under the name Claude Code calls it by (`"vercel:deploy"`) while its asset id
+  names the provider that installed it (`"claude-plugin:skill:vercel:deploy"`),
+  so the provider segment is parsed and discarded. A malformed id is still a
+  **400**; an id nobody has used is an empty list, not a 404 — the asset exists,
+  its usage does not.
+- **`source` is the signal that named the use**, and it decides what `input` can
+  possibly hold — the four signals of v1.14, now recorded per call:
+  - `skill_call` — an explicit `Skill` call. `input.args`.
+  - `spawn_call` — a `Task`/`Agent` call. `input.description`, `input.prompt`,
+    `input.subagent_type`, `input.model`.
+  - `skill_read` — a `SKILL.md` read, which is how a skill actually loads.
+    `input.path` only: **there are no arguments**, because there was no call.
+  - `subagent_stop` — a finished subagent. `input` is `null`: the hook says the
+    agent ran, never what it was asked to do.
+
+  Every value is a string, truncated at **2 000 characters per key** (a spawn's
+  `prompt` is a whole brief). Non-string values are JSON-encoded first.
+- **`calls` is capped at 200 across the whole response**, not per run: the rows
+  only ever back an expanded row in the UI, and one run that read a `SKILL.md` two
+  hundred times must not be able to make the response two hundred times bigger.
+  So `calls.length` can be smaller than `uses`, and `uses` — summed from
+  `coding_assets`, the counter of record — is the number to trust.
+- **Inspection runs are excluded by default**, exactly as in the `/coding-assets`
+  rollup: masterwork's own analysis passes read every linked asset's `SKILL.md`,
+  and counting them would list masterwork as the heaviest user of every skill.
+  `include_inspection=true` shows them.
+- **A run recorded before v1.15 has an empty `calls`** with a non-zero `uses`:
+  the log is derived, and only a `POST /coding-sessions/backfill` replay fills it
+  in. The UI says so rather than showing the run as argument-less.
+- **DB**: new `coding_asset_uses` (autoincrement PK, FK → coding_sessions ON
+  DELETE CASCADE, indexes on `(kind, name)` and `session_id`). No unique
+  constraint — it is an append-only log, one row per call, deliberately not
+  deduplicated. Dropped and rebuilt by `backfill_session` alongside the other
+  derived rows, so replaying twice does not double it. Alembic migration
+  **0016_coding_asset_use_log**.
+
+---
+
+# API Contract v1.16 — Observability setup (FROZEN additions)
+
+Additive on top of v1.15, and the first endpoints that write outside
+masterwork's own files. v1.12 assumed the hooks were already installed; these
+install them, so a fresh `npx masterwork` needs no terminal step.
+
+## New schemas
+
+```
+ObservabilityIntegration {
+  id: string                          // "claude-code"
+  label: string                       // agent name for the UI
+  state: "connected" | "outdated" | "disconnected" | "unavailable"
+  detail: string                      // one sentence, written for the user
+  ingest_url: string                  // where this agent's hooks post
+  events: string[]                    // the agent events subscribed once connected
+  config_path: string | null          // the agent config file that is edited
+  script_path: string | null          // installed forwarder
+  backup_path: string | null          // backup of the agent config, null until one is taken
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/observability/integrations` | `listObservabilityIntegrations` | — | `ObservabilityIntegration[]` |
+| POST `/api/v1/observability/integrations/{integration_id}/connect` | `connectObservabilityIntegration` | — | `ObservabilityIntegration` (404 unknown id, 409 not connectable) |
+| POST `/api/v1/observability/integrations/{integration_id}/disconnect` | `disconnectObservabilityIntegration` | — | `ObservabilityIntegration` (404 unknown id, 409 unreadable config) |
+
+## Behavior
+
+- **The four states are what the UI branches on.** `connected` — recording.
+  `disconnected` — nothing of ours in the agent's config. `outdated` — our
+  entries are there but point at a path that has moved or an older event set;
+  `connect` repairs it in place, and the UI offers *Repair* rather than
+  *Connect*. `unavailable` — nothing can be done here (the agent has never run
+  on this machine, no `python3` on PATH, or a config file we refuse to parse);
+  `detail` says which, and `connect` answers **409** instead of guessing.
+- **Reading never writes.** `GET` only ever reads the agent's config. The hooks
+  are installed on an explicit `connect` and nothing else — not at startup, not
+  as a side effect of opening the Sessions screen.
+- **`connect` is idempotent and non-destructive.** It backs the agent's config
+  up to `<config>.masterwork.bak` before writing, replaces only the hook entries
+  whose command runs masterwork's forwarder — a matcher group holding someone
+  else's hook alongside ours keeps theirs — and skips the write entirely when
+  nothing would change. An event we don't subscribe to is never touched.
+- **`disconnect` removes only our entries** and drops an event key when we were
+  its only subscriber, so a config returns to its pre-connect shape. Recorded
+  sessions are kept: this stops the recording, it does not erase it. Disconnect
+  on a never-connected agent creates no file.
+- **The forwarder is copied out of the install, not referenced in place.**
+  `connect` writes it to `~/.masterwork/hooks/` with a `config.json` naming the
+  ingest URL, and records an absolute system `python3` in the command. Under
+  `npx masterwork` the package lives in npm's cache; a path into that cache
+  would break at the next prune, which is exactly the `outdated` state.
+- **`ingest_url` follows the port the API was actually started on**, read from
+  `MASTERWORK_API_PORT` (the launcher passes it through). The forwarder resolves
+  its target as `MASTERWORK_INGEST_URL` → sidecar `config.json` → the default
+  `http://localhost:8008/api/v1/hooks/events`.
+- **One integration per agent, resolved by id.** Claude Code is the only one
+  today. A second agent is a new `Integration` implementation plus a line in
+  `app/observability/registry.py`: the endpoints, schema and UI take it as is.
+- **No DB.** Nothing here is stored — the agent's own config file is the record.

@@ -2,7 +2,9 @@ import axios, { AxiosError, type AxiosInstance } from 'axios';
 import {
   AssetsApi,
   ChatApi,
+  CodingApi,
   InstructionsApi,
+  ObservabilityApi,
   ProjectsApi,
   ProposalsApi,
   SimulationsApi,
@@ -34,7 +36,9 @@ const configuration = new Configuration({ basePath: '' });
 export const api = {
   assets: new AssetsApi(configuration, '', http),
   chat: new ChatApi(configuration, '', http),
+  coding: new CodingApi(configuration, '', http),
   instructions: new InstructionsApi(configuration, '', http),
+  observability: new ObservabilityApi(configuration, '', http),
   projects: new ProjectsApi(configuration, '', http),
   proposals: new ProposalsApi(configuration, '', http),
   simulations: new SimulationsApi(configuration, '', http),
