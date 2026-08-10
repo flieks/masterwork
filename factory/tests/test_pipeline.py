@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from adw.agent import RUN_ID_ENV, STAGE_ENV
 from adw.config import DEFAULT_MODELS, load_config
 from adw.pipeline import Pipeline, RunResult, format_summary
 from adw.telemetry import AGENT_COLORS, Telemetry
@@ -143,6 +144,41 @@ def test_the_role_identity_travels_as_a_system_prompt(git_repo: Path, fake_cli: 
     assert system.startswith("You are the PLAN stage")
     assert REQUEST not in system  # the task rides the user prompt, not the identity
     assert "You are the PLAN stage" not in fake_cli.calls[0]["prompt"]
+
+
+def test_every_child_of_the_run_is_labelled_with_the_run_id_and_its_stage(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """How masterwork links children to the run — so it must not depend on which
+    stage, nor on whether the turn is a first one or a correction."""
+    reject = {
+        "session_id": "review-session",
+        "envelope": envelope(
+            summary="Needs error handling",
+            approved=False,
+            blocking=["app.py: health() has no error handling"],
+            changed_files=[],
+        ),
+    }
+    fix = {
+        "session_id": "build-session",
+        "envelope": envelope(summary="Handle errors", changed_files=["app.py"]),
+        "write_files": {"app.py": "def health():\n    return {}\n"},
+    }
+    result, _ = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, reject, fix, REVIEW_OK, DOCUMENT_OK])
+    assert result.accepted
+
+    calls = fake_cli.calls
+    assert [c["env"][STAGE_ENV] for c in calls] == [
+        "plan",
+        "build",
+        "review",
+        "build",  # the review correction — its own process, same stage session
+        "review",
+        "document",
+    ]
+    assert {c["env"][RUN_ID_ENV] for c in calls} == {"testrun1"}
+    assert calls[3]["resume"] == "build-session"
 
 
 def test_every_turn_leaves_the_compiled_prompts_in_the_run_dir(git_repo: Path, fake_cli: FakeCLI):
@@ -392,6 +428,7 @@ def test_failing_checks_send_a_correction_into_the_builder_session(
     assert checks_outcome.corrections == 1
     correction = fake_cli.calls[2]
     assert correction["resume"] == "build-session"
+    assert correction["env"][STAGE_ENV] == "build"  # a checks correction is a build child
     assert "EXECUTED CHECKS FAILED" in correction["prompt"]
     assert "do not disable, skip, or weaken" in correction["prompt"]
     assert any(e["event"] == "gate_fail" and "checks" in e["detail"] for e in events(telemetry))

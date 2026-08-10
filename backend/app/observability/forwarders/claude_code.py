@@ -20,6 +20,18 @@ from urllib.parse import urlsplit
 
 DEFAULT_INGEST_URL = "http://localhost:8008/api/v1/hooks/events"
 
+# The pipeline runner exports these into the environment of each `claude -p`
+# stage child. They are the whole reason a stage can be attached to its run
+# without reading a command line: the runner *states* what it launched, so
+# nothing downstream has to infer it from a cwd, an argv or a time window.
+# Absent for every ordinary session, which is what keeps the signal meaningful.
+FACTORY_RUN_ID_ENV = "MASTERWORK_FACTORY_RUN_ID"
+FACTORY_STAGE_ENV = "MASTERWORK_FACTORY_STAGE"
+
+# Column-bound on the ingest side; truncate here so a runaway env var still posts.
+MAX_RUN_ID = 200
+MAX_STAGE = 100
+
 
 def ingest_url() -> str:
     """Env first (a launcher can override per run), then the sidecar written at
@@ -69,6 +81,22 @@ def ancestry(limit: int = 6) -> list[str]:
     return chain
 
 
+def factory_stage() -> dict[str, str]:
+    """What the pipeline runner says this session is, if it said anything.
+
+    Only the run id is required: a stage whose name went missing still belongs
+    under its run, and the missing half costs a title, not the link.
+    """
+    run_id = (os.environ.get(FACTORY_RUN_ID_ENV) or "").strip()
+    if not run_id:
+        return {}
+    stated = {"factory_run_id": run_id[:MAX_RUN_ID]}
+    stage = (os.environ.get(FACTORY_STAGE_ENV) or "").strip()
+    if stage:
+        stated["factory_stage"] = stage[:MAX_STAGE]
+    return stated
+
+
 def compact(value: Any, limit: int) -> Any:
     """Keep JSON structure when small; collapse to a truncated string when huge."""
     try:
@@ -110,7 +138,9 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
                 payload[key] = raw[key]
     elif event == "SessionStart":
         payload["source"] = raw.get("source", "")
-        # Provenance: which process spawned this run, and whether it is headless.
+        # Provenance, strongest first: what the launcher declared itself to be,
+        # then the ancestry it can only be guessed from.
+        payload.update(factory_stage())
         payload["launched_by"] = ancestry()
         for key in ("transcript_path", "permission_mode"):
             if raw.get(key):

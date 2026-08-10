@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -29,10 +29,33 @@ class ScannedAsset:
     content: str
     read_only: bool = False  # e.g. plugin-provided assets managed by a marketplace
     model: str | None = None  # frontmatter `model:`; None means it inherits the session model
+    # Filesystem birth time; None where the platform has none. See `file_times`.
+    created_at: datetime | None = None
 
     @property
     def id(self) -> str:
         return f"{self.provider}:{self.kind}:{self.name}"
+
+
+def file_times(path: Path) -> tuple[datetime, datetime | None]:
+    """(modified, created) for one asset file, from a single stat.
+
+    `st_birthtime` is macOS and the BSDs; Linux's stat carries no birth time at
+    all, and there the created half is **None rather than the mtime** — an asset
+    edited yesterday would otherwise claim to have been written yesterday, and
+    the field exists precisely to tell an old asset from a new one. A confidently
+    wrong date is worse than an absent one.
+
+    A birth time later than the mtime means the inode was replaced (a copy, a
+    restore, a checkout) while the content is provably older, so the earlier of
+    the two is reported: created after updated is a contradiction on its face.
+    """
+    stat = path.stat()
+    updated = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+    birthtime = getattr(stat, "st_birthtime", None)
+    if birthtime is None:
+        return updated, None
+    return updated, min(datetime.fromtimestamp(birthtime, tz=UTC), updated)
 
 
 @dataclass(frozen=True)

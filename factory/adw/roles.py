@@ -83,6 +83,11 @@ VARIABLES: dict[str, str] = {
         "the required-field envelope contract for this role, worded for its write "
         "boundary — a read-only role is shown an empty `changed_files`"
     ),
+    "output_contract": (
+        "the same contract in three lines, for a role's `system.md` — the only text "
+        "re-sent on every correction; put it there when a role keeps failing the "
+        "envelope gate, and nowhere else, because it costs tokens on every turn"
+    ),
 }
 
 _PLACEHOLDER = re.compile(r"\{\{([^}\n]*)\}\}")
@@ -205,22 +210,70 @@ _SYSTEM = {
 Read the repo, then write an implementation plan to `plan.md`: the change in one
 paragraph, the files to add or change with why, the data/contract impact, the
 test strategy, and the risks. Be concrete about paths. Do not implement anything.
+
+Before you write the plan, load the house skill for the stack you are touching, with
+the Skill tool — a Python/FastAPI change → `backend-dev`, a React change →
+`frontend-dev`, an Expo/React Native change → `mobile-dev`. Only a skill listed as
+available to you, and only one that matches: a mobile skill on a Python backend is a
+wasted turn, and none matching means you load none. Plan to what the skill says.
+
+{{output_contract}}
 """,
     "build": """You are the BUILD stage of a deterministic, unattended pipeline.
 Implement the plan in the repo, tests included. You have no shell: the runner
 executes the repo's own test and lint commands after you finish, so make the code
 correct rather than claiming it is. Keep the change minimal and in the repo's style.
+
+Before you edit, load the house skill for the stack you are changing, with the Skill
+tool — `backend-dev` for Python/FastAPI, `frontend-dev` for React, `mobile-dev` for
+Expo/React Native, plus `tdd` when you write the tests and `concise-comments` when
+you write comments. Only skills listed as available to you, and only ones that match:
+a mobile skill on a Python backend is a wasted turn. Build to what the skill says.
 """,
     "review": """You are the REVIEW stage of a deterministic, unattended pipeline.
-Review the work on two axes: (1) Standards — does it follow this repo's documented
-conventions and layering? (2) Spec — does it do what the original request and the
-plan asked, no more and no less? You are READ-ONLY: you write no files, so your own
-`changed_files` is always `[]` — never repeat the files the stage under review
-changed. Report findings that must be fixed in `blocking` (one clear, actionable
-sentence each, naming the file); set `approved: true` only when `blocking` is empty.
-Disapproval is a verdict, not a status: however wrong the work is, say so with
-`approved: false` and the reasons in `blocking`, and let the runner loop it back to
-the builder. `status: "blocked"` says only that you could not review at all.
+You are READ-ONLY: you write no files, so your own `changed_files` is always `[]` —
+never repeat the files the stage under review changed. You have no shell, so read the
+changed files rather than diffing them.
+
+Judge the work on two axes, answered as two separate questions — they fail
+differently, and a reviewer that blurs them reports only whichever it noticed first.
+
+STANDARDS — does the code follow the standards this repo documents, its conventions
+and its layering? Its authority is the shared conventions you are shown, whatever the
+repo itself documents, the house skill you load below, and the style of the code
+already around the change — never your own taste. Where none of those speak, fall
+back to the classic smells: duplicated logic, mysterious names, speculative
+generality, primitive obsession, feature envy, shotgun surgery. A documented repo
+rule always beats that fallback, and anything the repo's own linter, formatter or
+type checker enforces is never your finding — the runner runs those itself.
+
+SPEC — does the change do what was asked, no more and no less? Its authority is the
+original request, plus `plan.md` if a planner wrote one; where those two disagree the
+request wins, and there is nothing else to appeal to. Look for three failures:
+something asked for that is missing or half-done, behaviour nobody asked for, and a
+requirement that looks implemented but is implemented wrongly. Quote the words you
+are holding the code to.
+
+Work can pass one axis and fail the other, so `summary` gives a verdict for EACH,
+including the one that passed — neither axis stands in for the other.
+
+Findings that must be fixed go in `blocking`: one clear, actionable sentence each,
+naming the file, and opening with the axis it came from — `Standards:` or `Spec:` is
+all the builder is told about which question it failed. Anything you would not send
+the work back for — a judgement call, a nit, a preference — goes in `summary` and
+never in `blocking`, because every blocking entry costs the run another build round.
+Set `approved: true` only when `blocking` is empty. Disapproval is a verdict, not a
+status: however wrong the work is, say so with `approved: false` and the reasons in
+`blocking`, and let the runner loop it back to the builder. `status: "blocked"` says
+only that you could not review at all.
+
+Before you judge, load the house skill for the stack under review, with the Skill
+tool — `backend-dev` for Python/FastAPI, `frontend-dev` for React, `mobile-dev` for
+Expo/React Native, plus `architecture-review` when the change crosses the
+frontend/backend boundary. Only skills listed as available to you, and only ones that
+match: a mobile skill on a Python backend is a wasted turn. Not `code-review` — its
+method is the two axes above and you already have it; the skill itself only adds the
+sub-agents and the `git diff` you have no tools for. Judge against what the skill says.
 """,
     "document": """You are the DOCUMENT stage of a deterministic, unattended pipeline.
 Update the user-facing documentation to match what was built — README, docs pages,
@@ -811,6 +864,12 @@ class RoleStore:
         seeded: dict[str, str] = {}
         for entry in self.audit():
             if entry.state == CURRENT:
+                # Nothing to write — but a file byte-identical to the built-in is
+                # PROOF that it carries no edit, and a library seeded before the
+                # record existed has no other way to say so. Remember it now, or the
+                # next improvement to this default reads as the user's own work and
+                # is skipped forever.
+                seeded.setdefault(entry.key, digest(entry.builtin))
                 continue
             if entry.state == EDITED and not overwrite_edited:
                 skipped.append(entry)

@@ -8,13 +8,12 @@ Roots:
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from app.providers.base import ScannedAsset, SnapshotTree, resolve_within_roots
+from app.providers.base import ScannedAsset, SnapshotTree, file_times, resolve_within_roots
 
 _KIND_SKILL = "skill"
 _KIND_AGENT = "agent"
@@ -68,17 +67,13 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _mtime(path: Path) -> datetime:
-    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
-
-
 def build_asset(
     provider: str, kind: str, name: str, path: Path, *, read_only: bool = False
 ) -> ScannedAsset | None:
     """Read one asset file into a ScannedAsset; None if the file is unreadable."""
     try:
         content = _read(path)
-        updated_at = _mtime(path)
+        updated_at, created_at = file_times(path)
     except OSError:
         return None
     meta = parse_frontmatter(content)
@@ -93,6 +88,7 @@ def build_asset(
         content=content,
         read_only=read_only,
         model=_meta_model(meta),
+        created_at=created_at,
     )
 
 

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from adw.agent import AgentSession
+from adw.agent import RUN_ID_ENV, STAGE_ENV, AgentSession
 from adw.config import load_config
 from conftest import FakeCLI, envelope
 
 
-def session(repo: Path, stage: str = "build", **kwargs) -> AgentSession:
+def session(repo: Path, stage: str = "build", run_id: str = "a1b2c3d4", **kwargs) -> AgentSession:
     cfg = load_config(repo)
     resolved = cfg.stages[stage]
     return AgentSession(
@@ -18,6 +19,7 @@ def session(repo: Path, stage: str = "build", **kwargs) -> AgentSession:
         cwd=repo,
         disallowed_tools=resolved.disallowed_tools,
         timeout_seconds=60,
+        run_id=run_id,
         **kwargs,
     )
 
@@ -61,6 +63,41 @@ def test_resume_only_after_a_session_exists(git_repo: Path):
     agent.session_id = "abc-123"
     args = agent.build_args("x", resume=True)
     assert args[args.index("--resume") + 1] == "abc-123"
+
+
+def test_every_child_states_the_run_and_the_stage_it_belongs_to(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """masterwork links a child session to its run by these two variables. A resumed
+    turn is its own process, so it has to say the same thing the first one did."""
+    spec = {"session_id": "sess-E", "envelope": envelope(changed_files=[])}
+    agent = session(git_repo, run_id="deadbeef")
+    fake_cli.script([spec, dict(spec)])
+
+    agent.send("first")
+    agent.send("correction")
+
+    first, correction = fake_cli.calls
+    assert correction["resume"] == "sess-E"
+    for call in (first, correction):
+        assert call["env"][RUN_ID_ENV] == "deadbeef"
+        assert call["env"][STAGE_ENV] == "build"
+    # Added to the user's environment, not substituted for it: the CLI still needs
+    # the PATH, credentials and config it was going to be started with.
+    assert first["path"] == os.environ["PATH"]
+
+
+def test_a_run_id_inherited_from_an_outer_run_is_overwritten(
+    git_repo: Path, monkeypatch
+):
+    """A factory started from inside another factory's child is not that run."""
+    monkeypatch.setenv(RUN_ID_ENV, "the-outer-run")
+    monkeypatch.setenv(STAGE_ENV, "plan")
+
+    env = session(git_repo, run_id="mine").build_env()
+
+    assert env[RUN_ID_ENV] == "mine"
+    assert env[STAGE_ENV] == "build"
 
 
 def test_send_parses_stream_json(git_repo: Path, fake_cli: FakeCLI):

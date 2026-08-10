@@ -8,7 +8,8 @@ file of the shape::
      "default": {...}}
 
 Every invocation is appended to FACTORY_FAKE_LOG so tests can assert on the argv
-(``--resume``, ``--disallowedTools``, the prompt text).
+(``--resume``, ``--disallowedTools``, the prompt text) and on the environment the
+child was actually handed (``env`` = the MASTERWORK_* vars, ``path`` = inheritance).
 """
 
 from __future__ import annotations
@@ -84,7 +85,15 @@ def main() -> int:
     with _log_path(script).open("a", encoding="utf-8") as handle:
         handle.write(
             json.dumps(
-                {"n": index, "argv": argv, "cwd": str(cwd), "resume": resume, "prompt": prompt}
+                {
+                    "n": index,
+                    "argv": argv,
+                    "cwd": str(cwd),
+                    "resume": resume,
+                    "prompt": prompt,
+                    "env": {k: v for k, v in os.environ.items() if k.startswith("MASTERWORK_")},
+                    "path": os.environ.get("PATH", ""),
+                }
             )
             + "\n"
         )

@@ -112,6 +112,27 @@ def test_the_builtin_defaults_reproduce_the_hardcoded_prompts(tmp_path: Path, ro
     only in `system.md`, because a role library seeded before the rule existed keeps
     its own copy of that file forever. Only a role that owes an `approved` field is
     shown it (`envelopes.owes_a_verdict`), so plan/build/document stay byte-identical.
+
+    THIRD and FOURTH divergences (2026-08-10), both from the app's own analytics and
+    both in the role IDENTITIES rather than the compiled contract:
+
+    * plan/build/review each name the house skill to load for the stack they are
+      touching. 39 stage children across 11 runs made only Read/Edit/Glob/Write/Grep
+      calls — zero `Skill` calls — while a large skill library sat unused. `document`
+      names none (no documentation skill exists to name) and stays byte-identical.
+    * `plan` also carries `{{output_contract}}`. It failed the `envelope` gate on 3 of
+      6 attempts where build/review/document failed 0 of 11, and all three failures
+      were correction attempts of one turn: a correction resends only the one-line
+      `ENVELOPE_REMINDER`, so the field list and the status enum were last seen many
+      tool results earlier. The system prompt is the one text `AgentSession` re-sends
+      on every `--resume`, so that is where the restatement goes — for the one role
+      measured needing it, since it costs tokens on every turn of every run.
+
+    FIFTH divergence (2026-08-11), `review` again: its identity now carries the two-axis
+    review METHOD rather than only the two axis names — see `test_review_method.py` for
+    what is mandatory and why. It is lifted from the user's `code-review` skill, which
+    this role can never run (that skill spawns sub-agents over `git diff`, and every role
+    disallows `Task` and `Bash`), so the method travels and the machinery does not.
     """
     repo = golden_repo(tmp_path)
     cfg = load_config(repo)
@@ -184,6 +205,43 @@ def test_only_a_role_that_owes_a_verdict_is_told_which_axis_carries_disapproval(
     assert 'Reserve `status: "blocked"`\nfor being unable to review at all' in review
     for role in ("plan", "build", "document"):
         assert "independent axes" not in prompts.envelope_contract(cfg.stages[role])
+
+
+# --- the compact restatement, for the role that keeps failing the contract ---
+
+
+def test_the_output_contract_states_exactly_the_three_ways_plan_failed(tmp_path: Path):
+    """Run 71e16984: no fenced block, then an invented schema, then status "complete"."""
+    contract = prompts.output_contract(load_config(golden_repo(tmp_path)).stages["plan"])
+    assert "EXACTLY ONE fenced ```json block and nothing after it" in contract
+    assert "Required of the plan role: status, summary, artifacts, changed_files." in contract
+    assert "`ok`, `blocked` or `failed`" in contract
+    assert '"complete"' in contract
+
+
+def test_the_output_contract_carries_each_roles_own_required_fields(tmp_path: Path):
+    cfg = load_config(golden_repo(tmp_path))
+    assert "Required of the review role: status, summary, approved, blocking." in (
+        prompts.output_contract(cfg.stages["review"])
+    )
+    assert "Required of the build role: status, summary, changed_files." in (
+        prompts.output_contract(cfg.stages["build"])
+    )
+
+
+def test_only_the_plan_identity_pays_for_the_restatement(tmp_path: Path):
+    """It rides the SYSTEM prompt — the only text re-sent on every correction — so it
+    costs tokens on every turn. Only the role measured failing the gate carries it."""
+    repo = golden_repo(tmp_path)
+    for role in ROLES:
+        # Every role needs a workflow that contains it before it has a Stage.
+        cfg = load_config(repo, workflow="scout" if role == "scout" else None)
+        compiled = prompts.compile_prompt(
+            role=cfg.roles[role], stage=cfg.stages[role], request=REQUEST, repo=repo
+        )
+        wanted = role == "plan"
+        assert ("OUTPUT CONTRACT" in compiled.system) is wanted, role
+        assert "OUTPUT CONTRACT" not in compiled.user, role
 
 
 def test_read_only_is_read_from_the_boundary_not_from_the_role_name(tmp_path: Path):

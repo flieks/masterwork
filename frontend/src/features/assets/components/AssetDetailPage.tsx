@@ -11,12 +11,12 @@ import { CodeEditor } from '~/components/CodeEditor';
 import { toast } from '~/components/ui/sonner';
 import { UnsavedChangesDialog } from '~/components/UnsavedChangesDialog';
 import { apiErrorMessage } from '~/api/client';
-import { absoluteDate } from '~/lib/datetime';
 import { shortenPath } from '~/lib/paths';
 import { splitFrontmatter } from '~/lib/frontmatter';
 import { AssetChatPanel } from '~/features/chat';
 import { ProviderBadge } from './ProviderBadge';
 import { ModelBadge } from './ModelBadge';
+import { AssetDatesInline } from './AssetDates';
 import { AssetDiagramSection } from './AssetDiagramSection';
 import { AgentSkillsUsed } from './AgentSkillsUsed';
 import { AssetUsageLog } from './AssetUsageLog';
@@ -148,7 +148,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
           <ProviderBadge provider={data.provider} />
           <ModelBadge model={data.model} showInherit={kind === 'agent'} />
           <code className="font-mono">{shortenPath(data.path)}</code>
-          <span>Updated {absoluteDate(data.updated_at)}</span>
+          <AssetDatesInline created={data.created_at} updated={data.updated_at} />
         </div>
         {kind === 'agent' ? <AgentSkillsUsed content={data.content} /> : null}
       </header>

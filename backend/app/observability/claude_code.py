@@ -23,6 +23,7 @@ from app.core.exceptions import ObservabilityIOError, ObservabilityUnavailableEr
 from app.observability.base import (
     IntegrationState,
     IntegrationStatus,
+    forwarder_is_current,
     install_forwarder,
     resolve_interpreter,
 )
@@ -155,6 +156,18 @@ class ClaudeCodeIntegration:
                 "outdated",
                 "The hooks point at a forwarder script that is no longer on disk — an "
                 "upgrade or a cache clean removed it. Reconnecting puts it back.",
+            )
+        if not forwarder_is_current(self._forwarder, self._installed_script()):
+            # The wiring can be perfect while the script it runs is a version
+            # behind: the command string names a path, and the path does not
+            # change when its contents do. Without this, an upgrade that teaches
+            # the forwarder to report something new looks already-connected and
+            # never reports it.
+            return (
+                "outdated",
+                "The hooks are running an older copy of the forwarder than this version of "
+                "masterwork ships, so newer sessions report less than they could. Repairing "
+                "replaces the script; nothing else changes.",
             )
         return "connected", f"Recording every Claude Code session to {self._ingest_url}."
 

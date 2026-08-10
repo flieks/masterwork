@@ -185,6 +185,29 @@ async def test_stale_wiring_reads_as_outdated_and_connect_repairs_it(
         assert len(commands(settings, event)) == 1
 
 
+async def test_an_upgraded_forwarder_reads_as_outdated_even_though_the_wiring_is_perfect(
+    client: AsyncClient, wire: Path, tmp_path: Path
+) -> None:
+    """The command string names a path, and the path does not change when the
+    script behind it does. Without a content check, an upgrade that teaches the
+    forwarder to report something new looks already-connected forever — the hook
+    keeps sending the old body while the backend waits for a field that never
+    arrives, and no screen anywhere says so."""
+    r = await client.post(f"{URL}/claude-code/connect")
+    assert r.json()["state"] == "connected"
+
+    installed = Path(r.json()["script_path"])
+    installed.write_text("# a forwarder from an older release\n", encoding="utf-8")
+
+    r = await client.get(URL)
+    assert r.json()[0]["state"] == "outdated"
+    assert "older copy of the forwarder" in r.json()[0]["detail"]
+
+    r = await client.post(f"{URL}/claude-code/connect")
+    assert r.json()["state"] == "connected"
+    assert installed.read_bytes() == (FORWARDERS / "claude_code.py").read_bytes()
+
+
 async def test_disconnect_removes_only_our_hooks(client: AsyncClient, wire: Path) -> None:
     wire.write_text(
         json.dumps({"model": "opus", "hooks": {"Stop": [{"hooks": [FOREIGN_HOOK]}]}}),

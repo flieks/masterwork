@@ -94,3 +94,20 @@ def install_forwarder(source: Path, target_dir: Path, ingest_url: str) -> Path:
     config = target_dir / "config.json"
     config.write_text(json.dumps({"ingest_url": ingest_url}, indent=2) + "\n", encoding="utf-8")
     return target
+
+
+def forwarder_is_current(source: Path, target: Path) -> bool:
+    """Is the installed copy the script this install of masterwork ships?
+
+    Byte equality, not a version constant. `install_forwarder` copies the file
+    verbatim and nothing else ever writes it, so a difference means the hook is
+    running another version's code — which is exactly what an upgrade has to
+    notice. The alternative, a version field bumped by hand, is one edit away
+    from an upgrade that ships a new forwarder and reports itself already
+    current: the hook keeps forwarding the old body while the backend waits for
+    a field that will never arrive, and nothing anywhere says so.
+    """
+    try:
+        return target.read_bytes() == source.read_bytes()
+    except OSError:
+        return False

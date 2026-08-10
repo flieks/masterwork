@@ -29,10 +29,9 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
-from app.providers.base import ScannedAsset, SnapshotTree, resolve_within_roots
+from app.providers.base import ScannedAsset, SnapshotTree, file_times, resolve_within_roots
 from app.providers.claude import _KIND_AGENT, _safe_resolve
 
 # Roles are indexed under the "agent" kind: the store is literally a directory of
@@ -153,7 +152,7 @@ def _build_role_asset(
     """
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
-        stat = path.stat()
+        updated_at, created_at = file_times(path)
     except OSError:
         return None
     blurb = _PART_BLURB[part]
@@ -164,8 +163,9 @@ def _build_role_asset(
         title=f"{role} · {_PART_TITLE[part]}",
         description=f"{config.purpose} — {blurb}" if config.purpose else blurb,
         path=path,
-        updated_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
+        updated_at=updated_at,
         content=content,
         read_only=False,
         model=config.model,
+        created_at=created_at,
     )

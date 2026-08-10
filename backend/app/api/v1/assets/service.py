@@ -29,6 +29,7 @@ def _to_summary(asset: ScannedAsset) -> AssetSummary:
         description=asset.description,
         model=asset.model,
         path=str(asset.path),
+        created_at=asset.created_at,
         updated_at=asset.updated_at,
         read_only=asset.read_only,
     )

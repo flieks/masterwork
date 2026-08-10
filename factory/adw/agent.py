@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 import time
@@ -10,6 +11,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# How a stage child says whose it is. masterwork reads these off the child session
+# instead of pattern-matching the process ancestry, which depended on how the runner
+# happened to be invoked (`factory/run.py` vs `run.py` from inside the directory).
+RUN_ID_ENV = "MASTERWORK_FACTORY_RUN_ID"
+STAGE_ENV = "MASTERWORK_FACTORY_STAGE"
 
 
 class AgentError(Exception):
@@ -73,11 +80,14 @@ class AgentSession:
         claude_bin: str = "claude",
         timeout_seconds: int = 1800,
         system_prompt: str = "",
+        run_id: str = "",
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self.stage = stage
         self.model = model
         self.cwd = cwd
+        # Stamped onto every child of this session, first turn and resumes alike.
+        self.run_id = run_id
         self.disallowed_tools = disallowed_tools
         # The role's identity. Set once per session and re-sent on every resume,
         # because each CLI process builds its own system prompt from scratch.
@@ -114,6 +124,12 @@ class AgentSession:
             args += ["--resume", self.session_id]
         return args
 
+    def build_env(self) -> dict[str, str]:
+        """The user's own environment — PATH, credentials, CLI config — plus this
+        run's identity. Set, never merely defaulted: a factory launched from inside
+        another factory's child must not inherit that run's id."""
+        return {**os.environ, RUN_ID_ENV: self.run_id, STAGE_ENV: self.stage}
+
     def send(self, prompt: str) -> AgentTurn:
         self._tool_started.clear()
         args = self.build_args(prompt, resume=self.session_id is not None)
@@ -121,6 +137,7 @@ class AgentSession:
             proc = subprocess.Popen(
                 args,
                 cwd=str(self.cwd),
+                env=self.build_env(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

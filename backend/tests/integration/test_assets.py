@@ -58,6 +58,17 @@ async def test_get_asset_detail(assets_client: AsyncClient) -> None:
     assert "Use React and Vite." in body["content"]
 
 
+async def test_assets_carry_a_creation_date_on_the_wire(assets_client: AsyncClient) -> None:
+    """Both the summary and the detail: the list is where a user compares ages."""
+    listed = (await assets_client.get("/api/v1/assets")).json()
+    detail = (await assets_client.get(_url("claude:skill:frontend-dev"))).json()
+
+    for asset in [*listed, detail]:
+        assert "created_at" in asset  # null is a legitimate answer, absence is not
+        if asset["created_at"] is not None:
+            assert asset["created_at"] <= asset["updated_at"]
+
+
 async def test_get_asset_unknown_404(assets_client: AsyncClient) -> None:
     r = await assets_client.get(_url("claude:skill:does-not-exist"))
     assert r.status_code == 404

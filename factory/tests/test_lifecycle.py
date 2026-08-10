@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import run as cli
 from adw import agent, gitwork, runs
-from adw.agent import AgentSession
+from adw.agent import RUN_ID_ENV, STAGE_ENV, AgentSession
 from adw.config import load_config
 from adw.pipeline import REUSED, Pipeline, RunResult, format_summary
 from adw.telemetry import Telemetry
@@ -170,6 +170,22 @@ def test_resume_skips_the_committed_stage_and_re_runs_the_interrupted_one(
     # The planner was never called again; every later call is the resumed work.
     assert [call["n"] for call in fake_cli.calls[calls_before:]] == [2, 3, 4]
     assert "Plan the health endpoint" in fake_cli.calls[2]["prompt"]  # the reused envelope
+
+
+def test_a_resumed_run_labels_its_children_with_the_run_it_is_resuming(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """Attempt two is the same run, so its children must not claim a new id."""
+    stop_on_budget(git_repo, fake_cli)
+    calls_before = len(fake_cli.calls)
+
+    result, _, _ = resume_run(git_repo)
+    assert result.accepted, result.reason
+
+    resumed_calls = fake_cli.calls[calls_before:]
+    assert resumed_calls  # the resumed attempt really did launch children
+    assert {call["env"][RUN_ID_ENV] for call in fake_cli.calls} == {RUN_ID}
+    assert [call["env"][STAGE_ENV] for call in resumed_calls] == ["build", "review", "document"]
 
 
 def test_resume_lands_on_the_original_branch_with_one_continuous_history(

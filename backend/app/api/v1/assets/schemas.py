@@ -28,6 +28,11 @@ class AssetSummary(BaseModel):
         None, description="Frontmatter model, null when the asset inherits the session model."
     )
     path: str = Field(..., description="Absolute path to the file on disk.")
+    created_at: datetime | None = Field(
+        None,
+        description="Filesystem birth time, never later than updated_at. Null where the "
+        "platform records none (Linux) — an absent date rather than a wrong one.",
+    )
     updated_at: datetime = Field(..., description="File modification time.")
     read_only: bool = Field(
         ..., description="True for plugin-provided assets; PUT is rejected with 403."

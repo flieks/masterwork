@@ -52,6 +52,55 @@ def test_huge_tool_payloads_collapse_instead_of_being_sent_whole() -> None:
     assert "_truncated" in body["payload"]["tool_response"]
 
 
+def test_a_stage_child_forwards_what_the_runner_told_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(forwarder.FACTORY_RUN_ID_ENV, "abc123")
+    monkeypatch.setenv(forwarder.FACTORY_STAGE_ENV, "build")
+    monkeypatch.setattr(forwarder, "ancestry", lambda: [])
+
+    body = forwarder.build_body({"session_id": "s1", "hook_event_name": "SessionStart"})
+
+    assert body is not None
+    assert body["payload"]["factory_run_id"] == "abc123"
+    assert body["payload"]["factory_stage"] == "build"
+
+
+def test_an_ordinary_session_says_nothing_about_a_factory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The signal is only meaningful because it is absent everywhere else."""
+    monkeypatch.delenv(forwarder.FACTORY_RUN_ID_ENV, raising=False)
+    monkeypatch.delenv(forwarder.FACTORY_STAGE_ENV, raising=False)
+    monkeypatch.setattr(forwarder, "ancestry", lambda: [])
+
+    body = forwarder.build_body({"session_id": "s1", "hook_event_name": "SessionStart"})
+
+    assert body is not None
+    assert "factory_run_id" not in body["payload"]
+    assert "factory_stage" not in body["payload"]
+
+
+def test_a_stage_name_that_went_missing_still_leaves_the_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(forwarder.FACTORY_RUN_ID_ENV, "abc123")
+    monkeypatch.setenv(forwarder.FACTORY_STAGE_ENV, "   ")
+    monkeypatch.setattr(forwarder, "ancestry", lambda: [])
+
+    body = forwarder.build_body({"session_id": "s1", "hook_event_name": "SessionStart"})
+
+    assert body is not None
+    assert body["payload"]["factory_run_id"] == "abc123"
+    assert "factory_stage" not in body["payload"]
+
+
+def test_the_signal_only_rides_session_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeating it on every tool call would bloat the stream to say the same thing."""
+    monkeypatch.setenv(forwarder.FACTORY_RUN_ID_ENV, "abc123")
+    body = forwarder.build_body(
+        {"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "Read"}
+    )
+    assert body is not None
+    assert "factory_run_id" not in body["payload"]
+
+
 def test_headless_prompts_are_redacted_from_the_process_ancestry() -> None:
     assert forwarder.redact("claude -p 'rewrite my secret prompt'") == "claude -p …"
     assert forwarder.redact("node /usr/bin/masterwork") == "node /usr/bin/masterwork"

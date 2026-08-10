@@ -330,7 +330,144 @@ async def _stage_child(client: AsyncClient, session_id: str, repo: str) -> None:
     )
 
 
+async def _stated_child(
+    client: AsyncClient,
+    session_id: str,
+    run_id: str,
+    stage: str | None = "build",
+    *,
+    cwd: str | None = None,
+    launched_by: list[str] | None = None,
+) -> None:
+    """A stage child that carries what the runner exported into its environment.
+
+    Deliberately default to no cwd and no ancestry: the whole point of the
+    signal is that neither is needed.
+    """
+    payload: dict[str, Any] = {"factory_run_id": run_id}
+    if stage is not None:
+        payload["factory_stage"] = stage
+    if launched_by is not None:
+        payload["launched_by"] = launched_by
+    await _ingest(
+        client,
+        session_id=session_id,
+        event_type="SessionStart",
+        cwd=cwd,
+        payload=payload,
+    )
+
+
+async def test_a_stated_stage_child_links_without_a_cwd_or_an_ancestry(
+    client: AsyncClient,
+) -> None:
+    """The signal the runner exports is enough on its own — no cwd, no argv, no
+    time window. This is the case the inference got silently wrong: invoke the
+    runner from inside `factory/` and its argv reads `run.py`, matching nothing.
+    """
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _stated_child(client, "child-1", "abc", "build")
+
+    child = await _session(client, "child-1")
+    assert child["parent_session_id"] == "factory-abc"
+    assert (child["title"], child["title_source"]) == ("build stage · factory-abc", "provenance")
+    assert (await _session(client, "factory-abc"))["child_count"] == 1
+
+
+async def test_the_runner_beats_the_ancestry_when_the_two_disagree(client: AsyncClient) -> None:
+    """Explicit wins. The cwd and the launcher chain both point at the other
+    run; what the runner said about itself decides."""
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _factory_run(client, "factory-xyz", "/other", "review")
+    await _stated_child(
+        client,
+        "child-1",
+        "abc",
+        "build",
+        cwd="/other",
+        launched_by=[
+            "24196 /Users/me/.local/bin/claude -p …",
+            "21540 /usr/bin/python factory/run.py --repo /other the request",
+        ],
+    )
+
+    child = await _session(client, "child-1")
+    assert child["parent_session_id"] == "factory-abc"
+    assert child["title"] == "build stage · factory-abc"
+
+
+async def test_a_stated_child_launched_from_inside_the_factory_dir_still_links(
+    client: AsyncClient,
+) -> None:
+    """The exact regression: an ancestry the regex cannot match at all."""
+    await _factory_run(client, "factory-abc", "/repo", "plan")
+    await _stated_child(
+        client,
+        "child-1",
+        "abc",
+        "plan",
+        cwd="/repo/factory",
+        launched_by=["24196 claude -p …", "21540 python run.py --repo .. the request"],
+    )
+
+    assert (await _session(client, "child-1"))["parent_session_id"] == "factory-abc"
+
+
+async def test_a_stated_child_is_automated_whatever_its_ancestry_looks_like(
+    client: AsyncClient,
+) -> None:
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _stated_child(client, "child-1", "abc", "build", launched_by=["21540 /bin/zsh"])
+
+    assert (await _session(client, "child-1"))["launch_mode"] == "automated"
+
+
+async def test_a_stated_run_that_was_never_recorded_leaves_the_child_a_root(
+    client: AsyncClient,
+) -> None:
+    """A parent id pointing at nothing would hide the run from the grid without
+    putting it under anything — worse than an orphan, because it is invisible."""
+    await _stated_child(client, "child-1", "never-recorded", "build")
+
+    child = await _session(client, "child-1")
+    assert child["parent_session_id"] is None
+    assert [s["id"] for s in await _list(client, include_automated=True, roots_only=True)] == [
+        "child-1"
+    ]
+
+
+async def test_a_replay_links_a_child_whose_run_was_recorded_after_it(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """The signal is stored on the event, so a rebuild reaches the same verdict
+    a live ingest would have — which is how an out-of-order start is repaired."""
+    await _stated_child(client, "child-1", "abc", "review")
+    await _factory_run(client, "factory-abc", "/repo", "review")
+
+    async with session_factory() as db:
+        await service.backfill_session(db, "child-1")
+        await db.commit()
+
+    child = await _session(client, "child-1")
+    assert child["parent_session_id"] == "factory-abc"
+    assert child["title"] == "review stage · factory-abc"
+
+
+async def test_a_stated_child_with_no_stage_name_still_lands_under_its_run(
+    client: AsyncClient,
+) -> None:
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _stated_child(client, "child-1", "abc", stage=None)
+
+    child = await _session(client, "child-1")
+    assert child["parent_session_id"] == "factory-abc"
+    assert child["title"] == "stage · factory-abc"
+
+
 async def test_a_factory_stage_child_is_titled_and_linked(client: AsyncClient) -> None:
+    """The legacy inference, kept for every session recorded before the runner
+    started stating its own provenance: no signal in the payload, so the
+    ancestry and the cwd are all there is to go on."""
     await _factory_run(client, "factory-abc", "/repo", "build")
     await _stage_child(client, "child-1", "/repo")
 

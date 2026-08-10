@@ -2801,6 +2801,19 @@
                         "title": "Path",
                         "description": "Absolute path to the file on disk."
                     },
+                    "created_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created At",
+                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) \u2014 an absent date rather than a wrong one."
+                    },
                     "updated_at": {
                         "type": "string",
                         "format": "date-time",
@@ -3001,6 +3014,19 @@
                         "type": "string",
                         "title": "Path",
                         "description": "Absolute path to the file on disk."
+                    },
+                    "created_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created At",
+                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) \u2014 an absent date rather than a wrong one."
                     },
                     "updated_at": {
                         "type": "string",

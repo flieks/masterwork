@@ -196,6 +196,45 @@ def test_a_write_flag_without_refresh_roles_is_refused_not_ignored(git_repo: Pat
     assert "--apply and --overwrite-edited only apply to --refresh-roles" in capsys.readouterr().err
 
 
+def test_applying_a_refresh_records_the_files_that_match_the_builtin_today(git_repo: Path):
+    """A library seeded before the record existed has no proof of authorship, so its
+    files can only be reported EDITED once the built-in moves on — and then every later
+    improvement is skipped forever. A file byte-identical to the built-in TODAY is that
+    proof, and `--apply` is where it gets written down."""
+    store = seeded_library(git_repo)
+    store.seed_record_path.unlink()
+    assert states(store)["plan/system.md"] == CURRENT  # provably ours, right now
+
+    store.refresh()  # nothing to write for that file — but the proof is recorded
+    stale = store.global_dir / "plan" / SYSTEM_FILE
+    real = roles.builtin_text
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            roles,
+            "builtin_text",
+            lambda r, f: "AN IMPROVED PLANNER\n" if (r, f) == ("plan", SYSTEM_FILE) else real(r, f),
+        )
+        assert states(store)["plan/system.md"] == PRISTINE
+        updated, _, backed_up = store.refresh()
+
+    assert [e.key for e in updated] == ["plan/system.md"]
+    assert backed_up == []  # ours, so no .bak and no --overwrite-edited needed
+    assert stale.read_text() == "AN IMPROVED PLANNER\n"
+
+
+def test_a_file_the_user_really_edited_is_never_recorded_as_ours(git_repo: Path):
+    store = seeded_library(git_repo)
+    store.seed_record_path.unlink()
+    mine = store.global_dir / "review" / SYSTEM_FILE
+    mine.write_text(MY_TEXT, encoding="utf-8")
+
+    _, skipped, _ = store.refresh()
+
+    assert [e.key for e in skipped] == ["review/system.md"]
+    assert states(store)["review/system.md"] == EDITED
+    assert mine.read_text() == MY_TEXT
+
+
 def test_seeding_records_what_it_wrote_so_the_next_refresh_can_tell(git_repo: Path):
     store = seeded_library(git_repo)
     record = store.seed_record_path

@@ -750,6 +750,8 @@ class Pipeline:
             disallowed_tools=stage.disallowed_tools,
             claude_bin=self.cfg.claude_bin,
             timeout_seconds=self.cfg.timeout_seconds,
+            # A resumed run keeps its original id, so its children stay on the same run.
+            run_id=self.cfg.run_id,
             on_event=on_event,
         )
 

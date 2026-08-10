@@ -225,6 +225,12 @@ export interface AssetDetail {
      */
     'path': string;
     /**
+     * 
+     * @type {string}
+     * @memberof AssetDetail
+     */
+    'created_at'?: string | null;
+    /**
      * File modification time.
      * @type {string}
      * @memberof AssetDetail
@@ -411,6 +417,12 @@ export interface AssetSummary {
      * @memberof AssetSummary
      */
     'path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSummary
+     */
+    'created_at'?: string | null;
     /**
      * File modification time.
      * @type {string}

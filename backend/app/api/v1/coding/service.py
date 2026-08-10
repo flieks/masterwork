@@ -170,12 +170,55 @@ def _launcher_chain(payload: dict[str, Any] | None) -> list[str]:
     return [e for e in chain if isinstance(e, str)] if isinstance(chain, list) else []
 
 
-# The pipeline runner, seen from a stage child's ancestry. A chain entry is
-# "<pid> <argv>", so the script name follows either a path separator or the
-# space after the interpreter — both have to count. Its `--repo` argument is the
+# LEGACY fallback only. The pipeline runner, seen from a stage child's ancestry:
+# a chain entry is "<pid> <argv>", so the script name follows either a path
+# separator or the space after the interpreter. Its `--repo` argument is the
 # fallback when the child's own event carried no cwd.
+#
+# This is inference, and it is wrong in a way that is silent: launching the
+# runner from inside `factory/` makes the argv read `run.py`, no child is
+# linked, and the parent then reports no skills used while its children loaded
+# three. It is kept for sessions recorded before the runner started stating its
+# own provenance — never as the first thing tried.
 _FACTORY_LAUNCH = re.compile(r"(?:^|[/\s])factory/run\.py(?:\s|$)")
 _REPO_ARG = re.compile(r"--repo[= ]+(\S+)")
+
+# The runner's own session id, which is what a stated run id resolves to.
+# `telemetry.py` builds the same string; the two must not drift.
+FACTORY_SESSION_PREFIX = "factory-"
+
+# Where the runner states its provenance in a SessionStart body — the forwarder
+# copies `MASTERWORK_FACTORY_RUN_ID` / `MASTERWORK_FACTORY_STAGE` into these.
+FACTORY_RUN_ID_KEY = "factory_run_id"
+FACTORY_STAGE_KEY = "factory_stage"
+
+
+@dataclass(frozen=True, slots=True)
+class _StatedStage:
+    """What the pipeline runner told a stage child it is — an explicit signal,
+    not something read off a process tree."""
+
+    run_id: str
+    stage: str | None
+
+    @property
+    def parent_session_id(self) -> str:
+        return f"{FACTORY_SESSION_PREFIX}{self.run_id}"[:MAX_SESSION_ID]
+
+
+def _stated_stage(payload: dict[str, Any] | None) -> _StatedStage | None:
+    """Read the runner's own statement out of a SessionStart body, or None.
+
+    Permissive like the rest of ingest: a malformed half is dropped, never 422'd.
+    """
+    run_id = (payload or {}).get(FACTORY_RUN_ID_KEY)
+    if not isinstance(run_id, str) or not run_id.strip():
+        return None
+    stage = (payload or {}).get(FACTORY_STAGE_KEY)
+    return _StatedStage(
+        run_id=run_id.strip(),
+        stage=stage.strip() if isinstance(stage, str) and stage.strip() else None,
+    )
 
 
 def _set_title(session: CodingSession, title: str | None, source: str) -> None:
@@ -190,18 +233,50 @@ def _set_title(session: CodingSession, title: str | None, source: str) -> None:
     session.title_source = source
 
 
+def _stage_title(stage: str | None, parent_id: str) -> str:
+    return f"{stage} stage · {parent_id}" if stage else f"stage · {parent_id}"
+
+
+def _adopt(session: CodingSession, parent_id: str, stage: str | None) -> None:
+    session.parent_session_id = parent_id
+    _set_title(session, _stage_title(stage, parent_id), TITLE_PROVENANCE)
+
+
 async def _link_provenance(
-    db: AsyncSession, session: CodingSession, chain: list[str], now: datetime
+    db: AsyncSession,
+    session: CodingSession,
+    *,
+    stated: _StatedStage | None,
+    chain: list[str],
+    now: datetime,
 ) -> None:
     """Put a headless factory stage under the run that launched it.
 
     The runner spawns one `claude -p` per stage, so five real runs show up as
-    five orphan chat cards unless the ancestry is read: a `factory/run.py`
-    ancestor plus the repo it was pointed at identifies the parent run, and the
-    parent's stage that was open at this moment names the child.
+    five orphan chat cards unless the parent is found.
+
+    Two ways to find it, and they are not equal. The runner *states* its run id
+    and stage name in the child's environment, which the hook forwards: that
+    path reads neither the cwd, nor the launcher's argv, nor any time window, so
+    there is nothing about how the runner was invoked that can break it. Only
+    when nothing was stated — a session recorded before the runner started
+    saying so — does the old inference run: a `factory/run.py` ancestor plus the
+    repo it was pointed at identifies the run, and whichever stage of it was
+    open at this instant names the child.
     """
     if session.parent_session_id is not None:
         return
+    if stated is not None:
+        # A stated parent that was never recorded is not a parent: pointing at a
+        # session id that does not exist would hide this run from the grid
+        # (`roots_only` is `parent_session_id IS NULL`) without putting it under
+        # anything. Fall through — a replay after the run is recorded re-reads
+        # the same payload and links then.
+        parent = await coding_repo.get_session(db, stated.parent_session_id)
+        if parent is not None and parent.id != session.id:
+            _adopt(session, parent.id, stated.stage)
+            return
+
     launcher = next((e for e in chain if _FACTORY_LAUNCH.search(e)), None)
     if launcher is None:
         return
@@ -213,13 +288,8 @@ async def _link_provenance(
     parent = await coding_repo.factory_session_at(db, cwd=repo, at=now)
     if parent is None or parent.id == session.id:
         return
-    session.parent_session_id = parent.id
     stage = await coding_repo.phase_at(db, parent.id, at=now)
-    _set_title(
-        session,
-        f"{stage.name} stage · {parent.id}" if stage is not None else f"stage · {parent.id}",
-        TITLE_PROVENANCE,
-    )
+    _adopt(session, parent.id, stage.name if stage is not None else None)
 
 
 def _git_repo_for(cwd: str | None) -> str | None:
@@ -576,9 +646,16 @@ async def _apply_derived(
     """
     # Provenance rides the SessionStart payload, and is re-read on every replay
     # so a rebuilt session gets the same parent and title a live one would.
-    if chain := _launcher_chain(payload):
+    stated = _stated_stage(payload)
+    chain = _launcher_chain(payload)
+    if stated is not None:
+        # Every stage is spawned as `claude -p`; the runner saying so outranks
+        # matching a regex against what the ancestry happens to look like.
+        session.launch_mode = LAUNCH_AUTOMATED
+    elif chain:
         session.launch_mode = _launch_mode_for(chain)
-        await _link_provenance(db, session, chain, now)
+    if stated is not None or chain:
+        await _link_provenance(db, session, stated=stated, chain=chain, now=now)
 
     _set_title(session, derived.title, derived.title_source or TITLE_PROMPT)
     if derived.workflow:

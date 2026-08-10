@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../queries';
 import { usageLabel } from '../usage';
+import { AssetDatesStacked } from './AssetDates';
 import { ModelBadge } from './ModelBadge';
 
 interface AssetGridProps {
@@ -30,17 +31,15 @@ export function AssetGrid({ kind, assets }: AssetGridProps) {
                 {asset.title}
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex h-full flex-col gap-3 pb-16">
+            <CardContent className="flex h-full flex-col gap-3 pb-20">
               <p className="line-clamp-3 text-sm text-muted-foreground">
                 {asset.description || <span className="italic">No description</span>}
               </p>
             </CardContent>
             <div className="absolute inset-x-4 bottom-4 flex flex-col gap-1.5">
               <UsageLine usage={usage?.get(asset.name)} pending={isPending} />
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs text-muted-foreground">
-                  Edited {relativeTime(asset.updated_at)}
-                </span>
+              <div className="flex items-end justify-between gap-2">
+                <AssetDatesStacked created={asset.created_at} updated={asset.updated_at} />
                 <ModelBadge model={asset.model} showInherit={kind === 'agent'} compact />
               </div>
             </div>

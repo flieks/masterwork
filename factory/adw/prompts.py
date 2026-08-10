@@ -86,6 +86,34 @@ Findings listed under a non-ok `status` are read as a rejection and loop back to
 builder anyway."""
 
 
+# The full contract above is stated once, at the end of the user message, and is
+# never repeated: a gate correction resends only `ENVELOPE_REMINDER`, one line with
+# no field list and no status enum in it. The system prompt is the only text a turn
+# is guaranteed to carry — `AgentSession` re-sends it on every `--resume` — so a role
+# that keeps failing the contract gets it restated there, compactly.
+#
+# Measured on the plan role (2026-08-10, run 71e16984): three failed attempts of one
+# turn — no fenced block at all, then a self-invented schema
+# (`stage`/`task`/`files_modified`/`complete`), then `"status": "complete"`. Those
+# three failures are exactly the three sentences below, and nothing more.
+_OUTPUT_CONTRACT = """OUTPUT CONTRACT — restated here because this is the only text re-sent on every turn:
+end your reply with EXACTLY ONE fenced ```json block and nothing after it, using these
+exact key names and not a schema of your own.
+Required of the {stage} role: {required}.
+`status` is spelled exactly `ok`, `blocked` or `failed` — never "complete", never "done"."""
+
+
+def output_contract(stage: Stage) -> str:
+    """The compact restatement a role carries in its SYSTEM prompt, if it needs one.
+
+    Opt-in per role, by using `{{output_contract}}` in that role's `system.md`:
+    over-stating the contract in every role costs tokens on every run forever, and
+    only `plan` was measured failing it.
+    """
+    required = ", ".join(REQUIRED_FIELDS.get(stage.name, ("status", "summary")))
+    return _OUTPUT_CONTRACT.format(stage=stage.name, required=required)
+
+
 def envelope_contract(stage: Stage) -> str:
     """The envelope skeleton, worded for this role's own write boundary."""
     fields = _READ_ONLY_FIELDS if stage.read_only else _WRITER_FIELDS
@@ -172,6 +200,7 @@ def template_values(
         ),
         "boundary": boundary_clause(stage),
         "envelope_contract": envelope_contract(stage),
+        "output_contract": output_contract(stage),
     }
 
 

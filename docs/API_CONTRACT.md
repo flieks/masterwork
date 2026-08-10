@@ -1905,3 +1905,127 @@ field changed type; the client regenerates and existing readers keep working.
   (`coding_sessions`, `coding_phases`, `coding_agents`, `coding_assets`,
   `coding_envelopes`, `coding_gate_checks`) through their existing indexes. No
   migration.
+
+---
+
+# API Contract v1.21 — Stated provenance, and when an asset was written (FROZEN additions)
+
+Additive on top of v1.20. Two unrelated corrections that share one theme: a
+number the app was confident about and had no right to be.
+
+A pipeline's stage children were attached to their run by *inference* — a regex
+for `factory/run.py` in the launcher's process ancestry, then the run that owned
+that working directory at that instant. Invoke the runner from inside `factory/`
+and its argv reads `run.py`, the regex matches nothing, no child is linked, and
+the parent run then reports **no skills used** while its children happily loaded
+three. Nothing failed, nothing was logged, and the answer on the screen was
+wrong. That is the exact category of failure this app exists to eliminate, so
+the runner now *states* what it launched and the inference is demoted to a
+fallback for sessions recorded before it did.
+
+Separately, assets exposed `updated_at` and no creation date, so a skill written
+in July and a skill written yesterday were indistinguishable in a list sorted by
+the only date there was.
+
+## Changed schemas
+
+```
+AssetSummary {                        // and AssetDetail, which extends it
+  …unchanged…
++ created_at: string | null           // ISO-8601; null where the platform records none
+}
+```
+
+`created_at` is **nullable and always present**. Every existing field is
+untouched, so the generated client gains one optional property.
+
+## The stage-child signal (the frozen half of the runner contract)
+
+The runner exports two variables into the environment of each `claude -p` stage
+child:
+
+| Environment variable | Meaning |
+|---|---|
+| `MASTERWORK_FACTORY_RUN_ID` | the run's id — **not** the session id |
+| `MASTERWORK_FACTORY_STAGE` | the stage's name, e.g. `build` |
+
+The Claude Code forwarder copies them into the **`SessionStart` event's
+`payload`**, under exactly these keys:
+
+```
+POST /api/v1/hooks/events
+{
+  "session_id": "…",
+  "event_type": "SessionStart",
+  "payload": {
+    "factory_run_id": "abc123",       // MASTERWORK_FACTORY_RUN_ID, trimmed, ≤200 chars
+    "factory_stage": "build",         // MASTERWORK_FACTORY_STAGE, trimmed, ≤100 chars
+    "launched_by": [ … ],             // unchanged
+    "source": "…", …
+  }
+}
+```
+
+`payload` is already free-form on `HookEventRequest`, so **no request schema
+changed** and no client regeneration is needed for this half.
+
+## Behavior
+
+- **Explicit beats inferred, always.** A `factory_run_id` in the payload
+  resolves to the parent session id `factory-<run_id>` — the same string
+  `telemetry.py` builds for the runner's own session — and that is the parent.
+  The cwd, the launcher's argv and the time window are not consulted, so there
+  is nothing about *how* the runner was invoked that can break the link. Where
+  the stated parent and the inferred one disagree, the stated one wins: it is a
+  statement by the process that did the launching, and the other is a guess
+  about a command line.
+- **The stage name comes from the runner, not from a `phase_at` lookup.** The
+  title is rendered the same as before — `"<stage> stage · factory-<run_id>"`,
+  `title_source: "provenance"` — so nothing downstream re-learns a format. A
+  child that carried a run id but no stage name is titled `"stage · <parent>"`
+  and still linked: a missing stage name costs a title, not the attachment.
+- **The signal rides `SessionStart` only.** Repeating it on every tool call
+  would multiply the stream to say the same thing once per event.
+- **A stated run that was never recorded does not become a parent.** Pointing
+  `parent_session_id` at a session id that does not exist would remove the run
+  from the grid (`roots_only` is `parent_session_id IS NULL`) *without* filing
+  it under anything — invisible is worse than orphaned. The child stays a root,
+  and because the signal is stored on the event, `POST
+  /coding-sessions/{id}/backfill` links it once the run is recorded. This is
+  also what makes an out-of-order start repairable rather than permanent.
+- **A stated child is `automated` whatever its ancestry looks like.** Every
+  stage is spawned as `claude -p`; the runner saying so outranks matching
+  `_HEADLESS_LAUNCH` against whatever the process tree happens to read as.
+- **The regex path still works, and is now explicitly the legacy one.** Every
+  session recorded before this change carries a `launched_by` chain and no
+  stated signal, and links exactly as it did in v1.13. Backfill replays reach
+  the same verdict as a live ingest either way, because both read the stored
+  payload.
+- **A forwarder upgrade is now detectable.** `GET
+  /observability/integrations` compared the *hook command strings* and the
+  *existence* of the installed script, and a command string names a path that
+  does not change when the script behind it does. An install shipping a new
+  forwarder therefore read as `connected` while the hook on disk kept sending
+  the old body — the backend waiting for a field that would never arrive, with
+  no screen saying so. The status now also compares the installed copy's
+  **bytes** against the script this install ships, and reports `outdated` when
+  they differ; `connect` overwrites it as it always did. Byte equality rather
+  than a version constant, because a version constant is one forgotten bump away
+  from reintroducing exactly this bug.
+- **`created_at` is the filesystem birth time, and null where there is none.**
+  macOS and the BSDs record `st_birthtime`; Linux's stat carries no birth time
+  at all. The tempting fallback is the mtime, and it is a lie in precisely the
+  case the field was added for — a skill written in July and edited yesterday
+  would report *created yesterday*, answering the user's question with the
+  wrong date rather than admitting it cannot. Null says "this platform does not
+  know", which a client can render as a dash.
+- **`created_at` is never later than `updated_at`.** A copy, a restore or a
+  fresh checkout gives an old file a birth time of today while its content is
+  provably older, and *created after modified* is false on its face. The earlier
+  of the two is reported.
+- **Every provider carries it**, including the read-only plugin provider and the
+  factory's own role store — one `stat` that each of them was already making.
+- **DB**: unchanged. No migration. Assets have never been stored in the
+  database, and the stage signal is written to columns that already exist
+  (`coding_sessions.parent_session_id`, `.title`, `.title_source`,
+  `.launch_mode`).

@@ -117,7 +117,10 @@ test('a card carries the uses, the runs and when it was last used', async ({ mou
   );
 
   await expect(page.getByText('7 uses · 3 runs')).toBeVisible();
-  await expect(page.locator('time')).toHaveAttribute('datetime', '2026-08-09T14:02:01.000Z');
+  // A card carries three stamps now — used, created, edited — so scope to the
+  // usage line rather than to whichever <time> happens to come first.
+  const usageLine = page.getByText('7 uses · 3 runs').locator('xpath=..');
+  await expect(usageLine.locator('time')).toHaveAttribute('datetime', '2026-08-09T14:02:01.000Z');
 });
 
 test('a card nothing has used says so rather than showing a zero', async ({ mount, page }) => {

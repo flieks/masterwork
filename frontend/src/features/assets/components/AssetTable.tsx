@@ -2,7 +2,9 @@ import { useAtom } from 'jotai';
 import { useNavigate } from 'react-router-dom';
 import type { AssetSummary } from '~/api/generated';
 import { absoluteDate, absoluteDateTime, relativeTime } from '~/lib/datetime';
+import { assetAge } from '../dates';
 import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../queries';
+import { NeverEdited, UnknownCreated } from './AssetDates';
 import { ProviderBadge } from './ProviderBadge';
 
 interface AssetTableProps {
@@ -25,12 +27,14 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
             <th className="px-4 py-2.5 text-right font-medium">Uses</th>
             <th className="px-4 py-2.5 text-right font-medium">Runs</th>
             <th className="px-4 py-2.5 font-medium">Last used</th>
+            <th className="px-4 py-2.5 font-medium">Created</th>
             <th className="px-4 py-2.5 font-medium">Updated</th>
           </tr>
         </thead>
         <tbody>
           {assets.map((asset) => {
             const used = usage?.get(asset.name);
+            const age = assetAge(asset.created_at, asset.updated_at);
             return (
               <tr
                 key={asset.id}
@@ -46,7 +50,8 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
                 <td className="max-w-[16rem] truncate px-4 py-2.5 font-medium" title={asset.title}>
                   {asset.title}
                 </td>
-                <td className="max-w-[28rem] truncate px-4 py-2.5 text-muted-foreground">
+                {/* Truncated at any width, so it yields room to the date columns. */}
+                <td className="max-w-[15rem] truncate px-4 py-2.5 text-muted-foreground">
                   {asset.description || '—'}
                 </td>
                 <td className="px-4 py-2.5">
@@ -68,7 +73,22 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                  {absoluteDate(asset.updated_at)}
+                  {age.state === 'unknown' ? (
+                    <UnknownCreated />
+                  ) : (
+                    <time dateTime={age.created} title={absoluteDateTime(age.created)}>
+                      {absoluteDate(age.created)}
+                    </time>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                  {age.state === 'written-once' ? (
+                    <NeverEdited created={age.created} />
+                  ) : (
+                    <time dateTime={asset.updated_at} title={absoluteDateTime(asset.updated_at)}>
+                      {absoluteDate(asset.updated_at)}
+                    </time>
+                  )}
                 </td>
               </tr>
             );
