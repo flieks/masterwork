@@ -14,6 +14,7 @@ from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.api.v1.coding import service
 from app.db.models.coding import CodingEvent, CodingSession
 
 
@@ -392,3 +393,101 @@ async def test_roots_only_hides_the_children(client: AsyncClient) -> None:
     assert sorted(s["id"] for s in listed) == ["child-1", "factory-abc"]
     roots = await _list(client, include_automated=True, roots_only=True)
     assert [s["id"] for s in roots] == ["factory-abc"]
+
+
+async def test_the_parent_filter_returns_exactly_that_runs_children(
+    client: AsyncClient,
+) -> None:
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _factory_run(client, "factory-xyz", "/other", "build")
+    await _stage_child(client, "child-1", "/repo")
+    await _stage_child(client, "child-2", "/repo")
+    await _stage_child(client, "elsewhere", "/other")
+
+    listed = await _list(client, parent_session_id="factory-abc")
+    assert sorted(s["id"] for s in listed) == ["child-1", "child-2"]
+    assert len(listed) == (await _session(client, "factory-abc"))["child_count"]
+
+
+async def test_the_parent_filter_answers_child_count_without_include_automated(
+    client: AsyncClient,
+) -> None:
+    """Every stage child is a `claude -p` one-shot with only a SessionStart to
+    its name, so both grid-hygiene defaults would hide it — and the endpoint
+    would report no children for a card that says two."""
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _stage_child(client, "child-1", "/repo")
+    await _stage_child(client, "child-2", "/repo")
+
+    assert [s["id"] for s in await _list(client)] == ["factory-abc"]  # children hidden
+    assert len(await _list(client, parent_session_id="factory-abc")) == 2
+
+
+async def test_the_parent_filter_composes_with_the_other_filters(
+    client: AsyncClient,
+) -> None:
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _stage_child(client, "child-1", "/repo")
+    await _ingest(client, session_id="child-1", event_type="SessionEnd", ended=True)
+    await _stage_child(client, "child-2", "/repo")
+
+    finished = await _list(client, parent_session_id="factory-abc", status="success")
+    assert [s["id"] for s in finished] == ["child-1"]
+    # roots_only is the complement of this filter; asking for both is a
+    # contradiction, and answering it with anything but nothing would be a lie.
+    assert await _list(client, parent_session_id="factory-abc", roots_only=True) == []
+
+
+async def test_an_unknown_parent_has_no_children(client: AsyncClient) -> None:
+    await _factory_run(client, "factory-abc", "/repo", "build")
+    await _stage_child(client, "child-1", "/repo")
+
+    assert await _list(client, parent_session_id="factory-nope") == []
+
+
+# ------------------------------------------------------------- interrupted ---
+
+
+async def test_a_producer_reported_interruption_is_kept(client: AsyncClient) -> None:
+    """`interrupted` is accepted from whoever knows it aborted; masterwork never
+    infers it. Nothing writes it today — the factory calls an aborted run
+    `failed` — so this is the contract for a producer that starts to."""
+    await _ingest(client, session_id="s1", event_type="run_end", status="interrupted", ended=True)
+    assert (await _session(client))["status"] == "interrupted"
+
+
+async def test_a_reported_interruption_survives_a_rebuild(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """The status arrives on the hook body and only `payload` is stored, so a
+    replay cannot re-derive it — without keeping it, a rebuild would quietly
+    turn an aborted run into a successful one."""
+    await _ingest(client, session_id="s1", event_type="run_end", status="interrupted", ended=True)
+    async with session_factory() as db:
+        await service.backfill_session(db, "s1")
+
+    assert (await _session(client))["status"] == "interrupted"
+
+
+async def test_silence_is_abandoned_and_never_interrupted(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """A killed run and a lost SessionEnd hook leave identical evidence, so
+    silence gets the word that claims less."""
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "hi"})
+    await _age_session(session_factory, "s1", minutes=10)
+
+    assert (await _session(client))["status"] == "abandoned"
+    assert await _list(client, status="interrupted") == []
+
+
+async def test_the_interrupted_filter_matches_only_reported_ones(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    await _ingest(client, session_id="stopped", event_type="run_end", status="interrupted")
+    await _ingest(client, session_id="broke", event_type="run_end", status="failed")
+    await _ingest(client, session_id="quiet", event_type="UserPromptSubmit", payload={"p": "hi"})
+    await _age_session(session_factory, "quiet", minutes=10)
+
+    assert [s["id"] for s in await _list(client, status="interrupted")] == ["stopped"]
+    assert [s["id"] for s in await _list(client, status="abandoned")] == ["quiet"]

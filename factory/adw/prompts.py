@@ -1,38 +1,21 @@
-"""Stage prompts: request + previous envelope + named artifacts. Never a transcript."""
+"""Compile a role's templates into the two prompts a turn actually sends.
+
+The text itself lives in the role store (`adw/roles.py` + `~/.masterwork/agents`);
+this module only computes the variables, renders, and keeps the audit copy. What
+a stage sees is still request + previous envelope + named artifacts, never a
+transcript.
+"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from adw.config import Stage
-from adw.envelopes import REQUIRED_FIELDS, Envelope
+from adw.envelopes import REQUIRED_FIELDS, Envelope, owes_a_verdict
+from adw.roles import NONE_MARKER, ResolvedRole, render
 
-ROLE_HEADERS = {
-    "plan": """You are the PLAN stage of a deterministic, unattended pipeline.
-Read the repo, then write an implementation plan to `plan.md`: the change in one
-paragraph, the files to add or change with why, the data/contract impact, the
-test strategy, and the risks. Be concrete about paths. Do not implement anything.""",
-    "build": """You are the BUILD stage of a deterministic, unattended pipeline.
-Implement the plan in the repo, tests included. You have no shell: the runner
-executes the repo's own test and lint commands after you finish, so make the code
-correct rather than claiming it is. Keep the change minimal and in the repo's style.""",
-    "review": """You are the REVIEW stage of a deterministic, unattended pipeline.
-Review the work on two axes: (1) Standards — does it follow this repo's documented
-conventions and layering? (2) Spec — does it do what the original request and the
-plan asked, no more and no less? You are READ-ONLY: you write no files. Report
-findings that must be fixed in `blocking` (one clear, actionable sentence each,
-naming the file); set `approved: true` only when `blocking` is empty.""",
-    "document": """You are the DOCUMENT stage of a deterministic, unattended pipeline.
-Update the user-facing documentation to match what was built — README, docs pages,
-and the changelog if the repo keeps one. Change no source code. If nothing needs
-documenting, say so in the summary and change nothing.""",
-}
-
-UNATTENDED_RULE = """UNATTENDED RUN — you cannot ask anyone anything.
-Every question you would have asked becomes an entry in `assumptions`. If an
-assumption is too dangerous to make silently (destructive migration, credential
-rotation, data deletion), do not make it: return `status: "blocked"` with the
-reason in `summary`, and the run stops cleanly."""
+PROMPTS_SUBDIR = "prompts"
 
 _CONTRACT_TEMPLATE = """END YOUR REPLY WITH EXACTLY ONE FENCED ```json BLOCK AND NOTHING AFTER IT.
 The runner parses the LAST fenced json block; any prose after it fails the gate.
@@ -41,9 +24,9 @@ The runner parses the LAST fenced json block; any prose after it fails the gate.
 {{
   "status": "ok | blocked | failed",
   "summary": "one paragraph — the first line becomes the commit message",
-  "artifacts": ["paths you wrote that the next stage should read"],
+  "artifacts": {artifacts},
   "notes_for_next_agent": "what the next stage needs to know",
-  "changed_files": ["every file you created or modified, repo-relative"],
+  "changed_files": {changed_files},
   "approved": false,
   "blocking": [],
   "assumptions": ["anything you would have asked the user"]
@@ -51,19 +34,68 @@ The runner parses the LAST fenced json block; any prose after it fails the gate.
 ```
 
 Required for the {stage} role: {required}.
-`changed_files` is verified against `git diff` — a file you claim but did not touch,
-or touched but did not claim, fails the gate."""
+{rule}{verdict}"""
+
+_WRITER_FIELDS = {
+    "artifacts": '["paths you wrote that the next stage should read"]',
+    "changed_files": '["every file you created or modified, repo-relative"]',
+    "rule": (
+        "`changed_files` is verified against `git diff` — a file you claim but did not touch,\n"
+        "or touched but did not claim, fails the gate."
+    ),
+}
+
+# A role whose boundary is `[]` writes nothing, so the generic wording asked it to
+# report files it cannot have. Handed the upstream envelope, reviewers copied the
+# builder's list, gate 3 failed it as "claimed but not changed on disk", and the run
+# spent a correction — sometimes reading that correction as a finding against the
+# builder and failing the pipeline. The contract now matches the boundary.
+_READ_ONLY_FIELDS = {
+    "artifacts": "[]",
+    "changed_files": "[]",
+    "rule": (
+        "You write nothing, so `artifacts` and `changed_files` are ALWAYS empty for this\n"
+        "role. `changed_files` is verified against `git diff`: repeating files another\n"
+        "stage changed — including any named in the envelope you were given — fails the\n"
+        "gate. Report what you find in `summary` and `blocking`, never as a file claim."
+    ),
+}
 
 
-def envelope_contract(stage: str) -> str:
-    required = ", ".join(REQUIRED_FIELDS.get(stage, ("status", "summary")))
-    return _CONTRACT_TEMPLATE.format(stage=stage, required=required)
+# `status` is the one field whose meaning is not self-evident, and getting it wrong
+# is invisible: a review that disapproves as `status: "blocked"` instead of
+# `approved: false` reads as a clean stop and skips the review→build loop it exists
+# to drive (observed for real — the reviewer rejected marker comments and the run
+# ended instead of asking the builder to remove them). The rule is compiled from
+# code on every turn rather than living only in the role's `system.md`, because a
+# role library seeded before this rule existed keeps its own copy of that file
+# forever and would never see it.
+_VERDICT_RULE = """
+
+`status` and the verdict are independent axes. `status` reports whether the review
+itself could be carried out; `approved` + `blocking` carry your judgement of the work.
+Any disapproval — including of a change you consider dangerous — is `approved: false`
+with the reasons in `blocking`, NEVER `status: "blocked"`. Reserve `status: "blocked"`
+for being unable to review at all (the files or artifacts you were told to read are
+missing or unreadable): it takes an EMPTY `blocking` list and the reason in `summary`.
+Findings listed under a non-ok `status` are read as a rejection and loop back to the
+builder anyway."""
+
+
+def envelope_contract(stage: Stage) -> str:
+    """The envelope skeleton, worded for this role's own write boundary."""
+    fields = _READ_ONLY_FIELDS if stage.read_only else _WRITER_FIELDS
+    required = ", ".join(REQUIRED_FIELDS.get(stage.name, ("status", "summary")))
+    verdict = _VERDICT_RULE if owes_a_verdict(stage.name) else ""
+    return _CONTRACT_TEMPLATE.format(
+        stage=stage.name, required=required, verdict=verdict, **fields
+    )
 
 
 def boundary_clause(stage: Stage) -> str:
     if stage.boundary is None:
         return "WRITE BOUNDARY: any path inside this repository."
-    if not stage.boundary:
+    if stage.read_only:
         return (
             "WRITE BOUNDARY: NOTHING. This role is read-only — do not create, edit, "
             "or delete any file. Any write is reverted by the runner and fails the gate."
@@ -98,7 +130,18 @@ def read_artifacts(repo: Path, paths: list[str], max_bytes: int) -> str:
     return "\n\n".join(sections)
 
 
-def stage_prompt(
+@dataclass(frozen=True)
+class CompiledPrompt:
+    system: str
+    user: str
+
+    @property
+    def combined(self) -> str:
+        """What the agent reads, in order — the shape the prompts had before the split."""
+        return f"{self.system}\n\n{self.user}"
+
+
+def template_values(
     *,
     stage: Stage,
     request: str,
@@ -106,23 +149,58 @@ def stage_prompt(
     previous_stage: str | None = None,
     previous: Envelope | None = None,
     artifact_max_bytes: int = 20_000,
-    extra: str = "",
-) -> str:
-    parts = [ROLE_HEADERS.get(stage.name, f"You are the {stage.name.upper()} stage.")]
-    parts.append(f"## Original request\n{request.strip()}")
-    if previous is not None and previous_stage:
-        parts.append(
-            f"## Envelope from the {previous_stage} stage\n```json\n{previous.to_json()}\n```"
-        )
-        artifacts = read_artifacts(repo, previous.artifacts, artifact_max_bytes)
-        if artifacts:
-            parts.append(f"## Artifacts named by the {previous_stage} stage\n{artifacts}")
-    if extra:
-        parts.append(extra)
-    parts.append(boundary_clause(stage))
-    parts.append(UNATTENDED_RULE)
-    parts.append(envelope_contract(stage.name))
-    return "\n\n".join(parts)
+) -> dict[str, str]:
+    """Every variable a role template may use. Documented in `roles.VARIABLES`."""
+    return {
+        "role": stage.name,
+        "repo": str(repo),
+        "request": request.strip(),
+        "previous_stage": previous_stage or NONE_MARKER,
+        "previous_envelope": previous.to_json() if previous is not None else NONE_MARKER,
+        "artifacts": (
+            read_artifacts(repo, previous.artifacts, artifact_max_bytes)
+            if previous is not None
+            else ""
+        ),
+        "boundary": boundary_clause(stage),
+        "envelope_contract": envelope_contract(stage),
+    }
+
+
+def compile_prompt(
+    *,
+    role: ResolvedRole,
+    stage: Stage,
+    request: str,
+    repo: Path,
+    previous_stage: str | None = None,
+    previous: Envelope | None = None,
+    artifact_max_bytes: int = 20_000,
+) -> CompiledPrompt:
+    values = template_values(
+        stage=stage,
+        request=request,
+        repo=repo,
+        previous_stage=previous_stage,
+        previous=previous,
+        artifact_max_bytes=artifact_max_bytes,
+    )
+    return CompiledPrompt(
+        system=render(role.system, values, source=role.sources["system.md"]),
+        user=render(role.user, values, source=role.sources["user.md"]),
+    )
+
+
+def save_prompt_copy(run_dir: Path, role: str, turn: int, system: str, user: str) -> dict[str, str]:
+    """The prompt as actually sent — a bad run is only diagnosable if this exists."""
+    directory = run_dir / PROMPTS_SUBDIR / role
+    directory.mkdir(parents=True, exist_ok=True)
+    saved: dict[str, str] = {}
+    for kind, text in (("system", system), ("user", user)):
+        path = directory / f"{turn}.{kind}.md"
+        path.write_text(text, encoding="utf-8")
+        saved[kind] = str(path)
+    return saved
 
 
 # The runner already committed the previous turn, and re-snapshots the tree before

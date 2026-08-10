@@ -656,10 +656,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.",
+                            "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.",
                             "title": "Status"
                         },
-                        "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one."
+                        "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it."
                     },
                     {
                         "name": "roots_only",
@@ -672,6 +672,24 @@
                             "title": "Roots Only"
                         },
                         "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards."
+                    },
+                    {
+                        "name": "parent_session_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts.",
+                            "title": "Parent Session Id"
+                        },
+                        "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts."
                     }
                 ],
                 "responses": {
@@ -724,10 +742,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Only count assets used at or after this instant.",
+                            "description": "Count only the calls made at or after this instant, from the per-call log \u2014 so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals.",
                             "title": "Since"
                         },
-                        "description": "Only count assets used at or after this instant."
+                        "description": "Count only the calls made at or after this instant, from the per-call log \u2014 so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals."
                     },
                     {
                         "name": "kind",
@@ -2341,7 +2359,7 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning tool: \"claude\" or \"claude-plugin\"."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store)."
                     },
                     "name": {
                         "type": "string",
@@ -2542,7 +2560,7 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning tool: \"claude\" or \"claude-plugin\"."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store)."
                     },
                     "name": {
                         "type": "string",
@@ -2711,6 +2729,16 @@
                         "type": "integer",
                         "title": "Assets",
                         "description": "Skill and subagent uses the replay rebuilt."
+                    },
+                    "envelopes": {
+                        "type": "integer",
+                        "title": "Envelopes",
+                        "description": "Envelope attempts the session now holds, recovered and reported."
+                    },
+                    "gate_checks": {
+                        "type": "integer",
+                        "title": "Gate Checks",
+                        "description": "Gate checks it now holds, recovered and reported."
                     }
                 },
                 "type": "object",
@@ -2719,7 +2747,9 @@
                     "events",
                     "phases",
                     "agents",
-                    "assets"
+                    "assets",
+                    "envelopes",
+                    "gate_checks"
                 ],
                 "title": "BackfillResult",
                 "description": "What rebuilding one session's derived rows produced."
@@ -2745,6 +2775,14 @@
                     "assets": {
                         "type": "integer",
                         "title": "Assets"
+                    },
+                    "envelopes": {
+                        "type": "integer",
+                        "title": "Envelopes"
+                    },
+                    "gate_checks": {
+                        "type": "integer",
+                        "title": "Gate Checks"
                     }
                 },
                 "type": "object",
@@ -2753,7 +2791,9 @@
                     "events",
                     "phases",
                     "agents",
-                    "assets"
+                    "assets",
+                    "envelopes",
+                    "gate_checks"
                 ],
                 "title": "BackfillTotals",
                 "description": "The same, summed over a whole-history rebuild."
@@ -3386,7 +3426,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live."
+                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -3671,7 +3711,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live."
+                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -3812,6 +3852,22 @@
                         "type": "array",
                         "title": "Assets",
                         "description": "Skills and subagents used, most-used first."
+                    },
+                    "envelopes": {
+                        "items": {
+                            "$ref": "#/components/schemas/EnvelopeAttempt"
+                        },
+                        "type": "array",
+                        "title": "Envelopes",
+                        "description": "Every envelope attempt of the run, oldest first, so attempt 1 precedes attempt 2. Group by `phase_id` to show a stage's own; a null `phase_id` belongs to no stage. Capped at the most recent 100."
+                    },
+                    "gate_checks": {
+                        "items": {
+                            "$ref": "#/components/schemas/GateCheckItem"
+                        },
+                        "type": "array",
+                        "title": "Gate Checks",
+                        "description": "Every gate check of the run, oldest first and grouped the same way. Capped at the most recent 500."
                     }
                 },
                 "type": "object",
@@ -3844,10 +3900,12 @@
                     "active_ms",
                     "phases",
                     "agents",
-                    "assets"
+                    "assets",
+                    "envelopes",
+                    "gate_checks"
                 ],
                 "title": "CodingSessionDetail",
-                "description": "The same session with whole phase rows instead of card summaries."
+                "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence \u2014 kept as sibling arrays keyed by `phase_id`."
             },
             "CrossChange": {
                 "properties": {
@@ -3913,6 +3971,447 @@
                 ],
                 "title": "CrossChange",
                 "description": "A modification another project made to an asset this project links."
+            },
+            "EnvelopeAttempt": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "phase_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase Id",
+                        "description": "The stage it was returned in; join on it."
+                    },
+                    "event_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Event Id",
+                        "description": "The event that carried it."
+                    },
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role",
+                        "description": "The role that produced it \u2014 plan, build, review, \u2026"
+                    },
+                    "attempt": {
+                        "type": "integer",
+                        "title": "Attempt",
+                        "description": "1-based try within (stage, role)."
+                    },
+                    "parsed": {
+                        "type": "boolean",
+                        "title": "Parsed"
+                    },
+                    "parse_error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parse Error",
+                        "description": "Why it did not parse; null when it did."
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "The status it declared: ok | blocked | failed."
+                    },
+                    "body": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Body",
+                        "description": "The envelope object as returned."
+                    },
+                    "raw_text": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Raw Text",
+                        "description": "The reply it was read out of \u2014 often the only body a rejection has."
+                    },
+                    "origin": {
+                        "type": "string",
+                        "title": "Origin",
+                        "description": "reported \u2014 the producer sent it, and only these can carry a body. recovered \u2014 a replay reconstructed the attempt from a gate line, so `body` is always null."
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "phase_id",
+                    "event_id",
+                    "role",
+                    "attempt",
+                    "parsed",
+                    "parse_error",
+                    "status",
+                    "body",
+                    "raw_text",
+                    "origin",
+                    "created_at"
+                ],
+                "title": "EnvelopeAttempt",
+                "description": "One envelope an agent returned, and whether the runner could read it."
+            },
+            "EnvelopeIn": {
+                "properties": {
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role",
+                        "description": "The role that produced it; else the event's lane."
+                    },
+                    "attempt": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Attempt",
+                        "description": "1-based try within (stage, role); counted for you when omitted."
+                    },
+                    "parsed": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parsed",
+                        "description": "Did it parse? Defaults to `parse_error` being absent."
+                    },
+                    "parse_error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parse Error",
+                        "description": "Why it did not parse."
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "The status it declared: ok | blocked | failed."
+                    },
+                    "body": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Body",
+                        "description": "The envelope object as returned; truncated past 32 KB serialized."
+                    },
+                    "raw_text": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Raw Text",
+                        "description": "The reply the envelope was read out of \u2014 the only body a rejected attempt has. Truncated past 32 KB with a marker saying so."
+                    }
+                },
+                "type": "object",
+                "title": "EnvelopeIn",
+                "description": "The envelope an agent returned on one attempt, as the runner read it."
+            },
+            "GateCheckIn": {
+                "properties": {
+                    "item": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Item",
+                        "description": "The thing checked \u2014 a path, a command."
+                    },
+                    "ok": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ok",
+                        "description": "Did this item pass?"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note",
+                        "description": "What the check wrote. The payload that matters."
+                    }
+                },
+                "type": "object",
+                "title": "GateCheckIn",
+                "description": "One item a gate checked. Any field it leaves out is taken from the gate\nblock around it, so a gate with a single verdict needs no entry at all."
+            },
+            "GateCheckItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "phase_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase Id",
+                        "description": "The stage it ran in; join on it."
+                    },
+                    "event_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Event Id",
+                        "description": "The event that carried it."
+                    },
+                    "gate": {
+                        "type": "string",
+                        "title": "Gate",
+                        "description": "The gate that ran. `stage` is the catch-all for a verdict that named none."
+                    },
+                    "attempt": {
+                        "type": "integer",
+                        "title": "Attempt",
+                        "description": "1-based try within (stage, gate, item)."
+                    },
+                    "item": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Item",
+                        "description": "The thing checked; null for a whole-gate verdict."
+                    },
+                    "ok": {
+                        "type": "boolean",
+                        "title": "Ok"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note",
+                        "description": "What the check wrote. The reason this row exists."
+                    },
+                    "origin": {
+                        "type": "string",
+                        "title": "Origin",
+                        "description": "reported | recovered \u2014 see EnvelopeAttempt.origin."
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "phase_id",
+                    "event_id",
+                    "gate",
+                    "attempt",
+                    "item",
+                    "ok",
+                    "note",
+                    "origin",
+                    "created_at"
+                ],
+                "title": "GateCheckItem",
+                "description": "One check a gate ran, and the sentence it wrote."
+            },
+            "GateIn": {
+                "properties": {
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name",
+                        "description": "The gate that ran \u2014 envelope, artifacts, changed_files, boundary, \u2026"
+                    },
+                    "attempt": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Attempt",
+                        "description": "1-based try within the stage; counted for you when omitted."
+                    },
+                    "item": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Item",
+                        "description": "Default item for the checks below."
+                    },
+                    "ok": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ok",
+                        "description": "Default verdict; else read off the event type."
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note",
+                        "description": "Default note."
+                    },
+                    "checks": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "$ref": "#/components/schemas/GateCheckIn"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Checks",
+                        "description": "One entry per item checked. Omit for a single whole-gate verdict."
+                    }
+                },
+                "type": "object",
+                "title": "GateIn",
+                "description": "One gate evaluation as the runner reports it.\n\nWith `checks`, one row per entry; without it, the block is itself the one\ncheck. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the\nminimal report is `{\"name\": \"changed_files\", \"note\": \"\u2026\"}` on the event a\nrunner already sends."
             },
             "HTTPValidationError": {
                 "properties": {
@@ -4090,6 +4589,28 @@
                         ],
                         "title": "Duration Ms",
                         "description": "How long it took, when the hook knows."
+                    },
+                    "envelope": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/EnvelopeIn"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "The envelope this event's attempt returned, and whether it parsed."
+                    },
+                    "gate": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/GateIn"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "The gate this event reports, and the note each check wrote."
                     }
                 },
                 "type": "object",

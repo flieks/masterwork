@@ -6,9 +6,6 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Run logs are the runner's own output, never a stage's work.
-RUNNER_PATHS = ("factory/runs/",)
-
 
 class GitError(Exception):
     """A git command failed."""
@@ -77,15 +74,19 @@ def snapshot(repo: Path) -> Snapshot:
     return Snapshot(sha=head_sha(repo), dirty=frozenset(_porcelain_paths(repo)))
 
 
-def changed_paths(repo: Path, snap: Snapshot) -> list[str]:
-    """Paths this stage touched: diff vs the pre-stage sha, plus new untracked files."""
+def changed_paths(repo: Path, snap: Snapshot, *, exclude: tuple[str, ...] = ()) -> list[str]:
+    """Paths this stage touched: diff vs the pre-stage sha, plus new untracked files.
+
+    `exclude` carries the runner's own run-log prefix, but only when `runs_dir` was
+    pointed back inside the target repo — by default the logs live outside it.
+    """
     paths: set[str] = set()
     if snap.sha:
         diff = git(repo, "diff", "--name-only", "-z", snap.sha)
         paths |= {p for p in diff.split("\0") if p}
     paths |= _porcelain_paths(repo)
     # Anything already dirty before the stage is not this stage's doing.
-    return sorted(p for p in paths - snap.dirty if not p.startswith(RUNNER_PATHS))
+    return sorted(p for p in paths - snap.dirty if not (exclude and p.startswith(exclude)))
 
 
 def _is_tracked(repo: Path, path: str) -> bool:

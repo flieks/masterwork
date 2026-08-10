@@ -66,7 +66,9 @@ async def list_coding_sessions(
         alias="status",
         description=(
             "Keep only runs with this status: running | success | failed | interrupted | "
-            "abandoned. Matched against the derived status, not the stored one."
+            "abandoned. Matched against the derived status, not the stored one. "
+            "`interrupted` is reported by a producer and never derived by masterwork, so "
+            "it matches nothing until one reports it."
         ),
     ),
     roots_only: bool = Query(
@@ -74,6 +76,15 @@ async def list_coding_sessions(
         description=(
             "Hide runs that another run launched — a pipeline's five headless stages "
             "collapse into their parent instead of showing as five orphan cards."
+        ),
+    ),
+    parent_session_id: str | None = Query(
+        None,
+        description=(
+            "Keep only the runs this one launched — the complement of `roots_only`, and "
+            "the way to list a pipeline's stages. Children are headless by construction, "
+            "so this scope ignores `include_empty`/`include_automated` and returns exactly "
+            "the population the parent's `child_count` counts."
         ),
     ),
     db: AsyncSession = Depends(get_db),
@@ -87,6 +98,7 @@ async def list_coding_sessions(
         workflow=workflow,
         status=status_filter,
         roots_only=roots_only,
+        parent_session_id=parent_session_id,
     )
 
 
@@ -97,7 +109,12 @@ async def list_coding_sessions(
 )
 async def list_coding_asset_usage(
     since: datetime | None = Query(
-        None, description="Only count assets used at or after this instant."
+        None,
+        description=(
+            "Count only the calls made at or after this instant, from the per-call log — "
+            "so `uses` is what happened inside the window, not an asset's whole history. "
+            "Omit it for the all-time totals."
+        ),
     ),
     kind: str | None = Query(None, description='Keep only "skill" or only "agent".'),
     include_inspection: bool = Query(

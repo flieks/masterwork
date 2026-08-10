@@ -1,12 +1,14 @@
 import { GitCommitHorizontal, ShieldCheck, ShieldX, X } from 'lucide-react';
-import type { CodingPhase } from '~/api/generated';
+import type { CodingPhase, CodingSessionDetail } from '~/api/generated';
 import { Badge } from '~/components/ui/badge';
 import { absoluteDateTime } from '~/lib/datetime';
 import { formatCost, formatSpan, formatTokens } from '~/lib/timeline';
 import { cn } from '~/lib/utils';
+import { evidenceForPhase } from '../evidence';
 import { laneTint } from '../lanes';
 import { phaseStatusMeta } from '../status';
 import { EventTimeline } from './EventTimeline';
+import { EvidenceSections } from './EvidenceSections';
 
 /**
  * Why a marker phase looks empty, said out loud.
@@ -28,11 +30,11 @@ function isMarkerPhase(phase: CodingPhase): boolean {
 
 /** What one phase cost, proved, and did — with its own slice of the event stream. */
 export function PhasePanel({
-  sessionId,
+  session,
   phase,
   onClose,
 }: {
-  sessionId: string;
+  session: CodingSessionDetail;
   phase: CodingPhase;
   onClose: () => void;
 }) {
@@ -40,6 +42,7 @@ export function PhasePanel({
   const Icon = meta.icon;
   const tint = phase.agent ? laneTint({ name: phase.agent }) : null;
   const marker = isMarkerPhase(phase);
+  const evidence = evidenceForPhase(session, phase.id);
 
   return (
     <section
@@ -132,11 +135,13 @@ export function PhasePanel({
         ) : null}
       </div>
 
+      <EvidenceSections evidence={evidence} />
+
       <div className="border-t pt-3">
         <h4 className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
           Events in this phase
         </h4>
-        <EventTimeline sessionId={sessionId} phaseId={phase.id} />
+        <EventTimeline sessionId={session.id} phaseId={phase.id} />
       </div>
     </section>
   );

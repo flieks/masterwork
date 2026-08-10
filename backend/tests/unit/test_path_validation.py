@@ -41,9 +41,9 @@ def test_resolve_within_roots_rejects_symlink_escape(tmp_path: Path) -> None:
     assert resolve_within_roots(link, [root]) is None
 
 
-def test_update_asset_writes_valid_file(claude_tree: tuple[Path, Path]) -> None:
+async def test_update_asset_writes_valid_file(claude_tree: tuple[Path, Path]) -> None:
     providers = [_provider(claude_tree)]
-    detail = update_asset(
+    detail = await update_asset(
         providers,
         "claude:skill:frontend-dev",
         "---\nname: frontend-dev\ndescription: Updated.\n---\n\nNew body.\n",
@@ -55,7 +55,7 @@ def test_update_asset_writes_valid_file(claude_tree: tuple[Path, Path]) -> None:
     assert "New body." in on_disk
 
 
-def test_update_asset_refuses_symlink_escape(claude_tree: tuple[Path, Path]) -> None:
+async def test_update_asset_refuses_symlink_escape(claude_tree: tuple[Path, Path]) -> None:
     skills_root, agents_root = claude_tree
     outside = agents_root.parent / "outside.md"
     outside.write_text("original", encoding="utf-8")
@@ -65,7 +65,7 @@ def test_update_asset_refuses_symlink_escape(claude_tree: tuple[Path, Path]) -> 
 
     providers = [_provider(claude_tree)]
     with pytest.raises(InvalidAssetIdError):
-        update_asset(providers, "claude:skill:evil", "hacked")
+        await update_asset(providers, "claude:skill:evil", "hacked")
     assert outside.read_text(encoding="utf-8") == "original"
 
 

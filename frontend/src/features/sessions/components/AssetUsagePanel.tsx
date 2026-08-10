@@ -1,6 +1,6 @@
 import { useAtom, type PrimitiveAtom } from 'jotai';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Bot, Boxes, HelpCircle, Sparkles } from 'lucide-react';
+import { AlertTriangle, Bot, Boxes, HelpCircle, ScanSearch, Sparkles } from 'lucide-react';
 import type { CodingAssetUsage } from '~/api/generated';
 import { Button } from '~/components/ui/button';
 import { Skeleton } from '~/components/ui/skeleton';
@@ -13,6 +13,7 @@ import {
   assetKindFilterAtom,
   assetWindowAtom,
   codingAssetUsageQueryAtom,
+  includeInspectionAtom,
   type AssetWindow,
 } from '../queries';
 
@@ -23,10 +24,12 @@ import {
  */
 export function AssetUsagePanel() {
   const [{ data, isPending, isError, error, refetch }] = useAtom(codingAssetUsageQueryAtom);
+  const [includeInspection] = useAtom(includeInspectionAtom);
 
   return (
     <div className="flex flex-col gap-3">
       <AssetFilters />
+      {includeInspection ? <InspectionNote /> : null}
       {isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : isError ? (
@@ -65,12 +68,50 @@ const KINDS: { value: string | null; label: string }[] = [
   { value: 'agent', label: 'Agents' },
 ];
 
+const INSPECTION_HINT =
+  "Masterwork analyses an asset by running Claude over it, and those runs Read every linked asset's SKILL.md. Counting them ranks assets by how often masterwork inspected them rather than by the work they did, so they are left out unless you ask.";
+
 function AssetFilters() {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <Segmented atom={assetKindFilterAtom} label="Kind" options={KINDS} />
-      <Segmented atom={assetWindowAtom} label="Used" options={WINDOWS} />
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Segmented atom={assetKindFilterAtom} label="Kind" options={KINDS} />
+        <Segmented atom={assetWindowAtom} label="Used" options={WINDOWS} />
+      </div>
+      <InspectionToggle />
     </div>
+  );
+}
+
+/**
+ * The rollup's honesty valve. Excluding masterwork's own analysis runs is the
+ * default because including them measures masterwork, not the assets — but
+ * there was no way to look at all, so the exclusion was invisible.
+ */
+function InspectionToggle() {
+  const [includeInspection, setIncludeInspection] = useAtom(includeInspectionAtom);
+
+  return (
+    <Button
+      variant={includeInspection ? 'secondary' : 'outline'}
+      size="sm"
+      aria-pressed={includeInspection}
+      onClick={() => setIncludeInspection(!includeInspection)}
+      title={INSPECTION_HINT}
+    >
+      <ScanSearch className="size-4" />
+      {includeInspection ? 'Hide inspection runs' : 'Include inspection runs'}
+    </Button>
+  );
+}
+
+/** Shown only while counting them, because then the ranking needs the caveat. */
+function InspectionNote() {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Counting masterwork&rsquo;s own analysis runs, which Read every linked asset&rsquo;s SKILL.md
+      — these numbers rank assets by inspection as much as by use.
+    </p>
   );
 }
 

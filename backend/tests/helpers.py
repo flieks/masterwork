@@ -8,6 +8,7 @@ from typing import Any
 from app.providers.base import Provider
 from app.providers.claude import ClaudeProvider
 from app.providers.claude_plugins import ClaudePluginProvider
+from app.providers.masterwork_roles import MasterworkRoleProvider
 from app.services.claude_runner import ClaudeResult, ClaudeRunnerError
 
 
@@ -57,9 +58,15 @@ class FakeRunner:
         return result.reply
 
 
-def providers_for(tree: tuple[Path, Path], plugins_root: Path | None = None) -> list[Provider]:
+def providers_for(
+    tree: tuple[Path, Path],
+    plugins_root: Path | None = None,
+    roles_root: Path | None = None,
+) -> list[Provider]:
     skills_root, agents_root = tree
     providers: list[Provider] = [ClaudeProvider(skills_root=skills_root, agents_root=agents_root)]
     if plugins_root is not None:
         providers.append(ClaudePluginProvider(plugins_root=plugins_root))
+    if roles_root is not None:
+        providers.append(MasterworkRoleProvider(store_root=roles_root))
     return providers

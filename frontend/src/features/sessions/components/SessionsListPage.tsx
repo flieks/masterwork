@@ -1,6 +1,6 @@
 import { useAtom } from 'jotai';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Bot, Terminal } from 'lucide-react';
+import { AlertTriangle, Bot, CircleSlash, Terminal } from 'lucide-react';
 import type { CodingSession } from '~/api/generated';
 import { Button } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
@@ -9,7 +9,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
 import { TrackingBanner, integrationsQueryAtom, isRecording } from '~/features/observability';
-import { codingSessionsQueryAtom, isSessionLive, showAutomatedAtom } from '../queries';
+import {
+  INTERRUPTED_NEVER_DERIVED,
+  codingSessionsQueryAtom,
+  isSessionLive,
+  showAutomatedAtom,
+  statusFilterAtom,
+} from '../queries';
 import { AssetUsagePanel } from './AssetUsagePanel';
 import { LiveIndicator } from './LiveIndicator';
 import { RunCard } from './RunCard';
@@ -66,6 +72,7 @@ export function SessionsListPage() {
 function RunsView() {
   const [{ data, isPending, isError, error, refetch }] = useAtom(codingSessionsQueryAtom);
   const [{ data: integrations }] = useAtom(integrationsQueryAtom);
+  const [status] = useAtom(statusFilterAtom);
   const liveCount = data?.filter((s) => isSessionLive(s)).length ?? 0;
 
   return (
@@ -95,6 +102,13 @@ function RunsView() {
               Retry
             </Button>
           }
+        />
+      ) : data.length === 0 && status === 'interrupted' ? (
+        // Not "nothing matched": nothing can match, and saying so is the point.
+        <EmptyState
+          icon={<CircleSlash className="size-8" />}
+          title="No run reports itself interrupted"
+          description={INTERRUPTED_NEVER_DERIVED}
         />
       ) : data.length === 0 ? (
         <EmptyState

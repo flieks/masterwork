@@ -18,6 +18,7 @@ import { PhasePanel } from './PhasePanel';
 import { RunWaterfall } from './RunWaterfall';
 import { SessionAssets } from './SessionAssets';
 import { SessionHeader } from './SessionHeader';
+import { UnattributedEvidence } from './UnattributedEvidence';
 
 export function SessionDetailPage() {
   const { id = '' } = useParams();
@@ -93,16 +94,13 @@ function RunViews({ sessionId }: { sessionId: string }) {
           }
         />
         {selected ? (
-          <PhasePanel
-            sessionId={sessionId}
-            phase={selected}
-            onClose={() => setSelectedPhaseId(null)}
-          />
+          <PhasePanel session={session} phase={selected} onClose={() => setSelectedPhaseId(null)} />
         ) : (
           <p className="text-xs text-muted-foreground">
-            Select a phase to see its events, gates and commit.
+            Select a phase to see its gate checks, envelope attempts, events and commit.
           </p>
         )}
+        <UnattributedEvidence session={session} />
       </TabsContent>
 
       <TabsContent value="events">

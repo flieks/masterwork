@@ -1258,3 +1258,437 @@ ObservabilityIntegration {
   today. A second agent is a new `Integration` implementation plus a line in
   `app/observability/registry.py`: the endpoints, schema and UI take it as is.
 - **No DB.** Nothing here is stored — the agent's own config file is the record.
+
+---
+
+# API Contract v1.17 — Honest windows, child lookup, and the endpoints nobody wrote down (FROZEN additions)
+
+Additive on top of v1.16, and mostly a correction. Two of the coding-observability
+answers were wrong rather than missing — a time window that reported an asset's
+whole history, and a child list the frontend had to assemble itself out of a
+page of runs — and five endpoints have been shipping undocumented.
+
+## Changed endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-sessions?…&parent_session_id=` | `listCodingSessions` | v1.14's seven, plus `parent_session_id` string | `CodingSession[]` (shape and order unchanged) |
+| GET `/api/v1/coding-assets?since=&kind=&include_inspection=` | `listCodingAssetUsage` | unchanged | `CodingAssetUsage[]` — with `since`, every field now means *inside the window* |
+
+No schema changed, so the generated client only gains one optional query
+parameter, appended last.
+
+## Endpoints that shipped without being written down
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| POST `/api/v1/coding-sessions/backfill` | `backfillCodingSessions` | — | `BackfillTotals` |
+| POST `/api/v1/coding-sessions/{session_id}/backfill` | `backfillCodingSession` | — | `BackfillResult` (404 unknown session) |
+| GET `/api/v1/projects/{project_id}/cross-changes` | `listProjectCrossChanges` | — | `ProjectCrossChangesResponse` (404 unknown project) |
+| POST `/api/v1/projects/{project_id}/generality-audit` | `auditProjectGenerality` | — | `ProjectGeneralityResponse` (synchronous `claude -p` with the simulation timeout — it Reads every linked asset file; 404 unknown project; 502 CLI failure) |
+
+## Schemas that shipped without being written down
+
+```
+Project += {                          // filled in by auditProjectGenerality
+  generality_report: string | null    // last generality audit; markdown
+  generality_report_at: string | null // when it was generated
+}
+
+BackfillResult {                      // one session rebuilt
+  session_id: string
+  events: number                      // events replayed through the live derivation
+  phases: number                      // stages the replay rebuilt
+  agents: number                      // lanes the replay rebuilt
+  assets: number                      // asset counter rows the replay rebuilt
+}
+BackfillTotals { sessions, events, phases, agents, assets: number }
+
+CrossChange {                         // an edit another owner made to a linked asset
+  asset_id: string
+  action: string                      // update | create | delete
+  source: "simulation" | "proposal"
+  project_id: string | null           // null when a global (unscoped) chat did it
+  project_name: string | null
+  title: string                       // the applied suggestion's title, or the proposal's summary
+  applied_at: string
+}
+ProjectCrossChangesResponse {
+  since: string | null                // this project's last completed run; null = nothing to invalidate
+  changes: CrossChange[]              // newest first
+}
+
+ProjectGeneralityResponse { generality_report: string, generated_at: string }
+```
+
+## Behavior
+
+- **`since` counts calls, not counters.** `coding_assets` holds one row per
+  (run, asset, lane) with a single `last_seen_at`, so filtering it on that
+  timestamp and summing `uses` returned the asset's *entire* recorded history
+  the moment its most recent call fell inside the window: "last 24h" quoting
+  figures from a fortnight ago, with no way for the reader to tell. With `since`
+  the rollup is computed from `coding_asset_uses` instead — the append-only log
+  v1.15 already added, one row per call — so `uses` counts calls inside the
+  window, `sessions` counts the runs that made one, and `last_used_at` is the
+  newest of them. Without `since` nothing changes: the counters are exactly
+  right for an all-time total and stay the cheaper query. `include_inspection`
+  applies identically on both paths, or the ranking would appear to reorder
+  itself when the window is switched.
+  - The consequence to know: a run recorded **before v1.15** has counters but no
+    log rows, so it contributes to the all-time total and nothing to a window
+    until `POST /coding-sessions/backfill` replays it. That is the same caveat
+    v1.15 states for an empty `calls` list, now visible in the rollup too.
+- **`parent_session_id` lists one run's children**, which is the complement of
+  `roots_only=true` (children of *nobody*). Composable with `workflow` and
+  `status`, and with the same ordering; combined with `roots_only=true` it is a
+  contradiction and correctly returns nothing.
+  - **This scope ignores `include_empty` and `include_automated`.** Those two
+    keep the grid clean, and every pipeline stage child is a `claude -p` one-shot
+    that fails both — so with them applied, a parent whose card reads *4 stages*
+    would have answered this query with an empty list. A caller naming a parent
+    id has already chosen its scope, and what comes back is exactly the
+    population the parent's `child_count` counts.
+- **`interrupted` is stored, never derived — and the reverse of `abandoned`.**
+  v1.14 derives `abandoned` from silence because a run that stops talking has
+  told us nothing. A run that was *cut short* leaves identical evidence: a killed
+  process, a lost hook and a closed laptop are indistinguishable from the event
+  stream, so masterwork does not guess, and nothing in it ever writes
+  `interrupted`. It stays accepted on the hook body from a producer that knows
+  better (the factory reports an aborted run as `failed` today, so nothing sends
+  it yet), the `status` filter matches only such reported rows — an empty list
+  rather than a plausible one — and the query parameter's description says so.
+  - A body-reported status now **survives a rebuild**. Only `payload` is stored,
+    so a replay cannot re-derive a status the producer stated as a top-level
+    field; before this, one `POST /{id}/backfill` silently turned a reported
+    `interrupted` into `success`. The replay still wins whenever it derives a
+    status of its own (a factory `run_end` does).
+- **The backfill endpoints are the only way to rebuild derived rows.** Stages,
+  lanes, assets, the call log, the title provenance and the parent link are all
+  derived, so improving a derivation does nothing for a run already recorded
+  until its events are replayed through it. `POST /coding-sessions/{id}/backfill`
+  replays one, `POST /coding-sessions/backfill` replays every stored session
+  **oldest first** — the order that lets a pipeline run's stages exist by the
+  time its children look for the stage they belong to. Both are idempotent by
+  construction: the derived rows are dropped and rebuilt rather than updated,
+  which is what stops the counters doubling. The event stream is never touched —
+  it is the record this rebuilds from.
+- **`listProjectCrossChanges` says whether a project's score is stale.** A
+  project was scored against its linked asset files as they were at its last
+  completed simulation; other projects and global chats edit the same shared
+  files. This lists every applied change to a linked asset since that run —
+  from an applied simulation suggestion or an accepted chat proposal — so the UI
+  can offer *re-run*. `link`/`unlink` changes are left out: they alter someone
+  else's toolkit, not the file. A project with no completed run has no score to
+  invalidate and answers `since: null` with an empty list. Pure DB read, no
+  `claude` call, nothing persisted.
+- **`auditProjectGenerality` asks whether the toolkit has been overfitted.** A
+  long series of simulations on one scenario quietly leaks that scenario's domain
+  into shared assets. The audit reads every linked asset file and reports where
+  that has happened; the markdown is saved on the project
+  (`generality_report`/`_at`), so the page can render the last one without
+  re-running it. Alembic migration **0008_project_generality_report**.
+- **DB**: unchanged. Both fixes read tables that already exist —
+  `coding_asset_uses` (v1.15) and the indexed `coding_sessions.parent_session_id`
+  (v1.14). No migration.
+
+---
+
+# API Contract v1.18 — The factory's own prompts as assets (FROZEN additions)
+
+Additive on top of v1.17, and the first assets masterwork owns rather than
+finds. The factory pipeline's stage prompts used to be Python string literals
+inside the runner: the pipeline could be *run* but not *improved*. They now live
+in a vendor-neutral role store on disk, and a third provider indexes them — so
+edit, chat proposals, project links and simulations operate on the factory's own
+agents with no new endpoint and no new schema.
+
+## No new endpoints, no new schemas
+
+Every existing asset endpoint (`listAssets`, `getAsset`, `updateAsset`,
+`getAssetDiagram`, `generateAssetDiagram`, and everything that takes an asset id
+— chat, proposals, projects, simulations, the usage rollups) accepts these ids
+unchanged. The only OpenAPI diff is the `AssetSummary.provider` **description**,
+which now names the third provider. **The generated client does not change.**
+
+## The role store
+
+```
+~/.masterwork/agents/<role>/system.md    static identity        -> one asset
+~/.masterwork/agents/<role>/user.md      per-turn task template -> one asset
+~/.masterwork/agents/<role>/role.json    model / writes / purpose -> NOT an asset
+```
+
+Roles today are `plan`, `build`, `review`, `document`. The directory is created
+by the factory on first run; a repo-local override (`<repo>/.masterwork/agents/`)
+is out of scope here — this provider indexes the **global** store only.
+
+## Behavior
+
+- **Ids are `masterwork:agent:<role>:<part>`**, `<part>` ∈ `system` | `user` —
+  e.g. `masterwork:agent:plan:system`. Three properties are load-bearing:
+  - The provider segment is `masterwork`, so no id can collide with `claude:*`
+    or `claude-plugin:*` however the store is named.
+  - It round-trips through the id parser unchanged: that parser splits on the
+    first two colons only (`maxsplit=2`), so `<role>:<part>` survives whole as
+    the name, exactly like a plugin's `vercel:bootstrap`.
+  - The kind is **`agent`**, not a new kind. The store *is* a directory of
+    agents, and reusing the kind keeps roles inside the Agents list, the `kind`
+    filter and the usage rollups instead of widening the `AssetKind` enum — a
+    widening that would have made every one of these assets unroutable in the
+    current client, whose id parser returns null for a kind that is not
+    `skill`/`agent`.
+- **A role name is validated, never mangled.** `[a-z0-9][a-z0-9_-]{0,63}`:
+  lowercase (on a case-insensitive filesystem `Plan` and `plan` are one
+  directory but would be two ids), and no colon (the id would stop
+  round-tripping). A directory that fails it is skipped — it yields no assets
+  and no error, and its files map to no asset id. Stray files at the top of the
+  store, nested directories inside a role, and anything that is not
+  `system.md`/`user.md` are likewise not assets.
+- **One asset per editable file, not one per role.** `updateAsset` writes a whole
+  file, and every writer in this app (chat proposals, simulation suggestions)
+  emits prose. A role-as-one-asset would need a synthetic multi-file envelope
+  that each of those writers would have to reproduce byte-exactly or corrupt
+  both halves in one write. Two assets also match how the prompts actually fail:
+  a vague identity is a `system.md` edit, a missing input is a `user.md` edit,
+  and a simulation that scores one of them says which file to fix. Grouping the
+  roster back together is what a **project** is for.
+- **Writable, unlike plugin assets.** `read_only` is `false`, `PUT` writes the
+  file, and the writable root is the whole store — so an accepted proposal can
+  also create a role that does not exist yet (paths are still resolved through
+  the same symlink/traversal check every provider uses; anything outside the
+  store fails the accept with `path outside allowed roots`).
+- **`role.json` is not an asset.** It is machine config, and one field of it —
+  the `writes` boundary — is the security control that decides which files a
+  headless agent may touch. The improvement machinery writes markdown with no
+  schema validation anywhere in that path, so exposing the config to it means an
+  LLM can emit prose into a JSON file (breaking the runner's config parse) or
+  quietly widen the boundary of the agent it is editing. It is **read** instead:
+  its `model` populates the asset's `model` field, and its `purpose` opens the
+  asset's `description`, so the list UI shows what a role is for and what it
+  runs on without either being editable here. Changing config stays a
+  factory-side edit.
+- **Derived title and description.** `title` is `"<role> · system prompt"` /
+  `"<role> · task template"`; `description` is `purpose` (from `role.json`) plus
+  what the file is, or just the latter when there is no config. Frontmatter is
+  deliberately **not** parsed: these files are sent to the model verbatim, so a
+  `---` block is prompt text, not metadata. Search covers them like any other
+  asset — name, title, description and content — which means a role is findable
+  by its purpose *and* by a `{{placeholder}}` in its template.
+- **An absent store is zero assets, never an error.** Until the factory seeds it,
+  `listAssets` simply contains no `masterwork` assets; `roots()` still reports
+  the (missing) directory, so the first proposal that writes into it creates it.
+- **DB**: none. Assets have never been in the database — the files are the source
+  of truth. No migration.
+
+## Role edits are snapshotted
+
+These prompts *are* the pipeline, and the same improvement loop that edits them
+can degrade them, so every write the API makes to the store is committed to git
+first — the treatment `~/.claude` edits already got. **No endpoint, schema, or
+response changes**: the snapshot is a disk side effect of `updateAsset`,
+`acceptProposal` and `applySuggestion`, and history is read with `git`, not over
+HTTP (there are no history/diff/revert endpoints for `~/.claude` assets either).
+
+- **The repo is rooted at `~/.masterwork/agents`, not `~/.masterwork`.** The home
+  also holds `masterwork.db` and `runs/` (append-only telemetry, unbounded).
+  Rooting one level up and excluding them with an ignore file would make "the
+  database is not in git" a rule that has to keep holding on every future write
+  and every new subdirectory; rooting it at the store makes it unreachable —
+  `git add -A` cannot see outside its own worktree.
+- **Which tree records a write is the provider's answer**, not a constant: the
+  role provider claims the store, the Claude provider claims `~/.claude`, the
+  plugin provider claims nothing. A path in no tree is not snapshotted.
+- **Masterwork creates the store's repo; it never creates `~/.claude`'s.** The
+  store is masterwork's own directory, so the first write initializes it — git
+  identity and `commit.gpgsign=false` set locally, since a fresh machine may
+  have neither. `~/.claude` is the user's home: masterwork commits there when
+  they made it a repo, and does nothing when they did not.
+- **Anything already pending is committed as `masterwork: baseline snapshot`
+  before the write.** The factory seeds and rewrites the store directly, and the
+  user edits `~/.claude` by hand; `git add -A` would fold that into the commit
+  that records the API write, producing a diff that shows two changes and a
+  revert that undoes both. Baselining first keeps every recorded write a
+  single-change commit. No-op when the tree is clean.
+- **An absent store stays a no-op.** Nothing is created until the factory seeds
+  it. A proposal that writes the very first role initializes the repo after the
+  write, with the proposal's own message as the first commit — there is no
+  earlier state to baseline.
+- **Best-effort, as before**: a git failure is logged and swallowed. A write is
+  never rejected because history could not be recorded.
+- **`updateAsset` on a `~/.claude` asset is now snapshotted too** (previously
+  only proposals and suggestions were). An unrecorded manual edit would also
+  poison the next proposal's diff by folding both changes into one commit.
+
+---
+
+# API Contract v1.19 — Evidence: the envelope, and every gate check's note (FROZEN additions)
+
+Additive on top of v1.18. A stage records `gates_passed` / `gates_failed` as
+**counts**, and the envelope an agent returned is not stored at all — so the one
+artefact that could improve an agent is the one thing masterwork throws away.
+You cannot act on *3 failed*; you can act on *changed_files: claimed but not
+changed on disk: README.md*, and on the envelope that made the claim. v1.19
+stores both: one row per envelope **attempt**, and one row per gate **check**.
+
+Unlike every other coding-observability table, these two are **reported, not
+derived**. The producer states them on the hook body, and the hook body is not
+part of the stored event stream — so a backfill preserves them instead of
+rebuilding them, and recovers for older runs only what the stream still proves.
+
+## New schemas
+
+```
+EnvelopeAttempt {                     // one envelope an agent returned
+  id: number
+  phase_id: number | null             // the stage it was returned in; join on it
+  event_id: number | null             // the event that carried it
+  role: string | null                 // plan | build | review | document
+  attempt: number                     // 1-based, within (stage, role)
+  parsed: boolean
+  parse_error: string | null          // why it did not parse
+  status: string | null               // the status it declared: ok | blocked | failed
+  body: { [key: string]: any } | null // the envelope object, verbatim
+  raw_text: string | null             // the reply it was read out of
+  origin: string                      // reported | recovered — see below
+  created_at: string
+}
+
+GateCheckItem {                       // one check a gate ran
+  id: number
+  phase_id: number | null
+  event_id: number | null
+  gate: string                        // envelope | artifacts | changed_files | boundary | …
+  attempt: number                     // 1-based, within (stage, gate, item)
+  item: string | null                 // the thing checked; null for a whole-gate verdict
+  ok: boolean
+  note: string | null                 // what the check wrote. The reason the row exists
+  origin: string
+  created_at: string
+}
+```
+
+## Changed schemas
+
+```
+CodingSessionDetail += {
+  envelopes: EnvelopeAttempt[]        // oldest first, capped at the most recent 100
+  gate_checks: GateCheckItem[]        // oldest first, capped at the most recent 500
+}
+
+BackfillResult += { envelopes, gate_checks: number }
+BackfillTotals += { envelopes, gate_checks: number }
+```
+
+`CodingSession` — the list shape — is **unchanged**: a card carries
+`PhaseSummary[]`, not `CodingPhase[]`, and the two arrays hang off the detail
+only. The grid never ships an envelope body.
+
+## The ingest blocks
+
+`POST /api/v1/hooks/events` gains two optional blocks, under the same
+never-422 discipline as `phase` and `agent`: a producer that sends neither
+behaves exactly as it did in v1.18.
+
+```
+envelope: {
+  role:        string?   // the role that produced it; else the event's lane
+  attempt:     number?   // 1-based; counted for you when omitted
+  parsed:      boolean?  // defaults to `parse_error` being absent
+  parse_error: string?   // why it did not parse
+  status:      string?   // the status the envelope declared
+  body:        object?   // the envelope object as returned
+  raw_text:    string?   // the reply it was read out of
+}
+
+gate: {
+  name:    string        // the gate that ran — required; a block without one records nothing
+  attempt: number?       // 1-based; counted for you when omitted
+  item:    string?       // default item for the checks below
+  ok:      boolean?      // default verdict; else read off the event type
+  note:    string?       // default note
+  checks:  [ { item: string?, ok: boolean?, note: string? } ]?
+}
+```
+
+- **`gate.checks` decides the row count.** Present → one row per entry, each
+  entry falling back to the block's own `item`/`ok`/`note` for whatever it
+  omits. Absent → the block *is* the one check, and `item` is null. This is what
+  makes *one row per CHECK* possible for a gate like `checks`, which runs a
+  command per row, without forcing a wrapper on a gate that is a single verdict.
+- **`ok` falls back to the event type**: `gate_pass` → true, `gate_fail` →
+  false. The runner already spells its verdict that way, so the minimal report
+  is `gate: {"name": check.name, "note": check.note}` bolted onto the event it
+  already sends. A block that omits `ok` on any other event type records
+  nothing — a check with no verdict is not a check.
+- **`envelope.parsed` defaults to `parse_error == null`**, which mirrors the
+  runner's own `ParseResult.ok`. An envelope block carrying none of `body`,
+  `raw_text`, `parse_error` and an explicit `parsed` records nothing: an attempt
+  nobody can say anything about is not an attempt.
+- **`attempt` is counted when omitted** — the number of rows already stored for
+  the same (stage, role) or (stage, gate, item), plus one. A correction round
+  therefore numbers itself, and a producer that knows better states it.
+- **Both blocks are optional and independently droppable.** An unusable block is
+  dropped **whole** by the same validator that guards `phase`/`agent`: never
+  partially applied, never a 422. When a block is dropped the event still falls
+  through to recovery, so `gate: {"name": "boundary", "checks": "not a list"}`
+  on a `gate_fail` still records the boundary verdict from the payload.
+
+Caps, all clipping rather than rejecting: `role` and `gate` 100 chars, `item`
+500, `status` 20, `parse_error` 2 000, `note` 8 000, `raw_text` 32 KB, `body`
+32 KB serialized under the existing payload capping. A clipped `note` or
+`raw_text` gains a `… [truncated, N chars]` marker — a truncated reply that
+looks complete is worse than no reply.
+
+## Behavior
+
+- **Sibling arrays, not nested inside the phase.** Both rows carry a nullable
+  `phase_id` and the detail carries them flat, which is the join the rest of
+  this contract already uses (`CodingEvent.phase_id` points at a stage the same
+  way). Three reasons it beats nesting: evidence whose stage could not be
+  resolved still reaches the reader instead of vanishing — the ingest never
+  rejects, so a gate fired before any `phase_start` is a real case; *every
+  failing check in this run* is a flat filter rather than a flatten-then-filter;
+  and `CodingPhase` stays a row of scalars, which is what the waterfall wants.
+  Grouping by `phase_id` is one line in the client.
+- **`origin` says how much to trust the row.** `reported` — the producer sent
+  it, and only these can carry an envelope `body`. `recovered` — a replay
+  reconstructed it from a `gate_pass`/`gate_fail` line, so it says exactly what
+  that line said and `body`/`raw_text`/`status` are always null. The UI must
+  distinguish them: *no body recorded* is a fact about masterwork's history, not
+  about the agent.
+- **An event yields evidence from exactly one source.** A body that stated
+  blocks is taken at its word and is never also mined; an event that stated
+  nothing is mined. That is what stops one gate line becoming two rows.
+- **A backfill preserves reported evidence and rebuilds only the recovered.**
+  `POST /coding-sessions/{id}/backfill` deletes `origin = "recovered"` rows and
+  replays; the reported ones survive, because the hook body they arrived on was
+  never stored and no replay could recreate them. Since the replay drops and
+  recreates every stage, a surviving row's `phase_id` would name a deleted
+  stage — so it is **re-pointed** through `event_id`, the one handle that is
+  stable across a rebuild. A stage the replay cannot rebuild (a producer that
+  named it only on the body, never in `payload`) leaves the link honestly
+  `null` rather than dangling. Still idempotent: replaying twice changes
+  nothing.
+- **What history recovers.** The pre-v1.19 stream carries a gate's verdict in
+  the event type, its name in `payload.gate` and its note in `payload.detail`
+  as `"<gate>: <note>"` — so **the gate, the pass/fail and the note come back in
+  full**, with the redundant `"<gate>: "` prefix undone. The `envelope` gate's
+  own line additionally proves that an envelope *attempt* happened and whether
+  it parsed, so an `EnvelopeAttempt` is recovered for it — with `parse_error`
+  when it failed, and `body`, `raw_text` and `status` **null**, because they
+  were never posted and are not going to be guessed. `phase_end` carries the
+  envelope's `summary_line`, which is a sentence about the envelope and not the
+  envelope; it is left where it is, as the stage's `description`.
+- **A verdict that named no gate is filed under the gate name `stage`.** The
+  runner emits two such lines — an out-of-boundary revert, and a stage that
+  returned a non-`ok` status — and both are stage-level judgements rather than
+  one of the six named gates. Inventing a name for them would be a claim.
+- **`gates_passed`/`gates_failed` are untouched.** The counters stay exactly
+  what they were; these tables sit beside them. Nothing about the phase row
+  changed.
+- **DB**: new `coding_envelopes` and `coding_gate_checks` (autoincrement PK, FK
+  → `coding_sessions` ON DELETE CASCADE, FK → `coding_phases` ON DELETE SET NULL
+  so a rebuilt stage cannot delete the evidence, FK → `coding_events` ON DELETE
+  CASCADE, and an index on `(session_id, phase_id)` plus one on `event_id`).
+  Alembic migration **0017_coding_evidence**.

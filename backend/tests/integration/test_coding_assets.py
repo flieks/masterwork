@@ -8,13 +8,16 @@ signals touch the filesystem, so the transcript sidecars are written into
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.v1.coding import service
+from app.db.models.coding import CodingAssetUse
 
 SKILLS = "/Users/me/.claude/skills"
 
@@ -291,6 +294,120 @@ async def test_the_rollup_filters_by_since(client: AsyncClient) -> None:
 
 async def test_the_rollup_is_empty_before_anything_is_used(client: AsyncClient) -> None:
     assert await _usage(client) == []
+
+
+# ------------------------------------------------------------- the window ---
+
+
+async def _age_oldest_call(
+    factory: async_sessionmaker, *, kind: str, name: str, hours: float
+) -> None:
+    """Push this asset's oldest recorded call that far into the past.
+
+    Rewritten directly, like the ageing helpers in the honest-runs suite: the
+    window keys off wall-clock distance, and no amount of ingesting produces a
+    call from yesterday.
+    """
+    moment = datetime.now(tz=UTC) - timedelta(hours=hours)
+    async with factory() as db:
+        result = await db.execute(
+            select(CodingAssetUse.id)
+            .where(CodingAssetUse.kind == kind, CodingAssetUse.name == name)
+            .order_by(CodingAssetUse.id)
+            .limit(1)
+        )
+        await db.execute(
+            update(CodingAssetUse)
+            .where(CodingAssetUse.id == result.scalar_one())
+            .values(used_at=moment)
+        )
+        await db.commit()
+
+
+def _a_day_ago() -> str:
+    return (datetime.now(tz=UTC) - timedelta(hours=24)).isoformat()
+
+
+async def test_the_since_window_counts_only_the_calls_inside_it(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """The counter row holds one `last_seen_at` for a run's whole use of an
+    asset, so a window built on it returned that asset's *entire* history the
+    moment its newest call landed inside. Two calls, one of them two days old:
+    the run's counter still says "used just now", and "last 24h" is one use."""
+    await _read(client, f"{SKILLS}/tdd/SKILL.md")
+    await _read(client, f"{SKILLS}/tdd/SKILL.md")
+    await _age_oldest_call(session_factory, kind="skill", name="tdd", hours=48)
+
+    assert [(r["name"], r["uses"], r["sessions"]) for r in await _usage(client)] == [("tdd", 2, 1)]
+    windowed = await _usage(client, since=_a_day_ago())
+    assert [(r["name"], r["uses"], r["sessions"]) for r in windowed] == [("tdd", 1, 1)]
+
+
+async def test_a_run_whose_calls_are_all_old_leaves_the_window(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    await _read(client, f"{SKILLS}/tdd/SKILL.md", "old-run")
+    await _read(client, f"{SKILLS}/tdd/SKILL.md", "new-run")
+    await _age_oldest_call(session_factory, kind="skill", name="tdd", hours=48)
+
+    assert [(r["uses"], r["sessions"]) for r in await _usage(client)] == [(2, 2)]
+    assert [(r["uses"], r["sessions"]) for r in await _usage(client, since=_a_day_ago())] == [
+        (1, 1)
+    ]
+
+
+async def test_the_window_reports_the_newest_call_inside_it(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """`last_used_at` has to mean the same thing the count does."""
+    await _read(client, f"{SKILLS}/tdd/SKILL.md")
+    await _read(client, f"{SKILLS}/tdd/SKILL.md")
+    await _age_oldest_call(session_factory, kind="skill", name="tdd", hours=48)
+
+    (row,) = await _usage(client, since=_a_day_ago())
+    assert row["last_used_at"] == (await _usage(client))[0]["last_used_at"]
+
+
+async def test_the_window_filters_by_kind_too(client: AsyncClient) -> None:
+    await _read(client, f"{SKILLS}/tdd/SKILL.md")
+    await _ingest(
+        client,
+        session_id="s1",
+        event_type="PostToolUse",
+        tool_name="Task",
+        payload={"tool_input": {"subagent_type": "architect"}},
+    )
+    since = _a_day_ago()
+    assert [r["name"] for r in await _usage(client, since=since, kind="agent")] == ["architect"]
+    assert [r["name"] for r in await _usage(client, since=since, kind="skill")] == ["tdd"]
+
+
+async def test_the_window_still_leaves_out_the_inspection_runs(client: AsyncClient) -> None:
+    """The default exclusion is not something the two code paths may disagree
+    on: an all-time ranking without masterwork's own reads and a 24h one with
+    them would look like the assets changed places."""
+    await _ingest(
+        client, session_id="inspect", event_type="SessionStart", cwd=service.INSPECTION_CWD
+    )
+    await _read(client, f"{SKILLS}/tdd/SKILL.md", "inspect")
+    await _ingest(client, session_id="real", event_type="SessionStart", cwd="/repo")
+    await _read(client, f"{SKILLS}/tdd/SKILL.md", "real")
+
+    since = _a_day_ago()
+    assert [(r["name"], r["uses"]) for r in await _usage(client, since=since)] == [("tdd", 1)]
+    both = await _usage(client, since=since, include_inspection="true")
+    assert [(r["name"], r["uses"]) for r in both] == [("tdd", 2)]
+
+
+async def test_the_window_is_empty_when_nothing_was_used_inside_it(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    await _read(client, f"{SKILLS}/tdd/SKILL.md")
+    await _age_oldest_call(session_factory, kind="skill", name="tdd", hours=48)
+
+    assert await _usage(client, since=_a_day_ago()) == []
+    assert [r["uses"] for r in await _usage(client)] == [1]
 
 
 # --------------------------------------------------------------- backfill ---

@@ -25,7 +25,9 @@ from app.db.models.coding import (
     CodingAgent,
     CodingAsset,
     CodingAssetUse,
+    CodingEnvelope,
     CodingEvent,
+    CodingGateCheck,
     CodingPhase,
     CodingSession,
     asset_id_for,
@@ -155,6 +157,8 @@ def coding_session_to_detail(
     assets: list[CodingAsset],
     child_count: int,
     active_ms: int,
+    envelopes: list[CodingEnvelope],
+    gate_checks: list[CodingGateCheck],
     now: datetime,
 ) -> schemas.CodingSessionDetail:
     return schemas.CodingSessionDetail(
@@ -170,6 +174,40 @@ def coding_session_to_detail(
             now=now,
         ),
         phases=[coding_phase_to_schema(p) for p in phases],
+        envelopes=[envelope_to_schema(e) for e in envelopes],
+        gate_checks=[gate_check_to_schema(c) for c in gate_checks],
+    )
+
+
+def envelope_to_schema(envelope: CodingEnvelope) -> schemas.EnvelopeAttempt:
+    return schemas.EnvelopeAttempt(
+        id=envelope.id,
+        phase_id=envelope.phase_id,
+        event_id=envelope.event_id,
+        role=envelope.role,
+        attempt=envelope.attempt,
+        parsed=envelope.parsed,
+        parse_error=envelope.parse_error,
+        status=envelope.status,
+        body=envelope.body,
+        raw_text=envelope.raw_text,
+        origin=envelope.origin,
+        created_at=envelope.created_at,
+    )
+
+
+def gate_check_to_schema(check: CodingGateCheck) -> schemas.GateCheckItem:
+    return schemas.GateCheckItem(
+        id=check.id,
+        phase_id=check.phase_id,
+        event_id=check.event_id,
+        gate=check.gate,
+        attempt=check.attempt,
+        item=check.item,
+        ok=check.ok,
+        note=check.note,
+        origin=check.origin,
+        created_at=check.created_at,
     )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 # Required envelope fields per role. `changed_files` is required of every stage
 # that may write, so gate 3 has something to verify for all of them.
@@ -16,6 +17,11 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 VALID_STATUS = ("ok", "blocked", "failed")
+
+
+def owes_a_verdict(stage: str) -> bool:
+    """Whether this role's envelope carries a judgement — the roles `approved` binds."""
+    return "approved" in REQUIRED_FIELDS.get(stage, ())
 
 # A fenced block: opening fence + info string, body, closing fence on its own line.
 _FENCE_RE = re.compile(r"^[ \t]*```([^\n`]*)\r?\n(.*?)\r?\n?^[ \t]*```[ \t]*$", re.S | re.M)
@@ -93,6 +99,28 @@ def parse_envelope(text: str, stage: str) -> ParseResult:
             None, f'"status" must be one of {", ".join(VALID_STATUS)} (got {envelope.status!r})'
         )
     return ParseResult(envelope)
+
+
+def attempt_block(
+    result: ParseResult, *, role: str, attempt: int, raw_text: str
+) -> dict[str, Any]:
+    """The v1.19 `envelope` block for one agent turn.
+
+    Emitted for failures too — a reply whose envelope did not parse is the row
+    worth keeping, and the raw text is the only place the reason is legible.
+    """
+    block: dict[str, Any] = {
+        "role": role,
+        "attempt": attempt,
+        "parsed": result.ok,
+        "raw_text": raw_text,
+    }
+    if result.error:
+        block["parse_error"] = result.error
+    if result.envelope is not None:
+        block["status"] = result.envelope.status
+        block["body"] = result.envelope.raw
+    return block
 
 
 def _str_list(data: dict, key: str) -> list[str]:

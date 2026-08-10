@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     claude_settings_file: Path = Path.home() / ".claude" / "settings.json"
     # Everything masterwork installs on disk (database, forwarder scripts).
     masterwork_home: Path = MASTERWORK_HOME
+    # Vendor-neutral role store the factory pipeline reads its stage prompts from
+    # (<role>/system.md + user.md + role.json). Seeded by the factory on first
+    # run, so it may not exist yet.
+    masterwork_agents_root: Path = MASTERWORK_HOME / "agents"
     # The port uvicorn was actually started on, so the hook command a connected
     # agent runs posts to this backend and not to a stale default. The launcher
     # passes it through; running uvicorn by hand on another port needs it set.

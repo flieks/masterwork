@@ -6,6 +6,7 @@ import { Skeleton } from '~/components/ui/skeleton';
 import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
 import { absoluteDateTime, clockTime } from '~/lib/datetime';
+import { formatJson } from '~/lib/json';
 import { cn } from '~/lib/utils';
 import {
   groupEvents,
@@ -18,9 +19,6 @@ import {
 import { codingSessionEventsQueryAtom } from '../queries';
 import { EventTypeChip } from './EventTypeChip';
 import { ToolChip } from './ToolChip';
-
-/** A single hook payload can be up to 32k chars — cap what we put in the DOM. */
-const MAX_PAYLOAD_CHARS = 4000;
 
 interface EventTimelineProps {
   sessionId: string;
@@ -171,7 +169,7 @@ function EventRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const prompt = promptText(event);
-  const payload = formatPayload(event.payload);
+  const payload = formatJson(event.payload);
   const summary = toolSummary(event);
 
   return (
@@ -241,17 +239,4 @@ function EventHeader({ event, summary }: { event: CodingEvent; summary: ToolSumm
       ) : null}
     </>
   );
-}
-
-/** Pretty-printed payload, truncated for display; null when there is nothing to show. */
-function formatPayload(payload: Record<string, unknown> | null): string | null {
-  if (!payload || Object.keys(payload).length === 0) return null;
-  let text: string;
-  try {
-    text = JSON.stringify(payload, null, 2);
-  } catch {
-    return null;
-  }
-  if (text.length <= MAX_PAYLOAD_CHARS) return text;
-  return `${text.slice(0, MAX_PAYLOAD_CHARS)}\n… truncated (${text.length.toLocaleString()} characters)`;
 }

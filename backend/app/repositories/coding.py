@@ -11,6 +11,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models.coding import (
     ACTIVE_GAP,
+    EVIDENCE_RECOVERED,
     IDLE_WINDOW,
     LAUNCH_AUTOMATED,
     STATUS_ABANDONED,
@@ -20,7 +21,9 @@ from app.db.models.coding import (
     CodingAgent,
     CodingAsset,
     CodingAssetUse,
+    CodingEnvelope,
     CodingEvent,
+    CodingGateCheck,
     CodingPhase,
     CodingSession,
 )
@@ -121,12 +124,18 @@ async def list_sessions(
     workflow: str | None = None,
     status: str | None = None,
     roots_only: bool = False,
+    parent_session_id: str | None = None,
 ) -> list[CodingSession]:
     cutoff = _idle_cutoff()
     query = select(CodingSession)
-    if not include_empty:
+    # Naming a parent is a lookup of a known run's children, not a browse of the
+    # grid, so the two hygiene suppressions are skipped: a pipeline's stages are
+    # headless by construction, and `child_count` counts all of them — filtered,
+    # this endpoint would contradict the number on the parent's own card.
+    scoped = parent_session_id is not None
+    if not include_empty and not scoped:
         query = query.where(not_(_is_empty_session(cutoff)))
-    if not include_automated:
+    if not include_automated and not scoped:
         # is_distinct_from so the unclassified (null) rows stay listed.
         query = query.where(CodingSession.launch_mode.is_distinct_from(LAUNCH_AUTOMATED))
     if workflow is not None:
@@ -140,6 +149,10 @@ async def list_sessions(
         query = query.where(_status_filter(status, cutoff))
     if roots_only:
         query = query.where(CodingSession.parent_session_id.is_(None))
+    if parent_session_id is not None:
+        # The complement of roots_only; asking for both is a contradiction and
+        # correctly answers with nothing.
+        query = query.where(CodingSession.parent_session_id == parent_session_id)
     # Genuinely live runs outrank stale ones however recently the stale ones
     # spoke; everything else is most-recent-first.
     result = await db.execute(
@@ -450,9 +463,25 @@ async def asset_usage(
 ) -> list[tuple[str, str, int, int, datetime]]:
     """The cross-session rollup: (kind, name, sessions, uses, last_used_at).
 
+    Two sources, because a window and an all-time total are different questions.
+    All-time sums `coding_assets`, the per-(run, asset, lane) counter of record.
+    A window cannot: the counter carries only a `last_seen_at`, so narrowing on
+    it and summing `uses` returns an asset's *entire* history the moment its
+    most recent call happens to land inside the window — "last 24h" reporting
+    figures from weeks ago. So `since` is answered from `coding_asset_uses`, the
+    append-only log that timestamps every individual call.
+
     Rows are returned positionally rather than as labelled columns — a label
     named `count` or `index` collides with a method on SQLAlchemy's Row.
     """
+    if since is None:
+        return await _usage_from_counters(db, kind=kind, exclude_cwd=exclude_cwd)
+    return await _usage_from_log(db, kind=kind, since=since, exclude_cwd=exclude_cwd)
+
+
+async def _usage_from_counters(
+    db: AsyncSession, *, kind: str | None, exclude_cwd: str | None
+) -> list[tuple[str, str, int, int, datetime]]:
     sessions = func.count(func.distinct(CodingAsset.session_id))
     uses = func.sum(CodingAsset.uses)
     last_used = func.max(CodingAsset.last_seen_at)
@@ -465,12 +494,38 @@ async def asset_usage(
         )
     if kind is not None:
         query = query.where(CodingAsset.kind == kind)
-    if since is not None:
-        query = query.where(CodingAsset.last_seen_at >= since)
     result = await db.execute(
         query.group_by(CodingAsset.kind, CodingAsset.name)
         # Name breaks ties so the ranking is stable across calls.
         .order_by(uses.desc(), CodingAsset.name)
+    )
+    return [(row[0], row[1], int(row[2]), int(row[3] or 0), row[4]) for row in result.all()]
+
+
+async def _usage_from_log(
+    db: AsyncSession, *, kind: str | None, since: datetime, exclude_cwd: str | None
+) -> list[tuple[str, str, int, int, datetime]]:
+    """The same shape, counted per call inside the window.
+
+    One log row is one call, so `uses` is a row count rather than a sum, and a
+    run only counts as a user of the asset if it called it inside the window.
+    """
+    sessions = func.count(func.distinct(CodingAssetUse.session_id))
+    uses = func.count(CodingAssetUse.id)
+    last_used = func.max(CodingAssetUse.used_at)
+    query = select(CodingAssetUse.kind, CodingAssetUse.name, sessions, uses, last_used).where(
+        CodingAssetUse.used_at >= since
+    )
+    if exclude_cwd is not None:
+        query = query.join(CodingSession, CodingSession.id == CodingAssetUse.session_id).where(
+            CodingSession.cwd != exclude_cwd
+        )
+    if kind is not None:
+        query = query.where(CodingAssetUse.kind == kind)
+    result = await db.execute(
+        query.group_by(CodingAssetUse.kind, CodingAssetUse.name).order_by(
+            uses.desc(), CodingAssetUse.name
+        )
     )
     return [(row[0], row[1], int(row[2]), int(row[3] or 0), row[4]) for row in result.all()]
 
@@ -558,6 +613,216 @@ async def asset_use_log(
 async def clear_asset_uses(db: AsyncSession, session_id: str) -> None:
     await db.execute(delete(CodingAssetUse).where(CodingAssetUse.session_id == session_id))
     await db.flush()
+
+
+# --- evidence: the envelope an agent returned, and every gate check's note ---
+
+
+async def add_envelope(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    phase_id: int | None,
+    event_id: int | None,
+    role: str | None,
+    attempt: int,
+    parsed: bool,
+    parse_error: str | None,
+    status: str | None,
+    body: dict[str, Any] | None,
+    raw_text: str | None,
+    origin: str,
+    now: datetime,
+) -> CodingEnvelope:
+    envelope = CodingEnvelope(
+        session_id=session_id,
+        phase_id=phase_id,
+        event_id=event_id,
+        role=role,
+        attempt=attempt,
+        parsed=parsed,
+        parse_error=parse_error,
+        status=status,
+        body=body,
+        raw_text=raw_text,
+        origin=origin,
+        created_at=now,
+    )
+    db.add(envelope)
+    await db.flush()
+    return envelope
+
+
+async def add_gate_check(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    phase_id: int | None,
+    event_id: int | None,
+    gate: str,
+    attempt: int,
+    item: str | None,
+    ok: bool,
+    note: str | None,
+    origin: str,
+    now: datetime,
+) -> CodingGateCheck:
+    check = CodingGateCheck(
+        session_id=session_id,
+        phase_id=phase_id,
+        event_id=event_id,
+        gate=gate,
+        attempt=attempt,
+        item=item,
+        ok=ok,
+        note=note,
+        origin=origin,
+        created_at=now,
+    )
+    db.add(check)
+    await db.flush()
+    return check
+
+
+def _same(column: Any, value: Any) -> ColumnElement[bool]:
+    matched: ColumnElement[bool] = column.is_(None) if value is None else column == value
+    return matched
+
+
+async def count_envelopes(
+    db: AsyncSession, session_id: str, *, phase_id: int | None, role: str | None
+) -> int:
+    """How many attempts this role already made in this stage — the next one's
+    number, when the producer did not state it. Nulls are matched explicitly:
+    both dialects treat them as distinct in an equality test."""
+    result = await db.execute(
+        select(func.count())
+        .select_from(CodingEnvelope)
+        .where(
+            CodingEnvelope.session_id == session_id,
+            _same(CodingEnvelope.phase_id, phase_id),
+            _same(CodingEnvelope.role, role),
+        )
+    )
+    return result.scalar() or 0
+
+
+async def count_gate_checks(
+    db: AsyncSession, session_id: str, *, phase_id: int | None, gate: str, item: str | None
+) -> int:
+    """The same, per (stage, gate, item) — one gate re-run is one more attempt."""
+    result = await db.execute(
+        select(func.count())
+        .select_from(CodingGateCheck)
+        .where(
+            CodingGateCheck.session_id == session_id,
+            _same(CodingGateCheck.phase_id, phase_id),
+            CodingGateCheck.gate == gate,
+            _same(CodingGateCheck.item, item),
+        )
+    )
+    return result.scalar() or 0
+
+
+async def reported_evidence_event_ids(db: AsyncSession, session_id: str) -> frozenset[int]:
+    """The events whose evidence arrived on the hook body.
+
+    A replay must not mine those events again: what they reported is already
+    stored, and richer than anything the stored payload could prove.
+    """
+    envelopes = await db.execute(
+        select(CodingEnvelope.event_id).where(
+            CodingEnvelope.session_id == session_id,
+            CodingEnvelope.origin != EVIDENCE_RECOVERED,
+            CodingEnvelope.event_id.is_not(None),
+        )
+    )
+    checks = await db.execute(
+        select(CodingGateCheck.event_id).where(
+            CodingGateCheck.session_id == session_id,
+            CodingGateCheck.origin != EVIDENCE_RECOVERED,
+            CodingGateCheck.event_id.is_not(None),
+        )
+    )
+    found = [*envelopes.scalars().all(), *checks.scalars().all()]
+    return frozenset(i for i in found if i is not None)
+
+
+async def relink_evidence(db: AsyncSession, *, event_id: int, phase_id: int | None) -> None:
+    """Point one event's reported evidence at the stage a replay just rebuilt.
+
+    A backfill drops and recreates every phase, so the row's old `phase_id` names
+    a stage that no longer exists. The event is the stable handle between them.
+    """
+    await db.execute(
+        update(CodingEnvelope).where(CodingEnvelope.event_id == event_id).values(phase_id=phase_id)
+    )
+    await db.execute(
+        update(CodingGateCheck)
+        .where(CodingGateCheck.event_id == event_id)
+        .values(phase_id=phase_id)
+    )
+    await db.flush()
+
+
+async def clear_recovered_evidence(db: AsyncSession, session_id: str) -> None:
+    """Drop only what a replay wrote. Reported rows carry bodies the event
+    stream never held, so rebuilding them would destroy them."""
+    await db.execute(
+        delete(CodingEnvelope).where(
+            CodingEnvelope.session_id == session_id,
+            CodingEnvelope.origin == EVIDENCE_RECOVERED,
+        )
+    )
+    await db.execute(
+        delete(CodingGateCheck).where(
+            CodingGateCheck.session_id == session_id,
+            CodingGateCheck.origin == EVIDENCE_RECOVERED,
+        )
+    )
+    await db.flush()
+
+
+async def envelopes_for_session(
+    db: AsyncSession, session_id: str, *, limit: int
+) -> list[CodingEnvelope]:
+    """Oldest first, so attempt 1 precedes attempt 2. Capped at the most recent
+    `limit` — an envelope body is up to 32 KB, and the cap has to bound the
+    response, not the head of the run."""
+    result = await db.execute(
+        select(CodingEnvelope)
+        .where(CodingEnvelope.session_id == session_id)
+        .order_by(CodingEnvelope.id.desc())
+        .limit(limit)
+    )
+    return list(reversed(result.scalars().all()))
+
+
+async def gate_checks_for_session(
+    db: AsyncSession, session_id: str, *, limit: int
+) -> list[CodingGateCheck]:
+    result = await db.execute(
+        select(CodingGateCheck)
+        .where(CodingGateCheck.session_id == session_id)
+        .order_by(CodingGateCheck.id.desc())
+        .limit(limit)
+    )
+    return list(reversed(result.scalars().all()))
+
+
+async def evidence_counts(db: AsyncSession, session_id: str) -> tuple[int, int]:
+    """(envelopes, gate_checks) a session holds — what a backfill reports."""
+    envelopes = await db.execute(
+        select(func.count())
+        .select_from(CodingEnvelope)
+        .where(CodingEnvelope.session_id == session_id)
+    )
+    checks = await db.execute(
+        select(func.count())
+        .select_from(CodingGateCheck)
+        .where(CodingGateCheck.session_id == session_id)
+    )
+    return envelopes.scalar() or 0, checks.scalar() or 0
 
 
 async def active_ms_by_session(db: AsyncSession, session_ids: list[str]) -> dict[str, int]:

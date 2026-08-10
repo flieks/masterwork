@@ -23,10 +23,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.assets.service import parse_asset_id
-from app.api.v1.coding import assets, derive, schemas, serializers
+from app.api.v1.coding import assets, derive, evidence, schemas, serializers
 from app.config import settings
 from app.core.exceptions import CodingSessionNotFoundError
 from app.db.models.coding import (
+    EVIDENCE_RECOVERED,
+    EVIDENCE_REPORTED,
     KIND_AGENT,
     LAUNCH_AUTOMATED,
     LAUNCH_INTERACTIVE,
@@ -109,6 +111,8 @@ class BackfillResult:
     phases: int
     agents: int
     assets: int
+    envelopes: int
+    gate_checks: int
 
 
 @dataclass(slots=True)
@@ -120,6 +124,8 @@ class BackfillTotals:
     phases: int = 0
     agents: int = 0
     assets: int = 0
+    envelopes: int = 0
+    gate_checks: int = 0
 
 
 def _utcnow() -> datetime:
@@ -175,7 +181,9 @@ def _set_title(session: CodingSession, title: str | None, source: str) -> None:
     """Keep the strongest title seen so far — see _TITLE_RANK."""
     if not title:
         return
-    if session.title and _TITLE_RANK[source] <= _TITLE_RANK.get(session.title_source, 0):
+    # Both sides default to 0: TITLE_CWD is derived at read time and so has no
+    # rank here, and a future signal must not be able to turn a title into a 500.
+    if session.title and _TITLE_RANK.get(source, 0) <= _TITLE_RANK.get(session.title_source, 0):
         return
     session.title = title[:MAX_TITLE]
     session.title_source = source
@@ -477,6 +485,73 @@ async def _resolve_phase(
     return phase or await coding_repo.open_phase(db, session.id)
 
 
+async def _record_evidence(
+    db: AsyncSession,
+    event: CodingEvent,
+    *,
+    payload: dict[str, Any] | None,
+    phase_id: int | None,
+    lane: str | None,
+    reported: evidence.Evidence | None,
+    replayed: frozenset[int] | None,
+    now: datetime,
+) -> None:
+    """Store the claims and verdicts this event carried.
+
+    One event yields evidence from exactly one source, which is what keeps the
+    two from doubling up: a producer that stated blocks is taken at its word and
+    is never also mined, and a replay re-points what such an event already
+    reported instead of mining it a second time.
+    """
+    if replayed is not None and event.id in replayed:
+        await coding_repo.relink_evidence(db, event_id=event.id, phase_id=phase_id)
+        return
+    if reported is not None and not reported.empty:
+        found, origin = reported, EVIDENCE_REPORTED
+    else:
+        found = evidence.from_event(event.event_type, payload, lane=lane)
+        origin = EVIDENCE_RECOVERED
+    if found.empty:
+        return
+
+    if (envelope := found.envelope) is not None:
+        attempt = envelope.attempt or 1 + await coding_repo.count_envelopes(
+            db, event.session_id, phase_id=phase_id, role=envelope.role
+        )
+        await coding_repo.add_envelope(
+            db,
+            session_id=event.session_id,
+            phase_id=phase_id,
+            event_id=event.id,
+            role=envelope.role,
+            attempt=attempt,
+            parsed=envelope.parsed,
+            parse_error=envelope.parse_error,
+            status=envelope.status,
+            body=_capped(envelope.body),
+            raw_text=envelope.raw_text,
+            origin=origin,
+            now=now,
+        )
+    for check in found.checks:
+        attempt = check.attempt or 1 + await coding_repo.count_gate_checks(
+            db, event.session_id, phase_id=phase_id, gate=check.gate, item=check.item
+        )
+        await coding_repo.add_gate_check(
+            db,
+            session_id=event.session_id,
+            phase_id=phase_id,
+            event_id=event.id,
+            gate=check.gate,
+            attempt=attempt,
+            item=check.item,
+            ok=check.ok,
+            note=check.note,
+            origin=origin,
+            now=now,
+        )
+
+
 async def _apply_derived(
     db: AsyncSession,
     session: CodingSession,
@@ -485,11 +560,18 @@ async def _apply_derived(
     now: datetime,
     *,
     payload: dict[str, Any] | None,
+    reported: evidence.Evidence | None = None,
+    replayed: frozenset[int] | None = None,
 ) -> None:
     """Write down what the event implied, and point the event at it.
 
     `payload` is passed separately from `event.payload` so the live ingest reads
     the hook's own body while a replay reads the stored (capped) copy.
+
+    `reported` is the evidence the hook body stated, which only a live ingest
+    has; `replayed` is the set of events that already hold such evidence, which
+    only a replay passes — the hook body is not stored, so a rebuild has to
+    preserve those rows rather than recreate them.
     """
     # Provenance rides the SessionStart payload, and is re-read on every replay
     # so a rebuilt session gets the same parent and title a live one would.
@@ -518,6 +600,17 @@ async def _apply_derived(
 
     for use in assets.from_event(event.event_type, event.tool_name, payload, lane=derived.lane):
         await _count_asset(db, session.id, use, now)
+
+    await _record_evidence(
+        db,
+        event,
+        payload=payload,
+        phase_id=event.phase_id,
+        lane=derived.lane,
+        reported=reported,
+        replayed=replayed,
+        now=now,
+    )
 
     if derived.stats:
         _promote_stats(session, derived.stats)
@@ -567,7 +660,15 @@ async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
         now=now,
     )
     derived = derive.from_event(body.event_type, body.tool_name, body.payload, body=body)
-    await _apply_derived(db, session, event, derived, now, payload=body.payload)
+    await _apply_derived(
+        db,
+        session,
+        event,
+        derived,
+        now,
+        payload=body.payload,
+        reported=evidence.from_body(body, lane=derived.lane),
+    )
 
 
 async def ingest_event(db: AsyncSession, body: schemas.HookEventRequest) -> None:
@@ -596,6 +697,17 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     if session is None:
         raise CodingSessionNotFoundError(f"unknown coding session: {session_id}")
 
+    # A status the producer stated on the hook *body* is not in the event stream
+    # — only `payload` is stored — so the replay cannot re-derive it. `failed`
+    # and `success` come back from the factory's own payload; `interrupted` only
+    # ever arrives this way, and without this a rebuild would quietly downgrade
+    # a reported outcome to `success`.
+    reported_status = session.status
+    # Evidence is reported, not derived: an envelope body never entered the
+    # event stream, so only what a previous replay recovered may be dropped.
+    # The survivors are re-pointed at their rebuilt stage during the replay.
+    replayed = await coding_repo.reported_evidence_event_ids(db, session_id)
+    await coding_repo.clear_recovered_evidence(db, session_id)
     await coding_repo.clear_derived(db, session_id)
     await coding_repo.clear_assets(db, session_id)
     await coding_repo.clear_asset_uses(db, session_id)
@@ -614,8 +726,18 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     events = await coding_repo.session_events(db, session_id)
     for event in events:
         derived = derive.from_event(event.event_type, event.tool_name, event.payload)
-        await _apply_derived(db, session, event, derived, event.created_at, payload=event.payload)
+        await _apply_derived(
+            db,
+            session,
+            event,
+            derived,
+            event.created_at,
+            payload=event.payload,
+            replayed=replayed,
+        )
 
+    if session.status == STATUS_RUNNING and reported_status != STATUS_RUNNING:
+        session.status = reported_status
     # A replayed stream has no `ended` flag; the stored timestamp says the same.
     if session.ended_at is not None and session.status == STATUS_RUNNING:
         session.status = STATUS_SUCCESS
@@ -623,6 +745,7 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     phases = await coding_repo.phases_by_session(db, [session_id])
     agents = await coding_repo.agents_by_session(db, [session_id])
     session_assets = await coding_repo.assets_by_session(db, [session_id])
+    envelopes, gate_checks = await coding_repo.evidence_counts(db, session_id)
     await db.commit()
     return BackfillResult(
         session_id=session_id,
@@ -630,6 +753,8 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
         phases=len(phases[session_id]),
         agents=len(agents[session_id]),
         assets=len(session_assets[session_id]),
+        envelopes=envelopes,
+        gate_checks=gate_checks,
     )
 
 
@@ -648,6 +773,8 @@ async def backfill_all(db: AsyncSession) -> BackfillTotals:
         totals.phases += result.phases
         totals.agents += result.agents
         totals.assets += result.assets
+        totals.envelopes += result.envelopes
+        totals.gate_checks += result.gate_checks
     return totals
 
 
@@ -668,6 +795,7 @@ async def list_sessions(
     workflow: str | None = None,
     status: str | None = None,
     roots_only: bool = False,
+    parent_session_id: str | None = None,
 ) -> list[schemas.CodingSession]:
     sessions = await coding_repo.list_sessions(
         db,
@@ -678,6 +806,7 @@ async def list_sessions(
         workflow=workflow,
         status=status,
         roots_only=roots_only,
+        parent_session_id=parent_session_id,
     )
     ids = [s.id for s in sessions]
     counts = await coding_repo.event_counts(db, ids)
@@ -703,6 +832,13 @@ async def list_sessions(
     ]
 
 
+# The evidence a detail response carries. An envelope body runs to 32 KB, so the
+# two caps differ by an order of magnitude: a run has a handful of attempts per
+# stage and a great many checks, and neither array may make the page unloadable.
+MAX_DETAIL_ENVELOPES = 100
+MAX_DETAIL_GATE_CHECKS = 500
+
+
 async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessionDetail:
     session = await get_session_or_404(db, session_id)
     counts = await coding_repo.event_counts(db, [session_id])
@@ -712,6 +848,10 @@ async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessio
     session_assets = await coding_repo.assets_by_session(db, [session_id])
     children = await coding_repo.child_counts(db, [session_id])
     active = await coding_repo.active_ms_by_session(db, [session_id])
+    envelopes = await coding_repo.envelopes_for_session(db, session_id, limit=MAX_DETAIL_ENVELOPES)
+    gate_checks = await coding_repo.gate_checks_for_session(
+        db, session_id, limit=MAX_DETAIL_GATE_CHECKS
+    )
     return serializers.coding_session_to_detail(
         session,
         event_count=events,
@@ -721,6 +861,8 @@ async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessio
         assets=session_assets[session_id],
         child_count=children.get(session_id, 0),
         active_ms=active.get(session_id, 0),
+        envelopes=envelopes,
+        gate_checks=gate_checks,
         now=_utcnow(),
     )
 

@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/experimental-ct-react';
+import type { AssetSessionUse } from '~/api/generated';
 import { SessionsListPage } from '~/features/sessions/components/SessionsListPage';
 import { windowSince } from '~/features/sessions/runs';
+import { AssetScopeHarness } from './harness/AssetScopeHarness';
 import { TestProviders } from './harness/TestProviders';
 import { assetUsageRows, chatRun, factoryRunSummary } from './harness/runFixtures';
 import { integration } from './harness/integrationFixtures';
@@ -115,6 +117,160 @@ test('the kind filter and the since window reach the request', async ({ mount, p
 
   await page.getByRole('group', { name: 'Used' }).getByRole('button', { name: '24h' }).click();
   await expect.poll(() => urls.some((u) => u.includes('since='))).toBe(true);
+});
+
+/**
+ * Masterwork analyses assets by running Claude over them, and those runs Read
+ * every linked SKILL.md — so counting them ranks assets by inspection. The
+ * backend leaves them out by default; these cover the way to look anyway.
+ */
+
+/** Same rows, but as they read once masterwork's own analysis runs are counted. */
+function inspectionRows() {
+  return assetUsageRows().map((row) => ({
+    ...row,
+    sessions: row.sessions + 6,
+    uses: row.uses + 12,
+  }));
+}
+
+async function mockInspectionScope(page: Page): Promise<{ urls: string[] }> {
+  const urls: string[] = [];
+  await page.route('**/api/v1/**', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: CORS, body: '' });
+      return;
+    }
+    const url = route.request().url();
+    if (url.includes('/observability/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: JSON.stringify([integration()]),
+      });
+      return;
+    }
+    urls.push(url);
+    // The backend does the counting — the flag has to reach it either way.
+    const inspected = new URL(url).searchParams.get('include_inspection') === 'true';
+    const rows = inspected ? inspectionRows() : assetUsageRows();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS,
+      body: JSON.stringify(url.includes('/coding-assets') ? rows : [factoryRunSummary()]),
+    });
+  });
+  return { urls };
+}
+
+test('the rollup excludes inspection runs until the toggle asks for them', async ({
+  mount,
+  page,
+}) => {
+  const { urls } = await mockInspectionScope(page);
+  await mount(
+    <TestProviders>
+      <SessionsListPage />
+    </TestProviders>,
+  );
+  await openAssets(page);
+
+  const frontendDev = page.getByRole('row').filter({ hasText: 'frontend-dev' });
+  await expect(frontendDev).toContainText('3');
+  await expect.poll(() => urls.some((u) => u.includes('/coding-assets'))).toBe(true);
+  expect(urls.filter((u) => u.includes('/coding-assets')).at(-1)).not.toContain(
+    'include_inspection=true',
+  );
+
+  await page.getByRole('button', { name: 'Include inspection runs' }).click();
+
+  await expect.poll(() => urls.some((u) => u.includes('include_inspection=true'))).toBe(true);
+  // The counts rise, and the table says why they did.
+  await expect(frontendDev).toContainText('15');
+  await expect(page.getByText(/rank assets by inspection as much as by use/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hide inspection runs' })).toBeVisible();
+});
+
+test('the toggle says what an inspection run is', async ({ mount, page }) => {
+  await mockInspectionScope(page);
+  await mount(
+    <TestProviders>
+      <SessionsListPage />
+    </TestProviders>,
+  );
+  await openAssets(page);
+
+  const toggle = page.getByRole('button', { name: 'Include inspection runs' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveAttribute('title', /Read every linked asset's SKILL\.md/);
+  await expect(toggle).toHaveAttribute('title', /rather than by the work they did/);
+});
+
+test('the per-asset drill-in follows the same scope as the table', async ({ mount, page }) => {
+  const use = (sessionId: string, uses: number): AssetSessionUse => ({
+    session_id: sessionId,
+    title: `${sessionId} did some work`,
+    git_repo: 'masterwork',
+    cwd: '/Users/dev/Projects/masterwork',
+    status: 'success',
+    started_at: '2026-08-09T13:00:00.000Z',
+    uses,
+    first_used_at: '2026-08-09T13:01:00.000Z',
+    last_used_at: '2026-08-09T13:02:00.000Z',
+    calls: [],
+  });
+  const urls: string[] = [];
+  await page.route('**/api/v1/**', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: CORS, body: '' });
+      return;
+    }
+    const url = route.request().url();
+    if (url.includes('/observability/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: JSON.stringify([integration()]),
+      });
+      return;
+    }
+    urls.push(url);
+    const inspected = new URL(url).searchParams.get('include_inspection') === 'true';
+    const sessions = url.includes('/sessions');
+    const body = sessions
+      ? inspected
+        ? [use('chat-run', 3), use('masterwork-analysis', 1)]
+        : [use('chat-run', 3)]
+      : inspected
+        ? inspectionRows()
+        : assetUsageRows();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS,
+      body: JSON.stringify(body),
+    });
+  });
+
+  await mount(
+    <TestProviders>
+      <AssetScopeHarness assetId="claude:skill:frontend-dev" />
+    </TestProviders>,
+  );
+
+  // The log counts its runs on the header, without being opened.
+  await expect(page.getByRole('button', { name: /Used by/ })).toContainText('1 run');
+
+  await page.getByRole('button', { name: 'Include inspection runs' }).click();
+
+  // One toggle, both requests: the drill-in can show every run the table counted.
+  await expect(page.getByRole('button', { name: /Used by/ })).toContainText('2 runs');
+  await expect
+    .poll(() => urls.filter((u) => u.includes('include_inspection=true')).length)
+    .toBeGreaterThan(1);
 });
 
 test('the view lives in the URL so a rollup can be linked to', async ({ mount, page }) => {

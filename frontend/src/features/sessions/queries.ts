@@ -16,6 +16,7 @@ const MAX_EVENT_PAGES = 20;
 // The run vocabulary lives in a client-free leaf (`runs.ts`) so it can be used
 // without pulling the API client in; re-exported here as the feature's surface.
 export {
+  INTERRUPTED_NEVER_DERIVED,
   LIVE_WINDOW_MS,
   isAutomatedSession,
   isSessionLive,
@@ -82,26 +83,32 @@ export const codingSessionsQueryAtom = atomWithQuery((get) => {
 });
 
 /**
- * The stage runs one pipeline run launched. There is no `parent_id` filter, so
- * this asks for the unfiltered list — children are headless, hence
- * `include_automated` — and picks its own out. Only mounted once the user opens
- * the affordance, so the grid never pays for it.
+ * The stage runs one pipeline run launched, asked for by name (v1.17's
+ * `parent_session_id`). This used to page the unfiltered list and pick its own
+ * children out, which silently dropped every child that fell past the page —
+ * a run with four stages showed none of them.
+ *
+ * Nothing is re-filtered here: the backend deliberately ignores
+ * `include_empty`/`include_automated` in this scope, so what comes back is
+ * exactly the population the parent's `child_count` counts. Only mounted once
+ * the user opens the affordance, so the grid never pays for it.
  */
 export const childSessionsQueryAtom = atomFamily((parentId: string) =>
   atomWithQuery(() => ({
     queryKey: ['codingSessionChildren', parentId],
-    queryFn: async (): Promise<CodingSession[]> => {
-      const { data } = await api.coding.listCodingSessions(
-        undefined,
-        undefined,
-        undefined,
-        true,
-        undefined,
-        undefined,
-        false,
-      );
-      return data.filter((session) => session.parent_session_id === parentId);
-    },
+    queryFn: async (): Promise<CodingSession[]> =>
+      (
+        await api.coding.listCodingSessions(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          parentId,
+        )
+      ).data,
     enabled: parentId.length > 0,
   })),
 );
@@ -113,6 +120,16 @@ export const assetWindowAtom = atom<AssetWindow>('all');
 export const assetKindFilterAtom = atom<string | null>(null);
 
 /**
+ * Whether the rollup counts masterwork's own analysis runs. Off by default:
+ * those runs Read every linked asset's SKILL.md, so counting them ranks assets
+ * by how often masterwork inspected them rather than by the work they did.
+ *
+ * Shared with the per-asset drill-in (`assetSessionUsesQueryAtom`) so a run the
+ * table counted is a run the log can show.
+ */
+export const includeInspectionAtom = atom(false);
+
+/**
  * Every asset used across every run, ranked. The window token — not the
  * computed timestamp — is the cache key: a fresh `since` on each read would
  * change the key on every render and refetch forever.
@@ -120,10 +137,17 @@ export const assetKindFilterAtom = atom<string | null>(null);
 export const codingAssetUsageQueryAtom = atomWithQuery((get) => {
   const window = get(assetWindowAtom);
   const kind = get(assetKindFilterAtom);
+  const includeInspection = get(includeInspectionAtom);
   return {
-    queryKey: ['codingAssetUsage', window, kind],
+    queryKey: ['codingAssetUsage', window, kind, includeInspection],
     queryFn: async () =>
-      (await api.coding.listCodingAssetUsage(windowSince(window), kind ?? undefined)).data,
+      (
+        await api.coding.listCodingAssetUsage(
+          windowSince(window),
+          kind ?? undefined,
+          includeInspection,
+        )
+      ).data,
   };
 });
 

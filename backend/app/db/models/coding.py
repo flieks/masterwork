@@ -9,6 +9,11 @@ autoincrementing integer rather than a uuid.
 `coding_phases`, `coding_agents` and `coding_assets` are derived, not reported:
 nothing outside this backend writes them, and `service.backfill_session` can
 rebuild all three from the event stream alone.
+
+`coding_envelopes` and `coding_gate_checks` are the exception — they are
+*reported*, on the hook body, which is not what gets stored. A replay can
+reconstruct part of a gate check from the event's payload and none of an
+envelope body, so those two are preserved across a backfill rather than rebuilt.
 """
 
 from __future__ import annotations
@@ -44,6 +49,11 @@ LAUNCH_AUTOMATED = "automated"
 # Outcome of a whole run. `abandoned` is never stored: SessionEnd rides an async
 # hook the dying process outruns, so most runs never close themselves and the
 # stored `running` is a lie. It is derived at read time from silence instead.
+# `interrupted` is its mirror image — only ever stored, never derived. Silence
+# cannot tell a killed run from a lost hook, and calling the first `interrupted`
+# would be a claim masterwork has no evidence for, so silence stays `abandoned`
+# and this value is set only when a producer states it on the hook body (which
+# no producer does today; the factory reports an aborted run as `failed`).
 STATUS_RUNNING = "running"
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
@@ -92,6 +102,24 @@ ASSET_AGENT = "agent"
 ASSET_PROVIDER = "claude"
 # What a `SubagentStop` is called when nothing could name the agent that ran.
 UNKNOWN_AGENT = "subagent"
+
+# Where one piece of evidence came from. `reported` arrived on the hook body and
+# is the only kind that can carry an envelope body — the body is not part of the
+# stored event stream, so a replay cannot re-derive it. `recovered` was
+# reconstructed by the replay from a `gate_pass`/`gate_fail` line, and says only
+# what that line said.
+EVIDENCE_REPORTED = "reported"
+EVIDENCE_RECOVERED = "recovered"
+
+# The gate name a verdict is filed under when the producer named none. The
+# runner emits two such lines — an out-of-boundary revert, and a stage that
+# returned a non-ok status — and both are stage-level, not gate-level.
+UNNAMED_GATE = "stage"
+
+# The gate that reads the reply's envelope. Its verdict is the one gate line
+# that also says an envelope attempt happened, which is what lets a replay
+# reconstruct the attempt (never its body) for a run recorded before v1.19.
+ENVELOPE_GATE = "envelope"
 
 # Which of the four signals named an asset. It decides what input can exist: a
 # `Skill` call carries its args and a spawn carries its prompt, while a SKILL.md
@@ -284,6 +312,101 @@ class CodingAssetUse(Base):
         # The asset page reads by (kind, name) and orders by time.
         Index("ix_coding_asset_uses_kind_name", "kind", "name"),
         Index("ix_coding_asset_uses_session_id", "session_id"),
+    )
+
+
+class CodingEnvelope(Base):
+    """One envelope an agent returned, and whether the runner could read it.
+
+    Reported, not derived — unlike every other table in this module. The hook
+    *body* carries it and only `payload` is stored, so a replay cannot rebuild a
+    reported row and must not drop it: the backfill deletes `recovered` rows
+    only, and re-points the survivors at the phase the replay rebuilt.
+    """
+
+    __tablename__ = "coding_envelopes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(
+        String(200), ForeignKey("coding_sessions.id", ondelete="CASCADE")
+    )
+    # The stage it was returned in; null when no stage could be resolved.
+    phase_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("coding_phases.id", ondelete="SET NULL"), nullable=True
+    )
+    # The event that carried it. What a replay re-links a reported row by, and
+    # the way back from a claim to the raw line that recorded it.
+    event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("coding_events.id", ondelete="CASCADE"), nullable=True
+    )
+    # The role/lane that produced it — plan, build, review, document.
+    role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 1-based try number within (session, phase, role); a correction is a retry.
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    # No server_default: both dialects spell a boolean literal differently and
+    # every writer supplies the value, so there is nothing to default from.
+    parsed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Why it did not parse. The whole point of storing the attempt at all.
+    parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The status the envelope declared: ok | blocked | failed.
+    status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # The envelope object as returned, size-capped like every other stored blob.
+    body: Mapped[dict[str, Any] | None] = mapped_column(JSONColumn, nullable=True)
+    # The reply the envelope was read out of — the only body a rejected attempt
+    # has, since a reply that did not parse produced no object.
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(
+        String(20), default=EVIDENCE_REPORTED, server_default=text(f"'{EVIDENCE_REPORTED}'")
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+
+    __table_args__ = (
+        # How the detail view reads it: everything for one run, grouped by stage.
+        Index("ix_coding_envelopes_session_phase", "session_id", "phase_id"),
+        Index("ix_coding_envelopes_event_id", "event_id"),
+    )
+
+
+class CodingGateCheck(Base):
+    """One deterministic check a gate ran, and the sentence it wrote.
+
+    One row per CHECK, not per gate: `gates_passed`/`gates_failed` on the phase
+    are counters, and a counter cannot say *changed_files: claimed but not
+    changed on disk: README.md*. The note is the payload that matters.
+
+    Reported like an envelope is, and preserved across a backfill the same way —
+    except that a `gate_pass`/`gate_fail` event carries its gate and its note in
+    `payload`, so unlike an envelope body most of this one *is* recoverable.
+    """
+
+    __tablename__ = "coding_gate_checks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(
+        String(200), ForeignKey("coding_sessions.id", ondelete="CASCADE")
+    )
+    phase_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("coding_phases.id", ondelete="SET NULL"), nullable=True
+    )
+    event_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("coding_events.id", ondelete="CASCADE"), nullable=True
+    )
+    # The gate that ran: envelope | artifacts | changed_files | boundary | …
+    gate: Mapped[str] = mapped_column(String(100))
+    attempt: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    # The thing checked, when the gate checked several — a path, a command.
+    # Null when the gate is one verdict about the whole stage.
+    item: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin: Mapped[str] = mapped_column(
+        String(20), default=EVIDENCE_REPORTED, server_default=text(f"'{EVIDENCE_REPORTED}'")
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_coding_gate_checks_session_phase", "session_id", "phase_id"),
+        Index("ix_coding_gate_checks_event_id", "event_id"),
     )
 
 

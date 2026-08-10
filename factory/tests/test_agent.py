@@ -37,6 +37,18 @@ def test_build_args_spelling(git_repo: Path):
     assert "--resume" not in args
 
 
+def test_the_system_prompt_is_appended_and_re_sent_on_resume(git_repo: Path):
+    agent = session(git_repo)
+    assert "--append-system-prompt" not in agent.build_args("x", resume=False)
+
+    agent.system_prompt = "You are the BUILD stage."
+    agent.session_id = "abc-123"
+    args = agent.build_args("x", resume=True)
+    # Each CLI process rebuilds its own system prompt, so a resume must carry it too.
+    assert args[args.index("--append-system-prompt") + 1] == "You are the BUILD stage."
+    assert args[args.index("--resume") + 1] == "abc-123"
+
+
 def test_reviewer_args_are_read_only(git_repo: Path):
     args = session(git_repo, "review").build_args("review it", resume=False)
     tools = set(args[args.index("--disallowedTools") + 1 :])

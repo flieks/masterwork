@@ -16,7 +16,11 @@ class AssetKind(StrEnum):
 class AssetSummary(BaseModel):
     id: str = Field(..., description='Stable slug, e.g. "claude:skill:frontend-dev".')
     kind: AssetKind
-    provider: str = Field(..., description='Owning tool: "claude" or "claude-plugin".')
+    provider: str = Field(
+        ...,
+        description='Owning store: "claude", "claude-plugin" (read-only), or '
+        '"masterwork" (the factory role store).',
+    )
     name: str = Field(..., description="Filename/dir-derived asset name.")
     title: str = Field(..., description="Frontmatter name/title, or the name as fallback.")
     description: str = Field(..., description='Frontmatter description, "" if none.')

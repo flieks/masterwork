@@ -6,6 +6,7 @@ from app.config import Settings
 from app.providers.base import Provider
 from app.providers.claude import ClaudeProvider
 from app.providers.claude_plugins import ClaudePluginProvider
+from app.providers.masterwork_roles import MasterworkRoleProvider
 
 
 def build_providers(settings: Settings) -> list[Provider]:
@@ -18,4 +19,5 @@ def build_providers(settings: Settings) -> list[Provider]:
             agents_root=settings.claude_agents_root,
         ),
         ClaudePluginProvider(plugins_root=settings.claude_plugins_root),
+        MasterworkRoleProvider(store_root=settings.masterwork_agents_root),
     ]

@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from app.api.v1.assets.schemas import AssetDetail, AssetKind, AssetSummary
 from app.core.exceptions import AssetNotFoundError, InvalidAssetIdError, ReadOnlyAssetError
 from app.providers.base import Provider, ScannedAsset, resolve_within_roots
+from app.services.asset_history import prepare_snapshots, snapshot_writes
 
 
 def parse_asset_id(asset_id: str) -> tuple[str, str, str]:
@@ -82,7 +83,7 @@ def get_asset(providers: Iterable[Provider], asset_id: str) -> AssetDetail:
     return _to_detail(find_asset(providers, asset_id))
 
 
-def update_asset(providers: list[Provider], asset_id: str, content: str) -> AssetDetail:
+async def update_asset(providers: list[Provider], asset_id: str, content: str) -> AssetDetail:
     asset = find_asset(providers, asset_id)
     if asset.read_only:
         raise ReadOnlyAssetError(
@@ -94,5 +95,9 @@ def update_asset(providers: list[Provider], asset_id: str, content: str) -> Asse
     if resolved is None:
         # Should never happen for a scanned asset, but never write outside a root.
         raise InvalidAssetIdError(f"asset path is outside provider roots: {asset.path}")
+    # Snapshotted like an accepted proposal: an unrecorded manual edit would
+    # also poison the next proposal's diff, which would then show both changes.
+    await prepare_snapshots(providers, [resolved])
     resolved.write_text(content, encoding="utf-8")
+    await snapshot_writes(providers, [resolved], f"masterwork: edit asset: {asset_id}")
     return get_asset(providers, asset_id)

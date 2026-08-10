@@ -13,8 +13,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adw import gitwork  # noqa: E402
-from adw.config import STAGE_ORDER, ConfigError, FactoryConfig, load_config  # noqa: E402
-from adw.pipeline import Pipeline, format_summary  # noqa: E402
+from adw.config import (  # noqa: E402
+    NO_CHECKS_REFUSAL,
+    STAGE_ORDER,
+    STARTUP_ERRORS,
+    FactoryConfig,
+    load_config,
+)
+from adw.pipeline import UNVERIFIED_VERDICT, Pipeline, format_summary  # noqa: E402
+from adw.roles import ROLE_FILES, RoleStore  # noqa: E402
 from adw.telemetry import Telemetry  # noqa: E402
 
 
@@ -28,6 +35,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", help="Override the model for every stage.")
     parser.add_argument("--max-corrections", type=int, help="Gate corrections per stage.")
     parser.add_argument("--max-review-rounds", type=int, help="Review→build rounds.")
+    parser.add_argument(
+        "--no-checks",
+        action="store_true",
+        help="Run with no executed checks. The run is marked UNVERIFIED.",
+    )
+    parser.add_argument(
+        "--runs-dir", help="Where run logs go (default: ~/.masterwork/runs/<repo>/<run_id>)."
+    )
+    parser.add_argument(
+        "--roles-dir", help="The global role library (default: ~/.masterwork/agents)."
+    )
+    parser.add_argument(
+        "--seed-roles",
+        action="store_true",
+        help="Write any missing default role files into the library. Never overwrites.",
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="Print the resolved stages and exit."
     )
@@ -60,7 +83,18 @@ def stage_table(config: FactoryConfig, request: str) -> str:
 
     lines.append("")
     lines.append("checks (executed by the runner, never claimed by an agent):")
-    lines += [f"  {i}. {cmd}" for i, cmd in enumerate(config.checks, 1)] or ["  (none)"]
+    lines += [f"  {i}. {cmd}" for i, cmd in enumerate(config.checks, 1)] or [
+        f"  (none — this run would be {UNVERIFIED_VERDICT})"
+    ]
+    lines.append("")
+    lines.append("roles (first hit wins: repo override → global library → built-in):")
+    lines.append(f"  repo:   {config.project_roles_dir}")
+    lines.append(f"  global: {config.roles_dir}")
+    for name, role in config.roles.items():
+        lines.append(f"  {name} [{role.layer_mix}]: {role.config.purpose or '(no purpose set)'}")
+        for filename in ROLE_FILES:
+            lines.append(f"    {filename:<10} {role.layers[filename]:<8} {role.sources[filename]}")
+
     lines.append("")
     lines.append(f"max corrections/stage: {config.max_corrections}")
     lines.append(f"max review rounds:     {config.max_review_rounds}")
@@ -69,6 +103,12 @@ def stage_table(config: FactoryConfig, request: str) -> str:
     for warning in config.warnings:
         lines.append(f"warning: {warning}")
     return "\n".join(lines)
+
+
+def _seed_roles(repo: Path, roles_dir: Path | None, *, explicit: bool) -> list[Path]:
+    """First use plants a real, editable copy of the defaults; --seed-roles fills gaps."""
+    store = RoleStore(repo, roles_dir=roles_dir)
+    return store.seed() if explicit else store.seed_if_new()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -82,25 +122,49 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: not a git repository: {repo}", file=sys.stderr)
         return 2
 
-    try:
-        config = load_config(
+    def resolve() -> FactoryConfig:
+        return load_config(
             repo,
             config_path=args.config,
             model_override=args.model,
             max_corrections=args.max_corrections,
             max_review_rounds=args.max_review_rounds,
+            no_checks=args.no_checks,
+            runs_dir=args.runs_dir,
+            roles_dir=args.roles_dir,
         )
-    except ConfigError as exc:
+
+    try:
+        config = resolve()
+        # Seeding needs the resolved library path, so it happens after the first
+        # load and the config is re-resolved to pick the new files up this run.
+        seeded = _seed_roles(repo, config.roles_dir, explicit=args.seed_roles)
+        if seeded:
+            config = resolve()
+    except STARTUP_ERRORS as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if seeded:
+        print(f"seeded {len(seeded)} default role file(s) into {config.roles_dir} — edit them")
+    elif args.seed_roles:
+        print(f"role library already complete at {config.roles_dir} — nothing written")
+
+    if not args.dry_run and not args.request:
+        if args.seed_roles:
+            return 0
+        print("error: a request is required (or use --dry-run)", file=sys.stderr)
+        return 2
+
+    # Refuse before any agent is called: a run that verifies nothing must not
+    # be able to print ACCEPTED, and --dry-run must not paint it as fine either.
+    if config.undetectable_checks:
+        print(f"error: {NO_CHECKS_REFUSAL}", file=sys.stderr)
         return 2
 
     if args.dry_run:
         print(stage_table(config, args.request or ""))
         return 0
-
-    if not args.request:
-        print("error: a request is required (or use --dry-run)", file=sys.stderr)
-        return 2
 
     telemetry = Telemetry(
         run_id=config.run_id,
@@ -111,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         echo=not args.quiet,
     )
     print(f"factory run {config.run_id} → {telemetry.path}")
+    if not config.verified:
+        print(f"warning: {UNVERIFIED_VERDICT}; nothing it produces will be verified")
     try:
         result = Pipeline(config, args.request, telemetry).run()
     finally:

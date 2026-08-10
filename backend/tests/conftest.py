@@ -124,6 +124,42 @@ def claude_tree(tmp_path: Path) -> tuple[Path, Path]:
 
 
 @pytest.fixture
+def role_tree(tmp_path: Path) -> Path:
+    """A factory role store with two roles — never the real ~/.masterwork/agents."""
+    import json
+
+    store = tmp_path / "masterwork-agents"
+    plan = store / "plan"
+    plan.mkdir(parents=True)
+    (plan / "system.md").write_text(
+        "You are the PLAN stage of a deterministic pipeline.\nWrite plan.md.\n",
+        encoding="utf-8",
+    )
+    (plan / "user.md").write_text(
+        "Request: {{request}}\nRepo: {{repo}}\nPlan it.\n", encoding="utf-8"
+    )
+    (plan / "role.json").write_text(
+        json.dumps(
+            {
+                "model": "opus",
+                "purpose": "Turns a request into an implementation plan.",
+                "writes": ["plan.md", "docs/specs/**"],
+                "disallowed_tools": ["Bash", "Write"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    build = store / "build"
+    build.mkdir()
+    (build / "system.md").write_text(
+        "You are the BUILD stage. Implement the plan.\n", encoding="utf-8"
+    )
+    (build / "user.md").write_text("Plan: {{plan}}\nBuild it.\n", encoding="utf-8")
+    # No role.json: the description and model must still degrade gracefully.
+    return store
+
+
+@pytest.fixture
 def plugin_tree(tmp_path: Path) -> Path:
     """A plugins root with one installed plugin shipping a skill and an agent."""
     import json

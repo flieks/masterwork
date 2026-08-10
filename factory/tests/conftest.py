@@ -23,6 +23,14 @@ def git(repo: Path, *args: str) -> str:
     return proc.stdout
 
 
+@pytest.fixture(autouse=True)
+def isolated_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """No test may read — or seed into — the developer's real ~/.masterwork/agents."""
+    library = tmp_path / "roles"
+    monkeypatch.setenv("MASTERWORK_ROLES_DIR", str(library))
+    return library
+
+
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
     """A real repo with one commit — no git is ever mocked in these tests."""

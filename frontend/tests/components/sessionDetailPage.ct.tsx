@@ -89,7 +89,7 @@ test('clicking a phase opens its panel with gates, commit and its own events', a
   await mockRun(page);
   await mountDetail(mount);
 
-  await expect(page.getByText('Select a phase to see its events')).toBeVisible();
+  await expect(page.getByText('Select a phase to see its gate checks')).toBeVisible();
 
   await page.getByRole('button', { name: 'Phase review' }).click();
 
@@ -108,7 +108,7 @@ test('clicking a phase opens its panel with gates, commit and its own events', a
 
   // Clicking the same phase again closes the panel.
   await page.getByRole('button', { name: 'Phase review' }).click();
-  await expect(page.getByText('Select a phase to see its events')).toBeVisible();
+  await expect(page.getByText('Select a phase to see its gate checks')).toBeVisible();
 });
 
 test('a phase with no events of its own says so', async ({ mount, page }) => {

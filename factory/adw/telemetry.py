@@ -3,7 +3,9 @@
 The JSONL line is the local record of truth and keeps its shape forever. The POST
 body carries the same line under `payload` *plus* the first-class fields of the
 masterwork v1.13 hook contract (title/status/phase/agent), which the Sessions UI
-needs to draw run cards, per-agent lanes and context bars without unpacking JSON.
+needs to draw run cards, per-agent lanes and context bars without unpacking JSON,
+and the v1.19 evidence blocks (`envelope`/`gate`), which carry the sentence a gate
+wrote and the envelope an agent actually returned.
 """
 
 from __future__ import annotations
@@ -118,12 +120,9 @@ class Telemetry:
     _commits: dict[str, int] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        # The run dir lives outside the target repo by default, so the runner
+        # writes nothing — not even a .gitignore — into someone else's tree.
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        # Self-ignoring .gitignore: run logs live inside the repo but are never
-        # the agent's work, so they must not show up in any stage's diff.
-        marker = self.run_dir.parent / ".gitignore"
-        if not marker.exists():
-            marker.write_text("*\n", encoding="utf-8")
         self._handle = (self.run_dir / "telemetry.jsonl").open("a", encoding="utf-8")
 
     @property
@@ -162,6 +161,9 @@ class Telemetry:
         context_tokens: int = 0,
         ok: bool | None = None,
         tool_duration_ms: int | None = None,
+        # --- v1.19 evidence blocks, POST-only for the same reason ---
+        envelope: dict[str, Any] | None = None,
+        gate: dict[str, Any] | None = None,
     ) -> None:
         if title:
             self.title = title.strip()[:MAX_TITLE_CHARS]
@@ -196,6 +198,8 @@ class Telemetry:
             context_tokens=context_tokens,
             ok=ok,
             tool_duration_ms=tool_duration_ms,
+            envelope=envelope,
+            gate=gate,
         )
 
     def _write(self, record: dict[str, Any]) -> None:
@@ -216,6 +220,8 @@ class Telemetry:
         context_tokens: int = 0,
         ok: bool | None = None,
         tool_duration_ms: int | None = None,
+        envelope: dict[str, Any] | None = None,
+        gate: dict[str, Any] | None = None,
     ) -> None:
         if not self.url or self._post_failures >= MAX_POST_FAILURES:
             return
@@ -231,6 +237,13 @@ class Telemetry:
             body["ended"] = True
         if stats:
             body["stats"] = stats
+        # An unusable block is dropped whole by the server, never 422'd — so stating
+        # one is always safe. Stating one also stops the event being mined for the
+        # same verdict, which is why every block below carries the whole of it.
+        if envelope:
+            body["envelope"] = envelope
+        if gate:
+            body["gate"] = gate
         body.update(
             self._first_class(
                 event_type,

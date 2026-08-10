@@ -19,6 +19,13 @@ PASSED = "passed"
 FAILED = "failed"
 BLOCKED = "blocked"
 
+UNVERIFIED_VERDICT = "UNVERIFIED — no checks ran"
+
+# A review that files findings has reviewed. Saying `status: "blocked"` on top of
+# them does not make the run stoppable — it is a rejection, and the summary and the
+# telemetry both say so rather than quietly rewriting what the agent returned.
+REJECTION_DESPITE_STATUS = "read as a rejection despite status"
+
 
 @dataclass
 class StageOutcome:
@@ -47,6 +54,8 @@ class RunResult:
     turns: int = 0
     unresolved: list[str] = field(default_factory=list)
     telemetry_path: Path | None = None
+    # False when the run executed no checks: accepted, but nothing was verified.
+    verified: bool = True
 
     @property
     def exit_code(self) -> int:
@@ -144,7 +153,8 @@ class Pipeline:
             "phase_start", phase=name, agent=name, model=stage.model, detail=stage.boundary_text
         )
         snap = gitwork.snapshot(self.repo)
-        prompt = prompts.stage_prompt(
+        compiled = prompts.compile_prompt(
+            role=self.cfg.roles[name],
             stage=stage,
             request=self.request,
             repo=self.repo,
@@ -152,7 +162,8 @@ class Pipeline:
             previous=previous,
             artifact_max_bytes=self.cfg.artifact_max_bytes,
         )
-        turn = self._dispatch(stage, session, prompt)
+        session.system_prompt = compiled.system
+        turn = self._dispatch(stage, session, compiled.user)
         outcome = self._gate_loop(stage, session, snap, turn)
         outcome.duration_ms = int((time.monotonic() - started) * 1000)
         if outcome.passed:
@@ -179,7 +190,7 @@ class Pipeline:
         while True:
             runs = gates.run_checks(self.repo, self.cfg.checks, self.cfg.timeout_seconds)
             check = gates.gate_checks(runs)
-            self._emit_gate("checks", check)
+            self._emit_gate("checks", check, attempt=attempt + 1)
             if check.ok:
                 outcome.status = PASSED
                 outcome.detail = check.note
@@ -286,29 +297,52 @@ class Pipeline:
                 return outcome
 
             parsed = envelopes.parse_envelope(turn.text, stage.name)
+            attempt = corrections + 1
+            # The attempt rides the envelope gate's event below, which is where a
+            # replay would look for it too — one row per turn, parsed or not.
+            attempted = envelopes.attempt_block(
+                parsed, role=stage.name, attempt=attempt, raw_text=turn.text
+            )
             envelope = parsed.envelope
+            rejection = False
             if envelope is not None and envelope.status != "ok":
-                # A blocked/failed stage is a clean stop, not something to correct.
-                outcome.status = BLOCKED if envelope.status == "blocked" else FAILED
-                outcome.envelope = envelope
-                outcome.corrections = corrections
-                outcome.detail = envelope.summary_line or envelope.status
-                self.tel.emit(
-                    "gate_fail",
-                    phase=stage.name,
-                    agent=stage.name,
-                    result="fail",
-                    detail=f"stage returned status={envelope.status}: {outcome.detail}",
-                )
-                return outcome
+                rejection = self._is_rejection(stage, envelope)
+                if rejection:
+                    # Recorded, then gated and looped like any other rejection:
+                    # `blocked` does not buy a reviewer a silent exit.
+                    self._note_rejection(stage.name, envelope)
+                elif self._is_clean_stop(stage, envelope):
+                    # A blocked/failed stage is a clean stop, not something to correct.
+                    outcome.status = BLOCKED if envelope.status == "blocked" else FAILED
+                    outcome.envelope = envelope
+                    outcome.corrections = corrections
+                    outcome.detail = envelope.summary_line or envelope.status
+                    stopped = f"stage returned status={envelope.status}: {outcome.detail}"
+                    # This turn never reaches the gates, so its envelope has no gate
+                    # event to ride: state both here, including the stage-level
+                    # verdict the server would otherwise have mined off this line.
+                    self.tel.emit(
+                        "gate_fail",
+                        phase=stage.name,
+                        agent=stage.name,
+                        result="fail",
+                        detail=stopped,
+                        envelope=attempted,
+                        gate=gates.GateCheck(gates.STAGE_GATE, False, stopped).block(attempt),
+                    )
+                    return outcome
 
             report = self._evaluate(stage, snap, parsed)
-            self._emit_gates(stage.name, report)
+            self._emit_gates(stage.name, report, attempt=attempt, envelope=attempted)
             if report.ok and envelope is not None:
                 outcome.status = PASSED
                 outcome.envelope = envelope
                 outcome.corrections = corrections
                 outcome.detail = envelope.summary_line
+                if rejection:
+                    outcome.detail = (
+                        f'{REJECTION_DESPITE_STATUS}="{envelope.status}": {outcome.detail}'
+                    )
                 return outcome
 
             if corrections >= self.cfg.max_corrections:
@@ -331,8 +365,9 @@ class Pipeline:
         report = GateReport()
         report.add(gates.gate_envelope(parsed, stage.name))
 
-        actual = gitwork.changed_paths(self.repo, snap)
+        actual = self._changed(snap)
         boundary = gates.gate_boundary(actual, stage.boundary)
+        reverted: list[str] = []
         if boundary.offending:
             reverted = gitwork.revert(self.repo, boundary.offending)
             self.tel.emit(
@@ -343,20 +378,65 @@ class Pipeline:
                 detail=f"reverted out-of-boundary paths: {', '.join(reverted)}",
                 payload={"reverted": reverted},
             )
-            actual = gitwork.changed_paths(self.repo, snap)
+            actual = self._changed(snap)
 
         envelope = parsed.envelope
         if envelope is not None:
             report.add(gates.gate_artifacts(self.repo, envelope))
-            report.add(gates.gate_changed_files(actual, envelope.changed_files))
+            # Reverted paths are excluded on both sides: the agent hears "you wrote
+            # outside your boundary", not that plus "you claimed a file you didn't change".
+            report.add(gates.gate_changed_files(actual, envelope.changed_files, ignore=reverted))
         report.add(boundary.check)
-        if stage.name == "review" and envelope is not None:
+        if envelope is not None and envelopes.owes_a_verdict(stage.name):
             report.add(gates.gate_verdict(envelope))
         return report
 
+    @staticmethod
+    def _is_rejection(stage: Stage, envelope: Envelope) -> bool:
+        """A role that owes a verdict and filed findings has judged the work, whatever
+        its `status` claims — the one shape that must never end the run quietly."""
+        return envelopes.owes_a_verdict(stage.name) and gates.verdict_despite_status(envelope)
+
+    @classmethod
+    def _is_clean_stop(cls, stage: Stage, envelope: Envelope) -> bool:
+        """Whether a non-ok envelope may end the run with nobody answering for it.
+
+        A role that owes a verdict only stops when its envelope says so consistently:
+        a `blocked` with neither findings nor a stated reason goes to the gates for a
+        correction, like any other reply that fails one."""
+        if envelope.status == "ok" or cls._is_rejection(stage, envelope):
+            return False
+        return not envelopes.owes_a_verdict(stage.name) or gates.gate_verdict(envelope).ok
+
+    def _note_rejection(self, phase: str, envelope: Envelope) -> None:
+        """Say out loud that the runner is not taking `blocked` at face value."""
+        self.tel.emit(
+            "gate_fail",
+            phase=phase,
+            agent=phase,
+            result="fail",
+            detail=(
+                f"stage returned status={envelope.status} with {len(envelope.blocking)} "
+                f"blocking finding(s) — {REJECTION_DESPITE_STATUS}, not a clean stop"
+            ),
+            payload={
+                "verdict": "rejection",
+                "status": envelope.status,
+                "blocking": list(envelope.blocking),
+            },
+        )
+
     # --- plumbing ----------------------------------------------------------
 
+    def _changed(self, snap: gitwork.Snapshot) -> list[str]:
+        return gitwork.changed_paths(self.repo, snap, exclude=self.cfg.run_dir_exclusions)
+
     def _dispatch(self, stage: Stage, session: AgentSession, prompt: str) -> AgentTurn:
+        # Written before the send, so a turn that never returns is still diagnosable.
+        saved = prompts.save_prompt_copy(
+            self.cfg.run_dir, stage.name, session.turns + 1, session.system_prompt, prompt
+        )
+        role = self.cfg.roles.get(stage.name)
         turn = session.send(prompt)
         self.turns += 1
         self.cost_usd += turn.cost_usd
@@ -373,7 +453,14 @@ class Pipeline:
             cost_usd=turn.cost_usd,
             context_pct=context_pct,
             detail=turn.error or f"{len(turn.tool_events)} tool event(s)",
-            payload={"session_id": session.session_id, "turn": session.turns},
+            payload={
+                "session_id": session.session_id,
+                "turn": session.turns,
+                "prompts": saved,
+                # Which layer each file came from: the prompt masterwork displays is
+                # the library copy, and a repo override wins over it silently.
+                "role_layers": dict(role.layers) if role is not None else {},
+            },
             context_tokens=turn.context_tokens,
         )
         return turn
@@ -429,18 +516,32 @@ class Pipeline:
             on_event=on_event,
         )
 
-    def _emit_gates(self, phase: str, report: GateReport) -> None:
+    def _emit_gates(
+        self, phase: str, report: GateReport, *, attempt: int, envelope: dict[str, Any]
+    ) -> None:
         for check in report.checks:
-            self._emit_gate(phase, check)
+            # The envelope attempt rides its own gate's event: one event, one source.
+            rider = envelope if check.name == gates.ENVELOPE_GATE else None
+            self._emit_gate(phase, check, attempt=attempt, envelope=rider)
 
-    def _emit_gate(self, phase: str, check: gates.GateCheck) -> None:
+    def _emit_gate(
+        self,
+        phase: str,
+        check: gates.GateCheck,
+        *,
+        attempt: int = 1,
+        envelope: dict[str, Any] | None = None,
+    ) -> None:
         self.tel.emit(
             "gate_pass" if check.ok else "gate_fail",
             phase=phase,
             agent=phase,
             result="ok" if check.ok else "fail",
+            # `detail` is capped for the log line; the gate block carries it whole.
             detail=f"{check.name}: {check.note}"[:1000],
             payload={"gate": check.name},
+            gate=check.block(attempt),
+            envelope=envelope,
         )
 
     def _record(self, outcome: StageOutcome) -> StageOutcome:
@@ -463,6 +564,7 @@ class Pipeline:
             turns=self.turns,
             unresolved=list(self.unresolved) if not accepted else [],
             telemetry_path=self.tel.path,
+            verified=self.cfg.verified,
         )
         self.tel.emit(
             "run_end",
@@ -496,6 +598,7 @@ def run_stats(result: RunResult) -> dict[str, Any]:
         entry["runs"] += 1
     return {
         "accepted": result.accepted,
+        "verified": result.verified,
         "cost_usd": result.cost_usd,
         "turns": result.turns,
         "corrections": result.corrections,
@@ -523,6 +626,8 @@ def format_summary(result: RunResult) -> str:
         "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip() for row in rows
     ]
     verdict = "ACCEPTED" if result.accepted else "NOT ACCEPTED"
+    if not result.verified:
+        verdict += f" ({UNVERIFIED_VERDICT})"
     lines.append("")
     lines.append(
         f"{verdict} — {result.reason} "

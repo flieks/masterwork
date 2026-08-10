@@ -6,6 +6,8 @@ import type {
   CodingPhase,
   CodingSession,
   CodingSessionDetail,
+  EnvelopeAttempt,
+  GateCheckItem,
 } from '~/api/generated';
 
 /**
@@ -139,6 +141,8 @@ export function factoryRun(overrides: Partial<CodingSessionDetail> = {}): Coding
     phases: FACTORY_PHASES,
     agents: FACTORY_LANES,
     assets: [],
+    envelopes: [],
+    gate_checks: [],
     ...overrides,
   };
 }
@@ -225,6 +229,8 @@ export function chatRun(overrides: Partial<CodingSessionDetail> = {}): CodingSes
       assetUse('skill', 'frontend-dev', 1, 'main'),
       assetUse('agent', 'general-purpose', 1, 'main'),
     ],
+    envelopes: [],
+    gate_checks: [],
     ...overrides,
   };
 }
@@ -319,3 +325,103 @@ export function toolCall(id: number, phaseId: number, createdAt: string): Coding
     ended_at: null,
   };
 }
+
+/* ── v1.19 evidence ─────────────────────────────────────────────────────────
+ * Trimmed from three real runs: `factory-71e16984` (three failed plan parses),
+ * `factory-638e7eb0` (changed_files fails on attempt 1, passes on attempt 2)
+ * and `factory-e3af1225` (recovered rows, which never carry a body).
+ */
+
+export function gateCheck(
+  id: number,
+  gate: string,
+  ok: boolean,
+  note: string | null,
+  overrides: Partial<GateCheckItem> = {},
+): GateCheckItem {
+  return {
+    id,
+    phase_id: 5,
+    event_id: 7000 + id,
+    gate,
+    attempt: 1,
+    item: null,
+    ok,
+    note,
+    origin: 'reported',
+    created_at: '2026-08-08T00:00:30.000Z',
+    ...overrides,
+  };
+}
+
+export function envelopeAttempt(
+  id: number,
+  attempt: number,
+  overrides: Partial<EnvelopeAttempt> = {},
+): EnvelopeAttempt {
+  return {
+    id,
+    phase_id: 5,
+    event_id: 7500 + id,
+    role: 'plan',
+    attempt,
+    parsed: true,
+    parse_error: null,
+    status: 'ok',
+    body: { status: 'ok', artifacts: ['plan.md'], changed_files: ['plan.md'] },
+    raw_text: '```json\n{"status": "ok"}\n```',
+    origin: 'reported',
+    created_at: '2026-08-08T00:00:30.000Z',
+    ...overrides,
+  };
+}
+
+/** The reply that carried no fenced block, verbatim from `factory-71e16984`. */
+export const UNFENCED_REPLY =
+  'Done. Plan updated: add `shout(name)` function to greet.py returning "HELLO, {name}!" ' +
+  'and add corresponding test in test_greet.py following existing patterns for this ' +
+  'all-caps greeting variant.';
+
+/** The `document` stage of `factory-638e7eb0`: one correction round. */
+export const DOCUMENT_GATE_CHECKS: GateCheckItem[] = [
+  gateCheck(41, 'envelope', true, 'parsed a valid document envelope'),
+  gateCheck(42, 'artifacts', true, '1 artifact(s) present'),
+  gateCheck(
+    43,
+    'changed_files',
+    false,
+    'claimed but not changed on disk: CHANGELOG.md, greet.py, test_greet.py',
+  ),
+  gateCheck(44, 'boundary', true, 'all writes inside [docs/**, README.md, CHANGELOG.md]'),
+  gateCheck(45, 'envelope', true, 'parsed a valid document envelope', { attempt: 2 }),
+  gateCheck(46, 'artifacts', true, '1 artifact(s) present', { attempt: 2 }),
+  gateCheck(47, 'changed_files', true, '1 file(s) match the claim', { attempt: 2 }),
+  gateCheck(48, 'boundary', true, 'all writes inside [docs/**, README.md, CHANGELOG.md]', {
+    attempt: 2,
+  }),
+];
+
+/** The three failed plan parses of `factory-71e16984`. */
+export const FAILED_PARSE_ATTEMPTS: EnvelopeAttempt[] = [
+  envelopeAttempt(22, 1, {
+    parsed: false,
+    parse_error: 'no fenced code block found in the reply',
+    status: null,
+    body: null,
+    raw_text: UNFENCED_REPLY,
+  }),
+  envelopeAttempt(23, 2, {
+    parsed: false,
+    parse_error: 'missing required field(s) for the plan role: status, artifacts, changed_files',
+    status: null,
+    body: null,
+    raw_text: `${UNFENCED_REPLY}\n\n\`\`\`json\n{\n  "stage": "PLAN"\n}\n\`\`\``,
+  }),
+  envelopeAttempt(24, 3, {
+    parsed: false,
+    parse_error: '"status" must be one of ok, blocked, failed (got \'complete\')',
+    status: null,
+    body: null,
+    raw_text: `${UNFENCED_REPLY}\n\n\`\`\`json\n{\n  "status": "complete"\n}\n\`\`\``,
+  }),
+];

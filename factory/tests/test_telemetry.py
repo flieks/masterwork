@@ -63,11 +63,14 @@ def test_every_event_lands_in_the_jsonl(tmp_path: Path):
         assert record["run"] == "abc12345"
 
 
-def test_run_dir_is_created_and_self_ignoring(tmp_path: Path):
+def test_the_run_dir_is_created_without_writing_anything_else(tmp_path: Path):
     tel = make(tmp_path)
     tel.close()
     assert tel.path.is_file()
-    assert (tmp_path / "factory" / "runs" / ".gitignore").read_text() == "*\n"
+    # No .gitignore, no marker: the runner never writes into someone else's tree.
+    assert [p.name for p in (tmp_path / "factory" / "runs").rglob("*") if p.is_file()] == [
+        "telemetry.jsonl"
+    ]
 
 
 def test_context_pct_grows_with_cumulative_input(tmp_path: Path):
@@ -400,6 +403,39 @@ def test_the_new_post_fields_never_reach_the_jsonl(tmp_path: Path, post_spy: Pos
     # The POST still nests the untouched record under `payload`.
     body = post_spy.bodies[0]
     assert body["payload"] == {k: v for k, v in record.items() if k not in ("ts", "run")}
+
+
+# --- v1.19 evidence blocks --------------------------------------------------
+
+
+def test_the_evidence_blocks_ride_the_post_and_never_the_jsonl(tmp_path: Path, post_spy: PostSpy):
+    tel = make(tmp_path, url=COLLECTOR)
+    tel.emit(
+        "gate_fail",
+        phase="build",
+        agent="build",
+        result="fail",
+        detail="envelope: no fenced code block found in the reply.",
+        payload={"gate": "envelope"},
+        gate={"name": "envelope", "attempt": 1, "ok": False, "note": "no fenced code block"},
+        envelope={"role": "build", "attempt": 1, "parsed": False, "raw_text": "Done!"},
+    )
+    tel.close()
+
+    body = post_spy.bodies[0]
+    assert body["gate"]["note"] == "no fenced code block"
+    assert body["envelope"]["parsed"] is False
+    record = read(tel)[0]
+    assert set(record) == JSONL_KEYS | {"payload"}
+    assert "gate" not in body["payload"] and "envelope" not in body["payload"]
+
+
+def test_an_event_without_evidence_posts_neither_block(tmp_path: Path, post_spy: PostSpy):
+    tel = make(tmp_path, url=COLLECTOR)
+    tel.emit("agent_turn", phase="build", agent="build")
+    tel.close()
+    assert "gate" not in post_spy.bodies[0]
+    assert "envelope" not in post_spy.bodies[0]
 
 
 def test_the_context_window_map_is_a_display_aid(tmp_path: Path):

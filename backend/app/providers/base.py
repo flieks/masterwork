@@ -35,6 +35,18 @@ class ScannedAsset:
         return f"{self.provider}:{self.kind}:{self.name}"
 
 
+@dataclass(frozen=True)
+class SnapshotTree:
+    """A git-versioned asset tree — where a write is recorded so it can be
+    diffed and reverted."""
+
+    root: Path
+    # True only for a tree masterwork created itself. ~/.claude is the user's
+    # own home: masterwork commits there when *they* made it a repo, but never
+    # turns it into one behind their back.
+    may_create_repo: bool = False
+
+
 @runtime_checkable
 class Provider(Protocol):
     """A source of installed assets (e.g. Claude Code, Cursor, Codex)."""
@@ -53,6 +65,15 @@ class Provider(Protocol):
 
     def asset_id_for_path(self, path: Path) -> str | None:
         """Map an absolute file path to an asset id, or None if it isn't one."""
+        ...
+
+    def snapshot_tree(self, path: Path) -> SnapshotTree | None:
+        """The versioned tree that must record a write to `path`, or None when
+        this provider does not own the path or its files are not versioned.
+
+        Asking the provider (rather than reading a root out of config) is what
+        keeps a write to a temp tree from being committed to the real one.
+        """
         ...
 
 

@@ -6,11 +6,28 @@ import json
 from pathlib import Path
 
 from adw.config import DEFAULT_MODELS, load_config
-from adw.pipeline import Pipeline, RunResult
+from adw.pipeline import Pipeline, RunResult, format_summary
 from adw.telemetry import AGENT_COLORS, Telemetry
 from conftest import FakeCLI, PostSpy, envelope, git
 
 COLLECTOR = "http://localhost:8008/api/v1/hooks/events"
+
+# The JSONL record's fixed shape — pinned here too, so a POST-only addition that
+# leaked into the local log would fail an end-to-end test, not just a unit one.
+JSONL_KEYS = {
+    "ts",
+    "run",
+    "phase",
+    "event",
+    "agent",
+    "duration_ms",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "context_pct",
+    "result",
+    "detail",
+}
 
 PASSING_CHECK = "python3 -c pass"
 MARKER_CHECK = (
@@ -26,6 +43,8 @@ def build_pipeline(
     data: dict = {
         "telemetry_url": None,
         "checks": checks if checks is not None else [PASSING_CHECK],
+        # Keep run logs out of both the fixture repo and the developer's real home.
+        "runs_dir": str(repo.parent / "runs"),
     }
     data.update(overrides)
     (repo / "factory.config.json").write_text(json.dumps(data), encoding="utf-8")
@@ -116,6 +135,74 @@ def test_each_stage_gets_the_envelope_and_artifacts_but_never_a_transcript(
     assert "WRITE BOUNDARY: NOTHING" in review_prompt
 
 
+def test_the_role_identity_travels_as_a_system_prompt(git_repo: Path, fake_cli: FakeCLI):
+    run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+
+    argv = fake_cli.calls[0]["argv"]
+    system = argv[argv.index("--append-system-prompt") + 1]
+    assert system.startswith("You are the PLAN stage")
+    assert REQUEST not in system  # the task rides the user prompt, not the identity
+    assert "You are the PLAN stage" not in fake_cli.calls[0]["prompt"]
+
+
+def test_every_turn_leaves_the_compiled_prompts_in_the_run_dir(git_repo: Path, fake_cli: FakeCLI):
+    """The prompt as actually sent — without it a bad run cannot be diagnosed."""
+    result, telemetry = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    assert result.accepted
+
+    prompts_dir = telemetry.path.parent / "prompts"
+    assert sorted(p.name for p in prompts_dir.iterdir()) == ["build", "document", "plan", "review"]
+    for role in ("plan", "build", "review", "document"):
+        assert sorted(p.name for p in (prompts_dir / role).iterdir()) == [
+            "1.system.md",
+            "1.user.md",
+        ]
+    assert (prompts_dir / "plan" / "1.system.md").read_text().startswith("You are the PLAN stage")
+    build_user = (prompts_dir / "build" / "1.user.md").read_text()
+    assert build_user == fake_cli.calls[1]["prompt"]  # byte-identical to what was sent
+    assert "Add GET /health" in build_user  # the artifact the plan named
+
+    turns = [e for e in events(telemetry) if e["event"] == "agent_turn"]
+    saved = turns[0]["payload"]["prompts"]
+    assert Path(saved["system"]) == prompts_dir / "plan" / "1.system.md"
+    assert Path(saved["user"]).is_file()
+
+
+def test_a_correction_turn_is_saved_next_to_the_first(git_repo: Path, fake_cli: FakeCLI):
+    chatty = dict(PLAN_OK)
+    chatty["trailing"] = "Hope that helps!"
+    _, telemetry = run(git_repo, fake_cli, [chatty, PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+
+    plan_prompts = telemetry.path.parent / "prompts" / "plan"
+    assert sorted(p.name for p in plan_prompts.iterdir()) == [
+        "1.system.md",
+        "1.user.md",
+        "2.system.md",
+        "2.user.md",
+    ]
+    assert "GATE FAILURE" in (plan_prompts / "2.user.md").read_text()
+    # A correction is a follow-up in the same session, so the identity is unchanged.
+    assert (plan_prompts / "2.system.md").read_text() == (
+        plan_prompts / "1.system.md"
+    ).read_text()
+
+
+def test_an_edited_role_file_shows_up_in_the_prompt_and_the_audit_copy(
+    git_repo: Path, fake_cli: FakeCLI, isolated_roles: Path
+):
+    identity = isolated_roles / "build" / "system.md"
+    identity.parent.mkdir(parents=True)
+    identity.write_text("You are the BUILD stage.\nALWAYS ADD A HAIKU TO THE README.\n", "utf-8")
+
+    result, telemetry = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    assert result.accepted
+
+    argv = fake_cli.calls[1]["argv"]
+    assert "ALWAYS ADD A HAIKU" in argv[argv.index("--append-system-prompt") + 1]
+    saved = (telemetry.path.parent / "prompts" / "build" / "1.system.md").read_text()
+    assert "ALWAYS ADD A HAIKU TO THE README." in saved
+
+
 def test_assumptions_land_in_the_stage_commit_message(git_repo: Path, fake_cli: FakeCLI):
     build = dict(BUILD_OK)
     build["envelope"] = envelope(
@@ -167,6 +254,42 @@ def test_an_out_of_boundary_write_is_reverted_and_corrected(git_repo: Path, fake
     failures = [e for e in events(telemetry) if e["event"] == "gate_fail"]
     assert any("reverted out-of-boundary paths: src/hack.py" in e["detail"] for e in failures)
     assert any(e["payload"].get("gate") == "boundary" for e in failures if "payload" in e)
+
+
+def test_a_reverted_write_is_one_complaint_not_two(git_repo: Path, fake_cli: FakeCLI):
+    """The revert removes the path from disk while the claim still lists it — the
+    agent must hear about the boundary only, never 'you claimed a file you didn't change'."""
+    rogue = {
+        "session_id": "plan-session",
+        "envelope": envelope(
+            summary="Plan the health endpoint",
+            artifacts=["plan.md"],
+            changed_files=["plan.md", "src/hack.py"],
+        ),
+        "write_files": {"plan.md": "# Plan\n", "src/hack.py": "# out of bounds\n"},
+    }
+    corrected = {
+        "session_id": "plan-session",
+        "envelope": envelope(
+            summary="Plan the health endpoint", artifacts=["plan.md"], changed_files=["plan.md"]
+        ),
+    }
+    result, telemetry = run(
+        git_repo, fake_cli, [rogue, corrected, BUILD_OK, REVIEW_OK, DOCUMENT_OK]
+    )
+    assert result.accepted
+
+    prompt = fake_cli.calls[1]["prompt"]
+    assert "[boundary]" in prompt
+    assert "[changed_files]" not in prompt
+    assert "claimed but not changed on disk" not in prompt
+
+    gates_named = [
+        e["payload"]["gate"]
+        for e in events(telemetry)
+        if e["event"] == "gate_fail" and e.get("payload", {}).get("gate")
+    ]
+    assert gates_named == ["boundary"]  # changed_files passed on the same turn
 
 
 def test_a_reviewer_that_writes_is_reverted(git_repo: Path, fake_cli: FakeCLI):
@@ -292,6 +415,48 @@ def test_checks_that_never_go_green_abort_the_run(git_repo: Path, fake_cli: Fake
     assert "review" not in {o.name for o in result.outcomes}  # never reached
 
 
+def test_an_explicitly_unverified_run_never_looks_like_a_verified_one(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    result, telemetry = run(
+        git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK], checks=[]
+    )
+
+    assert result.accepted  # an explicit opt-out is allowed to run…
+    assert not result.verified  # …but it is on the record as unverified
+    assert "ACCEPTED (UNVERIFIED — no checks ran)" in format_summary(result)
+
+    stats = [e for e in events(telemetry) if e["event"] == "run_end"][0]["stats"]
+    assert stats["accepted"] is True
+    assert stats["verified"] is False
+
+
+def test_a_verified_run_says_so_in_the_summary_and_the_stats(git_repo: Path, fake_cli: FakeCLI):
+    result, telemetry = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    summary = format_summary(result)
+
+    assert result.verified
+    assert "ACCEPTED —" in summary and "UNVERIFIED" not in summary
+    stats = [e for e in events(telemetry) if e["event"] == "run_end"][0]["stats"]
+    assert stats["verified"] is True
+
+
+def test_an_unverified_run_that_fails_is_labelled_too(git_repo: Path, fake_cli: FakeCLI):
+    no_envelope = {"session_id": "plan-session", "raw_reply": "Done! Everything works."}
+    result, _ = run(git_repo, fake_cli, [no_envelope] * 4, checks=[])
+    assert not result.accepted
+    assert "NOT ACCEPTED (UNVERIFIED — no checks ran)" in format_summary(result)
+
+
+def test_run_logs_land_outside_the_target_repo(git_repo: Path, fake_cli: FakeCLI):
+    result, telemetry = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+
+    assert result.accepted
+    assert git_repo not in telemetry.path.parents
+    assert not (git_repo / "factory" / "runs").exists()
+    assert not (git_repo / "factory").exists()  # not even a .gitignore was planted
+
+
 def test_an_agents_claim_that_tests_pass_counts_for_nothing(git_repo: Path, fake_cli: FakeCLI):
     liar = {
         "session_id": "build-session",
@@ -394,6 +559,115 @@ def test_a_contradictory_verdict_is_sent_back_to_the_reviewer(git_repo: Path, fa
     assert "blocking finding(s) still listed" in fake_cli.calls[3]["prompt"]
 
 
+def test_a_blocked_review_that_lists_findings_loops_back_to_the_builder(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """The hole this closes: `status: "blocked"` used to end the run before the review
+    loop ran, so a reviewer that disapproved on the wrong axis skipped the correction
+    the loop exists for. Findings mean the work was reviewed — that is a rejection."""
+    blocked_rejection = {
+        "session_id": "review-session",
+        "envelope": envelope(
+            status="blocked",
+            summary="The marker comments violate the repo's comment convention.",
+            approved=False,
+            blocking=["app.py: remove the MARKER comments"],
+            changed_files=[],
+        ),
+    }
+    fix = {
+        "session_id": "build-session",
+        "envelope": envelope(summary="Remove the markers", changed_files=["app.py"]),
+        "write_files": {"app.py": "def health():\n    return {'ok': True}\n"},
+    }
+    result, telemetry = run(
+        git_repo, fake_cli, [PLAN_OK, BUILD_OK, blocked_rejection, fix, REVIEW_OK, DOCUMENT_OK]
+    )
+
+    assert result.accepted  # the run recovered instead of stopping at the reviewer
+    assert [o.name for o in result.outcomes] == [
+        "plan",
+        "build",
+        "checks",
+        "review",
+        "build",  # the loop reached the builder
+        "checks",
+        "review",
+        "document",
+    ]
+    fix_call = fake_cli.calls[3]
+    assert fix_call["resume"] == "build-session"
+    assert "REVIEW REJECTED (round 1 of 2)" in fix_call["prompt"]
+    assert "remove the MARKER comments" in fix_call["prompt"]
+
+    # …and nothing about it is silent: the stage row and the telemetry both say the
+    # runner did not take `blocked` at face value.
+    review_outcome = result.outcomes[3]
+    assert review_outcome.status == "passed"
+    assert review_outcome.detail.startswith('read as a rejection despite status="blocked"')
+    assert 'read as a rejection despite status="blocked"' in format_summary(result)
+    noted = [
+        e
+        for e in events(telemetry)
+        if e["event"] == "gate_fail" and "read as a rejection" in e["detail"]
+    ]
+    assert len(noted) == 1
+    assert noted[0]["payload"] == {
+        "verdict": "rejection",
+        "status": "blocked",
+        "blocking": ["app.py: remove the MARKER comments"],
+    }
+    verdicts = [e for e in events(telemetry) if "read as a rejection" in e.get("detail", "")]
+    assert any(e["event"] == "gate_pass" for e in verdicts)  # the gate agrees, on the record
+
+
+def test_a_reviewer_that_truly_cannot_review_still_stops_the_run_cleanly(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """The genuine case: no findings, a stated reason — `blocked` still means stop."""
+    cannot_review = {
+        "session_id": "review-session",
+        "envelope": envelope(
+            status="blocked",
+            summary="The plan artifact is gone from the tree; there is nothing to review.",
+            approved=False,
+            blocking=[],
+            changed_files=[],
+        ),
+    }
+    result, telemetry = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, cannot_review, DOCUMENT_OK])
+
+    assert not result.accepted
+    assert result.exit_code == 1
+    assert result.outcomes[3].status == "blocked"
+    assert "nothing to review" in result.reason
+    assert len(fake_cli.calls) == 3  # no correction, and document never ran
+    assert "document" not in subjects(git_repo)[0]
+    assert any(
+        e["event"] == "gate_fail" and "status=blocked" in e["detail"] for e in events(telemetry)
+    )
+    assert not any("read as a rejection" in e["detail"] for e in events(telemetry))
+
+
+def test_a_blocked_review_with_neither_findings_nor_a_reason_is_corrected(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """`approved: false` + empty blocking + a non-ok status is no longer a free pass:
+    the verdict gate now runs on every review envelope, not only the `ok` ones."""
+    mute = {
+        "session_id": "review-session",
+        "envelope": envelope(status="blocked", summary="   ", approved=False, changed_files=[]),
+    }
+    result, _ = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, mute, REVIEW_OK, DOCUMENT_OK])
+
+    assert result.accepted
+    assert fake_cli.calls[3]["resume"] == "review-session"  # the reviewer answers for it
+    correction = fake_cli.calls[3]["prompt"]
+    assert "GATE FAILURE" in correction
+    assert "no findings and no reason" in correction
+    assert next(o for o in result.outcomes if o.name == "review").corrections == 1
+
+
 # --- unattended rule -------------------------------------------------------
 
 
@@ -455,6 +729,44 @@ def test_telemetry_covers_the_whole_run(git_repo: Path, fake_cli: FakeCLI):
     assert set(end["stats"]["stages"]) == {"plan", "build", "checks", "review", "document"}
     assert end["stats"]["cost_usd"] == result.cost_usd
     assert [r for r in records if r["event"] == "commit"][0]["payload"]["sha"]
+
+
+def test_every_turn_records_which_layer_each_prompt_file_came_from(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy, isolated_roles: Path
+):
+    """The prompt masterwork displays is the library copy — a repo override wins
+    over it silently, so the run record has to say which one actually ran."""
+    library_user = isolated_roles / "build" / "user.md"
+    library_user.parent.mkdir(parents=True)
+    library_user.write_text(
+        "## Original request\n{{request}}\n\n{{boundary}}\n\n{{envelope_contract}}\n",
+        encoding="utf-8",
+    )
+    override = git_repo / ".masterwork" / "agents" / "build" / "system.md"
+    override.parent.mkdir(parents=True)
+    override.write_text("HOUSE BUILDER\n", encoding="utf-8")
+
+    result, telemetry = run(
+        git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK], telemetry_url=COLLECTOR
+    )
+    assert result.accepted
+
+    layers = {
+        r["agent"]: r["payload"]["role_layers"]
+        for r in events(telemetry)
+        if r["event"] == "agent_turn"
+    }
+    assert layers["build"] == {
+        "system.md": "repo",
+        "user.md": "library",
+        "role.json": "builtin",
+    }
+    assert layers["plan"] == dict.fromkeys(("system.md", "user.md", "role.json"), "builtin")
+    posted = {
+        body["payload"]["agent"]: body["payload"]["payload"]["role_layers"]
+        for body in post_spy.of("agent_turn")
+    }
+    assert posted["build"] == layers["build"]  # and it reaches the collector, not just the JSONL
 
 
 def test_the_run_posts_the_v113_contract(git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy):
@@ -531,6 +843,192 @@ def test_a_failed_run_posts_status_failed(git_repo: Path, fake_cli: FakeCLI, pos
     assert plan["corrections"] == 2
     assert "commit_sha" not in plan  # nothing was committed
     assert post_spy.of("commit") == []
+
+
+# --- v1.19 evidence: the gate's sentence and the envelope it judged ---------
+
+
+def gate_blocks(spy: PostSpy) -> list[tuple[str, dict]]:
+    """(phase, gate block) for every gate the runner stated on the wire."""
+    return [(body["phase"]["name"], body["gate"]) for body in spy.bodies if "gate" in body]
+
+
+def envelope_blocks(spy: PostSpy) -> list[dict]:
+    return [body["envelope"] for body in spy.bodies if "envelope" in body]
+
+
+def test_a_clean_run_posts_every_gates_note_and_every_envelope(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy
+):
+    result, _ = run(
+        git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK], telemetry_url=COLLECTOR
+    )
+    assert result.accepted
+
+    posted = gate_blocks(post_spy)
+    # Passing gates are stated too: which gates never fail is as informative as which do.
+    assert all(block["ok"] and block["note"] for _, block in posted)
+    assert [b["name"] for phase, b in posted if phase == "plan"] == [
+        "envelope",
+        "artifacts",
+        "changed_files",
+        "boundary",
+    ]
+    assert "verdict" in [b["name"] for phase, b in posted if phase == "review"]
+    assert ("plan", "changed_files") in [(p, b["name"]) for p, b in posted]
+    plan_files = next(b for p, b in posted if p == "plan" and b["name"] == "changed_files")
+    assert plan_files["note"] == "1 file(s) match the claim"
+
+    # The `checks` gate runs a command per row, so it carries a row per command.
+    checks = next(b for _, b in posted if b["name"] == "checks")
+    assert checks["checks"] == [{"item": PASSING_CHECK, "ok": True, "note": "exited 0"}]
+
+    attempts = envelope_blocks(post_spy)
+    assert [e["role"] for e in attempts] == ["plan", "build", "review", "document"]
+    assert all(e["parsed"] and e["attempt"] == 1 and e["status"] == "ok" for e in attempts)
+    assert attempts[0]["body"] == PLAN_OK["envelope"]  # the envelope verbatim
+    assert "TRANSCRIPT_MARKER" in attempts[0]["raw_text"]  # the reply it was read from
+
+
+def test_a_failing_gates_sentence_reaches_the_wire(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy
+):
+    """The whole diagnostic value: not *3 failed*, but the sentence that says why."""
+    liar = {
+        "session_id": "build-session",
+        "envelope": envelope(summary="Add it all", changed_files=["app.py", "tests/test_app.py"]),
+        "write_files": {"app.py": "x = 1\n"},
+    }
+    honest = {
+        "session_id": "build-session",
+        "envelope": envelope(summary="Add the route", changed_files=["app.py"]),
+    }
+    result, _ = run(
+        git_repo, fake_cli, [PLAN_OK, liar, honest, REVIEW_OK, DOCUMENT_OK], telemetry_url=COLLECTOR
+    )
+    assert result.accepted
+
+    failed = [block for _, block in gate_blocks(post_spy) if not block["ok"]]
+    assert [(b["name"], b["attempt"]) for b in failed] == [("changed_files", 1)]
+    assert failed[0]["note"] == "claimed but not changed on disk: tests/test_app.py"
+
+
+def test_a_reply_that_does_not_parse_posts_the_attempt_and_the_raw_text(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy
+):
+    """The rows that were invisible before: a turn whose envelope never parsed."""
+    no_envelope = {"session_id": "plan-session", "raw_reply": "Done! Everything works."}
+    result, _ = run(
+        git_repo,
+        fake_cli,
+        [no_envelope, PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK],
+        telemetry_url=COLLECTOR,
+    )
+    assert result.accepted
+
+    assert envelope_blocks(post_spy)[0] == {
+        "role": "plan",
+        "attempt": 1,
+        "parsed": False,
+        "raw_text": "Done! Everything works.",
+        "parse_error": "no fenced code block found in the reply",
+    }
+    # The attempt rides its own gate's event, so one event states both.
+    carrier = next(b for b in post_spy.bodies if "envelope" in b)
+    assert carrier["gate"]["name"] == "envelope"
+    assert carrier["gate"]["ok"] is False
+
+
+def test_attempts_increment_across_a_correction_round(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy
+):
+    chatty = dict(PLAN_OK)
+    chatty["trailing"] = "Hope that helps!"
+    result, _ = run(
+        git_repo,
+        fake_cli,
+        [chatty, PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK],
+        telemetry_url=COLLECTOR,
+    )
+    assert result.accepted
+
+    plan = [e for e in envelope_blocks(post_spy) if e["role"] == "plan"]
+    assert [(e["attempt"], e["parsed"]) for e in plan] == [(1, False), (2, True)]
+    assert [(b["name"], b["attempt"]) for phase, b in gate_blocks(post_spy) if phase == "plan"] == [
+        # The first turn never got past the envelope, so only two gates could run.
+        ("envelope", 1),
+        ("boundary", 1),
+        ("envelope", 2),
+        ("artifacts", 2),
+        ("changed_files", 2),
+        ("boundary", 2),
+    ]
+
+
+def test_a_rerun_check_is_attempt_two_and_names_the_command_that_failed(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy
+):
+    fixer = {
+        "session_id": "build-session",
+        "envelope": envelope(summary="Fix the failing check", changed_files=["fixed.txt"]),
+        "write_files": {"fixed.txt": "green\n"},
+    }
+    result, _ = run(
+        git_repo,
+        fake_cli,
+        [PLAN_OK, BUILD_OK, fixer, REVIEW_OK, DOCUMENT_OK],
+        checks=[MARKER_CHECK],
+        telemetry_url=COLLECTOR,
+    )
+    assert result.accepted
+
+    checks = [block for _, block in gate_blocks(post_spy) if block["name"] == "checks"]
+    assert [(b["attempt"], b["ok"]) for b in checks] == [(1, False), (2, True)]
+    assert checks[0]["checks"][0]["item"] == MARKER_CHECK
+    assert checks[0]["checks"][0]["note"] == "exited 1"
+    assert checks[1]["checks"][0]["ok"] is True
+
+
+def test_a_blocked_stage_still_posts_the_envelope_that_stopped_the_run(
+    git_repo: Path, fake_cli: FakeCLI, post_spy: PostSpy
+):
+    """A clean stop skips the gates — the envelope must not vanish with them."""
+    blocked = {
+        "session_id": "build-session",
+        "envelope": envelope(
+            status="blocked",
+            summary="This needs a destructive migration on the users table.",
+            changed_files=[],
+        ),
+    }
+    result, _ = run(git_repo, fake_cli, [PLAN_OK, blocked, REVIEW_OK], telemetry_url=COLLECTOR)
+    assert not result.accepted
+
+    stopper = envelope_blocks(post_spy)[-1]
+    assert (stopper["role"], stopper["parsed"], stopper["status"]) == ("build", True, "blocked")
+    assert stopper["body"]["summary"].startswith("This needs a destructive migration")
+    # The stage-level verdict is stated too, so nothing is lost by stating a block.
+    carrier = [b for b in post_spy.bodies if "envelope" in b][-1]
+    assert carrier["gate"] == {
+        "name": "stage",
+        "attempt": 1,
+        "ok": False,
+        "note": (
+            "stage returned status=blocked: "
+            "This needs a destructive migration on the users table."
+        ),
+    }
+
+
+def test_the_evidence_blocks_never_enter_the_jsonl(git_repo: Path, fake_cli: FakeCLI):
+    """v1.19 is POST-body only, exactly as v1.13 was: the local record is untouched."""
+    result, telemetry = run(git_repo, fake_cli, [PLAN_OK, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    assert result.accepted
+
+    for record in events(telemetry):
+        assert set(record) <= JSONL_KEYS | {"tool_name", "payload", "stats"}
+    gate_lines = [r for r in events(telemetry) if r["event"].startswith("gate_")]
+    assert gate_lines and all(set(r["payload"]) == {"gate"} for r in gate_lines)
 
 
 def test_run_logs_do_not_pollute_the_stage_gates(git_repo: Path, fake_cli: FakeCLI):

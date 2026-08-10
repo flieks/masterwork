@@ -195,6 +195,47 @@ test('a connected but empty screen says to go and code, not to go and configure'
   await expect(page.getByText(/Start a coding session/)).toBeVisible();
 });
 
+test('the interrupted filter admits nothing can match it, rather than blaming the runs', async ({
+  mount,
+  page,
+}) => {
+  // Nothing writes `interrupted`: masterwork cannot tell a killed process from
+  // a lost hook, so it never derives one. The option stays for a producer that
+  // learns to report it — the empty state has to say which of the two it is.
+  await page.route('**/api/v1/**', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: CORS, body: '' });
+      return;
+    }
+    const url = route.request().url();
+    const setup = url.includes('/observability/');
+    const asked = url.includes('status=interrupted');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS,
+      body: JSON.stringify(setup ? [integration()] : asked ? [] : [factoryRunSummary()]),
+    });
+  });
+
+  await mount(
+    <TestProviders>
+      <SessionsListPage />
+    </TestProviders>,
+  );
+  await expect(page.getByRole('link')).toHaveCount(1);
+
+  await page
+    .getByRole('group', { name: 'Status' })
+    .getByRole('button', { name: 'Interrupted' })
+    .click();
+
+  await expect(page.getByText('No run reports itself interrupted')).toBeVisible();
+  await expect(page.getByText(/Masterwork never derives this status/)).toBeVisible();
+  // Not the generic "go and code" copy, which would read as "none matched".
+  await expect(page.getByText(/Start a coding session/)).toHaveCount(0);
+});
+
 test('an empty screen with nothing recording points at the connect card', async ({
   mount,
   page,

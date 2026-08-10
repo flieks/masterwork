@@ -31,13 +31,20 @@ def test_changed_paths_ignores_pre_existing_dirt(git_repo: Path):
     assert gitwork.changed_paths(git_repo, snap) == ["new.py"]
 
 
-def test_changed_paths_ignores_the_runners_own_run_logs(git_repo: Path):
+def test_changed_paths_excludes_an_in_repo_run_dir_when_told_to(git_repo: Path):
+    """Only reachable via a `runs_dir` override — by default the logs live elsewhere."""
     snap = gitwork.snapshot(git_repo)
     run_dir = git_repo / "factory" / "runs" / "abc123"
     run_dir.mkdir(parents=True)
     (run_dir / "telemetry.jsonl").write_text('{"event": "run_end"}\n')
     (git_repo / "app.py").write_text("x = 1\n")
-    assert gitwork.changed_paths(git_repo, snap) == ["app.py"]
+
+    assert gitwork.changed_paths(git_repo, snap, exclude=("factory/runs/abc123/",)) == ["app.py"]
+    # Without the exclusion nothing is hidden: the runner does not silently drop paths.
+    assert gitwork.changed_paths(git_repo, snap) == [
+        "app.py",
+        "factory/runs/abc123/telemetry.jsonl",
+    ]
 
 
 def test_changed_paths_after_a_commit_is_empty(git_repo: Path):

@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from app.providers.base import ScannedAsset
+from app.providers.base import ScannedAsset, SnapshotTree
 from app.providers.claude import _KIND_AGENT, _KIND_SKILL, build_asset
 
 _MANIFEST = "installed_plugins.json"
@@ -38,6 +38,9 @@ class ClaudePluginProvider:
 
     def roots(self) -> list[Path]:
         return []  # read-only: no writable roots
+
+    def snapshot_tree(self, path: Path) -> SnapshotTree | None:
+        return None  # nothing is written here, and the marketplace owns the files
 
     def _install_paths(self) -> list[tuple[str, Path]]:
         """(plugin short name, install path) for every installed plugin entry."""

@@ -19,7 +19,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.simulations import schemas, serializers
-from app.config import settings
 from app.core.exceptions import (
     AutopilotNotFoundError,
     NoLinkedAssetsError,
@@ -35,13 +34,13 @@ from app.db.models.simulation import Simulation
 from app.providers.base import Provider, resolve_within_roots
 from app.repositories import projects as project_repo
 from app.repositories import simulations as simulation_repo
+from app.services.asset_history import prepare_snapshots, snapshot_writes
 from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
 from app.services.file_changes import apply_change
 from app.services.redact import redact
 from app.services.scenario_parser import extract_scenario
 from app.services.shared_assets import shared_asset_notes
 from app.services.simulation_parser import ParsedSimulation, extract_simulation
-from app.services.skills_git import commit_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -974,7 +973,9 @@ async def apply_suggestion(
             break
         resolved_paths.append(resolved)
 
+    written = [path for path in resolved_paths if path is not None]
     if failure is None:
+        await prepare_snapshots(providers, written)
         for change, resolved in zip(suggestion["changes"], resolved_paths, strict=True):
             if resolved is None:  # link — nothing to write
                 continue
@@ -994,8 +995,9 @@ async def apply_suggestion(
             "applied_at": _utcnow().isoformat(),
         }
         await _sync_project_links(db, providers, simulation.project_id, suggestion["changes"])
-        await commit_snapshot(
-            settings.claude_skills_root.parent,
+        await snapshot_writes(
+            providers,
+            written,
             f"masterwork: apply suggestion: {suggestion['title'][:72]}",
         )
     # Reassign so SQLAlchemy sees the JSONB change.

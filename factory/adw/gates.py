@@ -5,12 +5,38 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from adw.envelopes import ENVELOPE_REMINDER, Envelope, ParseResult
 
 CHECK_OUTPUT_TAIL = 2000
+
+ENVELOPE_GATE = "envelope"
+# A verdict the runner reaches outside the six named gates — a revert, a stage that
+# returned a non-ok status. Matches the name masterwork files such lines under.
+STAGE_GATE = "stage"
+
+# The write boundary is git-relative, so a write OUTSIDE the repo root would be
+# invisible to it. Probed 2026-08-10 against the runner's exact flag set
+# (`claude -p --output-format stream-json --verbose --model haiku
+# --permission-mode acceptEdits --disallowedTools Bash Task WebFetch WebSearch
+# --strict-mcp-config`, cwd = a temp git repo): the CLI refused both an absolute
+# path outside cwd and a `../` escape, returning an is_error tool_result
+# ("Claude requested permissions to write to …, but you haven't granted it yet").
+# acceptEdits auto-approves edits within cwd only, so the escape is unreachable
+# and needs no guard here. Re-probe if the permission model changes.
+
+
+@dataclass(frozen=True)
+class GateItem:
+    """One row inside a gate that verifies several things — one command, one file."""
+
+    item: str
+    ok: bool
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -18,6 +44,21 @@ class GateCheck:
     name: str
     ok: bool
     note: str = ""
+    # Empty for a gate that is a single verdict; one entry per row otherwise.
+    items: tuple[GateItem, ...] = ()
+
+    def block(self, attempt: int) -> dict[str, Any]:
+        """The v1.19 `gate` block — a gate's whole verdict on one event, so the
+        sentence it wrote is stored and not just the fact that it failed."""
+        block: dict[str, Any] = {"name": self.name, "attempt": attempt, "ok": self.ok}
+        if self.note:
+            block["note"] = self.note
+        if self.items:
+            # `checks` decides the row count: one row per item, none for the whole.
+            block["checks"] = [
+                {"item": item.item, "ok": item.ok, "note": item.note} for item in self.items
+            ]
+        return block
 
 
 @dataclass
@@ -98,8 +139,8 @@ def matches_boundary(path: str, boundary: list[str]) -> bool:
 
 def gate_envelope(result: ParseResult, stage: str) -> GateCheck:
     if result.ok:
-        return GateCheck("envelope", True, f"parsed a valid {stage} envelope")
-    return GateCheck("envelope", False, f"{result.error}. {ENVELOPE_REMINDER}")
+        return GateCheck(ENVELOPE_GATE, True, f"parsed a valid {stage} envelope")
+    return GateCheck(ENVELOPE_GATE, False, f"{result.error}. {ENVELOPE_REMINDER}")
 
 
 # --- gate 2: artifacts exist ----------------------------------------------
@@ -121,9 +162,14 @@ def gate_artifacts(repo: Path, envelope: Envelope) -> GateCheck:
 # --- gate 3: changed-files truth ------------------------------------------
 
 
-def gate_changed_files(actual: list[str], claimed: list[str]) -> GateCheck:
-    actual_set = {normalize_path(p) for p in actual}
-    claimed_set = {normalize_path(p) for p in claimed}
+def gate_changed_files(
+    actual: list[str], claimed: list[str], *, ignore: Iterable[str] = ()
+) -> GateCheck:
+    """`ignore` holds paths the boundary gate just reverted: they are gone from disk
+    but still on the agent's claim, and one write deserves one correction, not two."""
+    ignored = {normalize_path(p) for p in ignore}
+    actual_set = {normalize_path(p) for p in actual} - ignored
+    claimed_set = {normalize_path(p) for p in claimed} - ignored
     invented = sorted(claimed_set - actual_set)
     undeclared = sorted(actual_set - claimed_set)
     if not invented and not undeclared:
@@ -162,6 +208,16 @@ def gate_boundary(actual: list[str], boundary: list[str] | None) -> BoundaryResu
 
 # --- gate 5: verdict consistency ------------------------------------------
 
+# Two independent axes. `status` reports whether the review itself could be carried
+# out; `approved` + `blocking` are the judgement on the work. Findings prove the
+# review happened, so a non-ok `status` can never turn them into a clean stop — that
+# shape used to skip the entire review→build correction loop in silence.
+
+
+def verdict_despite_status(envelope: Envelope) -> bool:
+    """Findings under a non-ok status: a rejection wearing an inability's clothes."""
+    return envelope.status != "ok" and bool(envelope.blocking)
+
 
 def gate_verdict(envelope: Envelope) -> GateCheck:
     if envelope.approved is None:
@@ -173,12 +229,37 @@ def gate_verdict(envelope: Envelope) -> GateCheck:
             f"approved: true with {len(envelope.blocking)} blocking finding(s) still listed — "
             "either clear the blocking list or set approved: false",
         )
-    if not envelope.approved and not envelope.blocking and envelope.status == "ok":
+    if verdict_despite_status(envelope):
+        # Not a correction: the findings say plainly that the work was reviewed and
+        # rejected, and asking the reviewer to reconcile it invites it to drop them
+        # instead. The runner reads it as the rejection it is, and records that here.
         return GateCheck(
             "verdict",
-            False,
-            "approved: false with an empty blocking list and no reason — "
-            "list what blocks approval, or approve",
+            True,
+            f'status: "{envelope.status}" with {len(envelope.blocking)} blocking finding(s) — '
+            "`status` says whether the review ran, the verdict is `approved`; "
+            "read as a rejection",
+        )
+    if not envelope.approved and not envelope.blocking:
+        if envelope.status == "ok":
+            return GateCheck(
+                "verdict",
+                False,
+                "approved: false with an empty blocking list and no reason — "
+                "list what blocks approval, or approve",
+            )
+        # The one legitimate silent no: "I could not review". It costs a stated reason.
+        if not envelope.summary.strip():
+            return GateCheck(
+                "verdict",
+                False,
+                f'status: "{envelope.status}" with no findings and no reason — say in '
+                "`summary` why you could not review, list what blocks approval, or approve",
+            )
+        return GateCheck(
+            "verdict",
+            True,
+            f'could not review (status: "{envelope.status}"): {envelope.summary_line}',
         )
     return GateCheck(
         "verdict", True, f"approved={envelope.approved}, {len(envelope.blocking)} blocking"
@@ -221,12 +302,20 @@ def run_checks(repo: Path, commands: list[str], timeout: int) -> list[CheckRun]:
     return runs
 
 
+def _check_item(run: CheckRun) -> GateItem:
+    """One row per command: the verdict plus, when it failed, what it printed."""
+    tail = run.output.strip()
+    note = f"exited {run.exit_code}"
+    return GateItem(run.command, run.ok, note if run.ok or not tail else f"{note}\n{tail}")
+
+
 def gate_checks(runs: list[CheckRun]) -> GateCheck:
     failed = [r for r in runs if not r.ok]
+    items = tuple(_check_item(r) for r in runs)
     if not runs:
         return GateCheck("checks", True, "no checks configured (nothing was verified)")
     if not failed:
-        return GateCheck("checks", True, f"{len(runs)} check(s) passed")
+        return GateCheck("checks", True, f"{len(runs)} check(s) passed", items)
     detail = "; ".join(f"`{r.command}` exited {r.exit_code}" for r in failed)
     tails = "\n\n".join(f"$ {r.command}\n{r.output.strip()}" for r in failed)
-    return GateCheck("checks", False, f"{detail}\n\n{tails}")
+    return GateCheck("checks", False, f"{detail}\n\n{tails}", items)

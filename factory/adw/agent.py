@@ -55,12 +55,16 @@ class AgentSession:
         disallowed_tools: tuple[str, ...] = (),
         claude_bin: str = "claude",
         timeout_seconds: int = 1800,
+        system_prompt: str = "",
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self.stage = stage
         self.model = model
         self.cwd = cwd
         self.disallowed_tools = disallowed_tools
+        # The role's identity. Set once per session and re-sent on every resume,
+        # because each CLI process builds its own system prompt from scratch.
+        self.system_prompt = system_prompt
         self.claude_bin = claude_bin
         self.timeout_seconds = timeout_seconds
         self.session_id: str | None = None
@@ -81,6 +85,8 @@ class AgentSession:
             "--permission-mode",
             "acceptEdits",
         ]
+        if self.system_prompt:
+            args += ["--append-system-prompt", self.system_prompt]
         if self.disallowed_tools:
             # Deny wins over the user's global auto-approve settings; the write
             # boundary itself is still enforced post-hoc by git.

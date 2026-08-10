@@ -8,6 +8,7 @@ import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from adw.roles import ResolvedRole, RoleError, RoleStore
 from adw.telemetry import DEFAULT_CONTEXT_WINDOW
 
 CONFIG_FILENAME = "factory.config.json"
@@ -17,6 +18,8 @@ CONFIG_FILENAME = "factory.config.json"
 STAGE_ORDER = ("plan", "build", "checks", "review", "document")
 AGENT_STAGES = ("plan", "build", "review", "document")
 
+# Last-resort fallbacks. In practice the built-in role.json layer carries the same
+# values, so these only matter if a hand-written role.json omits a key.
 DEFAULT_MODELS = {"plan": "opus", "build": "sonnet", "review": "opus", "document": "sonnet"}
 DEFAULT_BOUNDARIES: dict[str, list[str] | None] = {
     "plan": ["plan.md", "docs/specs/**"],
@@ -37,9 +40,32 @@ DEFAULT_TELEMETRY_URL = "http://localhost:8008/api/v1/hooks/events"
 DEFAULT_ARTIFACT_MAX_BYTES = 20_000
 DEFAULT_TIMEOUT_SECONDS = 1800
 
+# Run logs are the runner's own output — they belong to the runner, not to the
+# repo it is operating on.
+DEFAULT_RUNS_ROOT = Path.home() / ".masterwork" / "runs"
+
+DETECTED = "detected"  # auto-detected from the repo's shape
+CONFIGURED = "configured"  # an explicit "checks" array in factory.config.json
+OPTED_OUT = "opted-out"  # --no-checks
+
+NO_CHECKS_REFUSAL = (
+    "nothing to verify: this repo has no pyproject.toml and no package.json, so no "
+    "quality commands could be auto-detected. A run with zero checks proves nothing, "
+    "so the factory will not start one by accident.\n"
+    f'Add a "checks" array to {CONFIG_FILENAME} (e.g. {{"checks": ["make test"]}}), '
+    "or pass --no-checks to run explicitly unverified."
+)
+UNVERIFIED_WARNING = (
+    "this run executes NO checks — nothing it produces will be verified by the runner"
+)
+
 
 class ConfigError(Exception):
     """factory.config.json is missing, unreadable, or malformed."""
+
+
+# A broken role file is a configuration problem too, so callers catch both as one.
+STARTUP_ERRORS = (ConfigError, RoleError)
 
 
 @dataclass(frozen=True)
@@ -50,10 +76,15 @@ class Stage:
     disallowed_tools: tuple[str, ...] = ()
 
     @property
+    def read_only(self) -> bool:
+        """`[]` permits nothing; `None` is unrestricted, not empty. Decoded once, here."""
+        return self.boundary is not None and not self.boundary
+
+    @property
     def boundary_text(self) -> str:
         if self.boundary is None:
             return "(unrestricted)"
-        if not self.boundary:
+        if self.read_only:
             return "(read-only)"
         return ", ".join(self.boundary)
 
@@ -62,8 +93,10 @@ class Stage:
 class FactoryConfig:
     repo: Path
     run_id: str
+    run_dir: Path
     stages: dict[str, Stage]
     checks: list[str]
+    checks_source: str
     max_corrections: int
     max_review_rounds: int
     telemetry_url: str | None
@@ -72,29 +105,44 @@ class FactoryConfig:
     context_window: int
     claude_bin: str
     warnings: tuple[str, ...] = field(default=())
+    # The resolved role store: one entry per agent stage, `checks` has none.
+    roles: dict[str, ResolvedRole] = field(default_factory=dict)
+    roles_dir: Path | None = None
+    project_roles_dir: Path | None = None
 
     @property
-    def run_dir(self) -> Path:
-        return self.repo / "factory" / "runs" / self.run_id
+    def verified(self) -> bool:
+        """False when the run executes no checks — it can prove nothing."""
+        return bool(self.checks)
+
+    @property
+    def undetectable_checks(self) -> bool:
+        """Auto-detection came up empty and nobody opted out: refuse to start."""
+        return self.checks_source == DETECTED and not self.checks
+
+    @property
+    def run_dir_exclusions(self) -> tuple[str, ...]:
+        """Repo-relative prefix of the run dir, only when `runs_dir` points back
+        inside the target repo — otherwise the logs cannot pollute a gate diff."""
+        try:
+            relative = self.run_dir.relative_to(self.repo)
+        except ValueError:
+            return ()
+        return (relative.as_posix().rstrip("/") + "/",)
 
 
 def new_run_id() -> str:
     return secrets.token_hex(4)
 
 
-def detect_checks(repo: Path) -> tuple[list[str], list[str]]:
-    """Auto-detected quality commands plus any warnings, by repo shape."""
+def detect_checks(repo: Path) -> list[str]:
+    """Auto-detected quality commands, by repo shape. Empty means undetectable."""
     commands: list[str] = []
     if (repo / "pyproject.toml").is_file():
         commands += PY_CHECKS
     if (repo / "package.json").is_file():
         commands += NODE_CHECKS
-    if not commands:
-        return [], [
-            "no pyproject.toml or package.json found — running with NO executed checks; "
-            f'set "checks" in {CONFIG_FILENAME} to gate this run on real commands'
-        ]
-    return commands, []
+    return commands
 
 
 def _overlay(repo: Path, config_path: Path | None) -> dict:
@@ -133,6 +181,55 @@ def _disallowed_for(stage_name: str) -> tuple[str, ...]:
     return BASE_DISALLOWED
 
 
+def _agent_stage(
+    name: str,
+    role: ResolvedRole,
+    models: dict[str, str],
+    boundaries: dict[str, list[str] | None],
+    model_override: str | None,
+) -> Stage:
+    """Precedence: CLI flag > factory.config.json > role.json > built-in default."""
+    return Stage(
+        name=name,
+        model=model_override or models.get(name) or role.config.model or DEFAULT_MODELS[name],
+        boundary=(
+            boundaries[name]
+            if name in boundaries
+            else (role.config.writes if role.config.writes_set else DEFAULT_BOUNDARIES[name])
+        ),
+        disallowed_tools=(
+            role.config.disallowed_tools
+            if role.config.disallowed_tools is not None
+            else _disallowed_for(name)
+        ),
+    )
+
+
+def resolve_runs_dir(repo: Path, run_id: str, configured: object, override: object) -> Path:
+    """`<runs root>/<run_id>`; the root defaults outside the target repo entirely."""
+    for candidate in (override, configured):
+        if candidate is None:
+            continue
+        if not isinstance(candidate, str | Path) or not str(candidate).strip():
+            raise ConfigError('"runs_dir" must be a non-empty path string')
+        root = Path(str(candidate)).expanduser()
+        # A relative override is relative to the repo, so `factory/runs` still works.
+        return (root if root.is_absolute() else repo / root) / run_id
+    return DEFAULT_RUNS_ROOT / repo.name / run_id
+
+
+def _roles_dir(repo: Path, configured: object, override: object) -> Path | None:
+    """None means "wherever the store defaults to" — $MASTERWORK_ROLES_DIR or ~/.masterwork."""
+    for candidate in (override, configured):
+        if candidate is None:
+            continue
+        if not isinstance(candidate, str | Path) or not str(candidate).strip():
+            raise ConfigError('"roles_dir" must be a non-empty path string')
+        root = Path(str(candidate)).expanduser()
+        return root if root.is_absolute() else repo / root
+    return None
+
+
 def load_config(
     repo: Path,
     *,
@@ -141,13 +238,21 @@ def load_config(
     run_id: str | None = None,
     max_corrections: int | None = None,
     max_review_rounds: int | None = None,
+    no_checks: bool = False,
+    runs_dir: Path | str | None = None,
+    roles_dir: Path | str | None = None,
 ) -> FactoryConfig:
-    """Defaults, then factory.config.json, then CLI overrides (last wins)."""
+    """Role store, then factory.config.json, then CLI overrides (last wins)."""
     repo = repo.resolve()
     data = _overlay(repo, config_path)
     warnings: list[str] = []
 
-    models = dict(DEFAULT_MODELS)
+    store = RoleStore(repo, roles_dir=_roles_dir(repo, data.get("roles_dir"), roles_dir))
+    roles = store.resolve_all()
+    warnings += store.startup_warnings(roles)
+
+    # Only what the file actually said: absent is not the same as "set to the default".
+    models: dict[str, str] = {}
     raw_models = data.get("models", {})
     if not isinstance(raw_models, dict):
         raise ConfigError('"models" must be an object')
@@ -157,7 +262,7 @@ def load_config(
             continue
         models[name] = str(value)
 
-    boundaries = dict(DEFAULT_BOUNDARIES)
+    boundaries: dict[str, list[str] | None] = {}
     raw_bounds = data.get("boundaries", {})
     if not isinstance(raw_bounds, dict):
         raise ConfigError('"boundaries" must be an object')
@@ -171,20 +276,21 @@ def load_config(
             raise ConfigError(f'boundary for "{name}" must be null or a list of glob strings')
         boundaries[name] = value
 
-    if "checks" in data and data["checks"] is not None:
-        checks = _as_commands(data["checks"], "checks")
+    if no_checks:
+        checks, checks_source = [], OPTED_OUT
+        warnings.append(f"--no-checks: {UNVERIFIED_WARNING}")
+    elif "checks" in data and data["checks"] is not None:
+        checks, checks_source = _as_commands(data["checks"], "checks"), CONFIGURED
         if not checks:
-            warnings.append(f'{CONFIG_FILENAME}: "checks" is empty — this run executes no checks')
+            warnings.append(f'{CONFIG_FILENAME} "checks" is explicitly empty — {UNVERIFIED_WARNING}')
     else:
-        checks, detect_warnings = detect_checks(repo)
-        warnings += detect_warnings
+        checks, checks_source = detect_checks(repo), DETECTED
 
     stages = {
-        name: Stage(
-            name=name,
-            model=None if name == "checks" else (model_override or models[name]),
-            boundary=None if name == "checks" else boundaries[name],
-            disallowed_tools=() if name == "checks" else _disallowed_for(name),
+        name: (
+            Stage(name=name, model=None, boundary=None, disallowed_tools=())
+            if name == "checks"
+            else _agent_stage(name, roles[name], models, boundaries, model_override)
         )
         for name in STAGE_ORDER
     }
@@ -193,11 +299,14 @@ def load_config(
     if telemetry_url is not None and not isinstance(telemetry_url, str):
         raise ConfigError('"telemetry_url" must be a string or null')
 
+    resolved_run_id = run_id or new_run_id()
     return FactoryConfig(
         repo=repo,
-        run_id=run_id or new_run_id(),
+        run_id=resolved_run_id,
+        run_dir=resolve_runs_dir(repo, resolved_run_id, data.get("runs_dir"), runs_dir),
         stages=stages,
         checks=checks,
+        checks_source=checks_source,
         max_corrections=_positive(
             max_corrections, data.get("max_corrections"), 2, "max_corrections"
         ),
@@ -216,6 +325,9 @@ def load_config(
         ),
         claude_bin=str(data.get("claude_bin") or "claude"),
         warnings=tuple(warnings),
+        roles=roles,
+        roles_dir=store.global_dir,
+        project_roles_dir=store.project_dir,
     )
 
 

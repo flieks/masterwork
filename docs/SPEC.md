@@ -17,9 +17,13 @@ chatbot that proposes changes the user can accept or reject.
     agents `~/.claude/agents/<name>.md`
   - `id` is the stable slug `"{provider}:{kind}:{name}"`, e.g. `claude:skill:frontend-dev`
   - title/description parsed from YAML frontmatter when present, else derived from filename
-- **ChatSession / ChatMessage / Proposal** — stored in Postgres (see API contract).
-  A proposal is a set of concrete file changes suggested by the assistant,
-  pending until the user accepts (backend applies them) or rejects.
+- **ChatSession / ChatMessage / Proposal** — stored in the app database (see API
+  contract). A proposal is a set of concrete file changes suggested by the
+  assistant, pending until the user accepts (backend applies them) or rejects.
+  - The store is **SQLite at `~/.masterwork/masterwork.db`** by default, so a
+    fresh `npx masterwork` needs no database server and survives a re-clone.
+    Point `DATABASE_URL` at Postgres (`postgresql+asyncpg://…`) to use that
+    instead — both dialects are supported and migrated by the same revisions.
 
 ## Screens
 
@@ -98,7 +102,7 @@ propose → accept/reject mechanism as file changes.
   fences as diagrams.
 - **Asset detail** gets a Diagram section: "Generate diagram" runs a one-shot
   claude -p that reads the file and returns a mermaid flowchart of how the
-  skill/agent works internally; cached in Postgres by file hash, with a
+  skill/agent works internally; cached in the app database by file hash, with a
   "regenerate (file changed)" hint when stale.
 
 ---

@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from app.providers.base import ScannedAsset
+from app.providers.base import ScannedAsset, SnapshotTree, resolve_within_roots
 
 _KIND_SKILL = "skill"
 _KIND_AGENT = "agent"
@@ -135,6 +135,13 @@ class ClaudeProvider:
 
     def _build(self, kind: str, name: str, path: Path) -> ScannedAsset | None:
         return build_asset(self.name, kind, name, path)
+
+    def snapshot_tree(self, path: Path) -> SnapshotTree | None:
+        """The whole ~/.claude tree, which is where the repo sits: it holds both
+        roots, and its own .gitignore is what keeps everything else out of it."""
+        if resolve_within_roots(path, self.roots()) is None:
+            return None
+        return SnapshotTree(root=self._skills_root.parent)
 
     def asset_id_for_path(self, path: Path) -> str | None:
         """Map a resolved absolute path back to an asset id, if it is one."""

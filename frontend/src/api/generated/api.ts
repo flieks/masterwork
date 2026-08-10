@@ -189,7 +189,7 @@ export interface AssetDetail {
      */
     'kind': AssetKind;
     /**
-     * Owning tool: \"claude\" or \"claude-plugin\".
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetDetail
      */
@@ -376,7 +376,7 @@ export interface AssetSummary {
      */
     'kind': AssetKind;
     /**
-     * Owning tool: \"claude\" or \"claude-plugin\".
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetSummary
      */
@@ -537,6 +537,18 @@ export interface BackfillResult {
      * @memberof BackfillResult
      */
     'assets': number;
+    /**
+     * Envelope attempts the session now holds, recovered and reported.
+     * @type {number}
+     * @memberof BackfillResult
+     */
+    'envelopes': number;
+    /**
+     * Gate checks it now holds, recovered and reported.
+     * @type {number}
+     * @memberof BackfillResult
+     */
+    'gate_checks': number;
 }
 /**
  * The same, summed over a whole-history rebuild.
@@ -574,6 +586,18 @@ export interface BackfillTotals {
      * @memberof BackfillTotals
      */
     'assets': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'envelopes': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof BackfillTotals
+     */
+    'gate_checks': number;
 }
 /**
  * 
@@ -1046,7 +1070,7 @@ export interface CodingSession {
      */
     'workflow': string | null;
     /**
-     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live.
+     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
      * @type {string}
      * @memberof CodingSession
      */
@@ -1155,7 +1179,7 @@ export interface CodingSession {
     'assets': Array<AssetUse>;
 }
 /**
- * The same session with whole phase rows instead of card summaries.
+ * The same session with whole phase rows instead of card summaries, plus the run\'s evidence — kept as sibling arrays keyed by `phase_id`.
  * @export
  * @interface CodingSessionDetail
  */
@@ -1227,7 +1251,7 @@ export interface CodingSessionDetail {
      */
     'workflow': string | null;
     /**
-     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live.
+     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
      * @type {string}
      * @memberof CodingSessionDetail
      */
@@ -1334,6 +1358,18 @@ export interface CodingSessionDetail {
      * @memberof CodingSessionDetail
      */
     'assets': Array<AssetUse>;
+    /**
+     * Every envelope attempt of the run, oldest first, so attempt 1 precedes attempt 2. Group by `phase_id` to show a stage\'s own; a null `phase_id` belongs to no stage. Capped at the most recent 100.
+     * @type {Array<EnvelopeAttempt>}
+     * @memberof CodingSessionDetail
+     */
+    'envelopes': Array<EnvelopeAttempt>;
+    /**
+     * Every gate check of the run, oldest first and grouped the same way. Capped at the most recent 500.
+     * @type {Array<GateCheckItem>}
+     * @memberof CodingSessionDetail
+     */
+    'gate_checks': Array<GateCheckItem>;
 }
 /**
  * A modification another project made to an asset this project links.
@@ -1392,6 +1428,269 @@ export const CrossChangeSourceEnum = {
 
 export type CrossChangeSourceEnum = typeof CrossChangeSourceEnum[keyof typeof CrossChangeSourceEnum];
 
+/**
+ * One envelope an agent returned, and whether the runner could read it.
+ * @export
+ * @interface EnvelopeAttempt
+ */
+export interface EnvelopeAttempt {
+    /**
+     * 
+     * @type {number}
+     * @memberof EnvelopeAttempt
+     */
+    'id': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof EnvelopeAttempt
+     */
+    'phase_id': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof EnvelopeAttempt
+     */
+    'event_id': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeAttempt
+     */
+    'role': string | null;
+    /**
+     * 1-based try within (stage, role).
+     * @type {number}
+     * @memberof EnvelopeAttempt
+     */
+    'attempt': number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof EnvelopeAttempt
+     */
+    'parsed': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeAttempt
+     */
+    'parse_error': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeAttempt
+     */
+    'status': string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof EnvelopeAttempt
+     */
+    'body': { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeAttempt
+     */
+    'raw_text': string | null;
+    /**
+     * reported — the producer sent it, and only these can carry a body. recovered — a replay reconstructed the attempt from a gate line, so `body` is always null.
+     * @type {string}
+     * @memberof EnvelopeAttempt
+     */
+    'origin': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeAttempt
+     */
+    'created_at': string;
+}
+/**
+ * The envelope an agent returned on one attempt, as the runner read it.
+ * @export
+ * @interface EnvelopeIn
+ */
+export interface EnvelopeIn {
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeIn
+     */
+    'role'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof EnvelopeIn
+     */
+    'attempt'?: number | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof EnvelopeIn
+     */
+    'parsed'?: boolean | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeIn
+     */
+    'parse_error'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeIn
+     */
+    'status'?: string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof EnvelopeIn
+     */
+    'body'?: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof EnvelopeIn
+     */
+    'raw_text'?: string | null;
+}
+/**
+ * One item a gate checked. Any field it leaves out is taken from the gate block around it, so a gate with a single verdict needs no entry at all.
+ * @export
+ * @interface GateCheckIn
+ */
+export interface GateCheckIn {
+    /**
+     * 
+     * @type {string}
+     * @memberof GateCheckIn
+     */
+    'item'?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof GateCheckIn
+     */
+    'ok'?: boolean | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateCheckIn
+     */
+    'note'?: string | null;
+}
+/**
+ * One check a gate ran, and the sentence it wrote.
+ * @export
+ * @interface GateCheckItem
+ */
+export interface GateCheckItem {
+    /**
+     * 
+     * @type {number}
+     * @memberof GateCheckItem
+     */
+    'id': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateCheckItem
+     */
+    'phase_id': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateCheckItem
+     */
+    'event_id': number | null;
+    /**
+     * The gate that ran. `stage` is the catch-all for a verdict that named none.
+     * @type {string}
+     * @memberof GateCheckItem
+     */
+    'gate': string;
+    /**
+     * 1-based try within (stage, gate, item).
+     * @type {number}
+     * @memberof GateCheckItem
+     */
+    'attempt': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateCheckItem
+     */
+    'item': string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof GateCheckItem
+     */
+    'ok': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateCheckItem
+     */
+    'note': string | null;
+    /**
+     * reported | recovered — see EnvelopeAttempt.origin.
+     * @type {string}
+     * @memberof GateCheckItem
+     */
+    'origin': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateCheckItem
+     */
+    'created_at': string;
+}
+/**
+ * One gate evaluation as the runner reports it.  With `checks`, one row per entry; without it, the block is itself the one check. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the minimal report is `{\"name\": \"changed_files\", \"note\": \"…\"}` on the event a runner already sends.
+ * @export
+ * @interface GateIn
+ */
+export interface GateIn {
+    /**
+     * 
+     * @type {string}
+     * @memberof GateIn
+     */
+    'name'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateIn
+     */
+    'attempt'?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateIn
+     */
+    'item'?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof GateIn
+     */
+    'ok'?: boolean | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateIn
+     */
+    'note'?: string | null;
+    /**
+     * 
+     * @type {Array<GateCheckIn>}
+     * @memberof GateIn
+     */
+    'checks'?: Array<GateCheckIn> | null;
+}
 /**
  * 
  * @export
@@ -1501,6 +1800,18 @@ export interface HookEventRequest {
      * @memberof HookEventRequest
      */
     'duration_ms'?: number | null;
+    /**
+     * 
+     * @type {EnvelopeIn}
+     * @memberof HookEventRequest
+     */
+    'envelope'?: EnvelopeIn | null;
+    /**
+     * 
+     * @type {GateIn}
+     * @memberof HookEventRequest
+     */
+    'gate'?: GateIn | null;
 }
 /**
  * 
@@ -3622,7 +3933,7 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
         /**
          * 
          * @summary List Coding Asset Usage
-         * @param {string | null} [since] Only count assets used at or after this instant.
+         * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
          * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {*} [options] Override http request option.
@@ -3718,12 +4029,13 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+         * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listCodingSessions: async (limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listCodingSessions: async (limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-sessions`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -3762,6 +4074,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
 
             if (rootsOnly !== undefined) {
                 localVarQueryParameter['roots_only'] = rootsOnly;
+            }
+
+            if (parentSessionId !== undefined) {
+                localVarQueryParameter['parent_session_id'] = parentSessionId;
             }
 
 
@@ -3841,7 +4157,7 @@ export const CodingApiFp = function(configuration?: Configuration) {
         /**
          * 
          * @summary List Coding Asset Usage
-         * @param {string | null} [since] Only count assets used at or after this instant.
+         * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
          * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {*} [options] Override http request option.
@@ -3876,13 +4192,14 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+         * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingSession>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, options);
+        async listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingSession>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingSessions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -3941,7 +4258,7 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
         /**
          * 
          * @summary List Coding Asset Usage
-         * @param {string | null} [since] Only count assets used at or after this instant.
+         * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
          * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {*} [options] Override http request option.
@@ -3970,13 +4287,14 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+         * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingSession>> {
-            return localVarFp.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, options).then((request) => request(axios, basePath));
+        listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingSession>> {
+            return localVarFp.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -4040,7 +4358,7 @@ export class CodingApi extends BaseAPI {
     /**
      * 
      * @summary List Coding Asset Usage
-     * @param {string | null} [since] Only count assets used at or after this instant.
+     * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
      * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
      * @param {*} [options] Override http request option.
@@ -4073,14 +4391,15 @@ export class CodingApi extends BaseAPI {
      * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
      * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
      * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-     * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one.
+     * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
      * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
+     * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, options).then((request) => request(this.axios, this.basePath));
+    public listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

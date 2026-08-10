@@ -2,6 +2,8 @@ import { atomFamily } from 'jotai/utils';
 import { atomWithQuery, atomWithMutation } from 'jotai-tanstack-query';
 import { api, GENERATE_TIMEOUT_MS, isNotFoundError } from '~/api/client';
 import type { AssetDetail, AssetDiagram, AssetSessionUse, CodingAssetUsage } from '~/api/generated';
+// The rollup owns the inspection scope; the drill-in follows it.
+import { includeInspectionAtom } from '~/features/sessions/queries';
 import type { AssetKind } from './paths';
 
 // Identity and URLs live in a client-free leaf so the sessions screen can link
@@ -77,27 +79,36 @@ export const assetDiagramQueryAtom = atomFamily((assetId: string) =>
  *
  * Keyed by name rather than by asset id: a plugin asset is recorded under the
  * name Claude Code calls it by ("vercel:deploy"), while its id names the
- * provider that installed it. `sessions.ts` shares this query's key, so the
- * Sessions rollup and these pages hit one cache entry.
+ * provider that installed it. The Sessions rollup shares this query's key, so
+ * it and these pages hit one cache entry — hence the trailing `false`, which is
+ * the rollup's `include_inspection` default. These pages have no toggle: a card
+ * always reads the honest count.
  */
 export const assetUsageByNameAtom = atomFamily((kind: AssetKind) =>
   atomWithQuery(() => ({
-    queryKey: ['codingAssetUsage', 'all', kind],
+    queryKey: ['codingAssetUsage', 'all', kind, false],
     queryFn: async (): Promise<Map<string, CodingAssetUsage>> => {
-      const { data } = await api.coding.listCodingAssetUsage(undefined, kind);
+      const { data } = await api.coding.listCodingAssetUsage(undefined, kind, false);
       return new Map(data.map((row) => [row.name, row]));
     },
   })),
 );
 
-/** The runs that used one asset, newest first, each with the calls it made. */
+/**
+ * The runs that used one asset, newest first, each with the calls it made.
+ * Scoped by the rollup's inspection toggle so the drill-in counts the same runs
+ * the table that linked here did.
+ */
 export const assetSessionUsesQueryAtom = atomFamily((assetId: string) =>
-  atomWithQuery(() => ({
-    queryKey: ['assetSessionUses', assetId],
-    queryFn: async (): Promise<AssetSessionUse[]> =>
-      (await api.coding.listAssetSessionUses(assetId)).data,
-    enabled: assetId.length > 0,
-  })),
+  atomWithQuery((get) => {
+    const includeInspection = get(includeInspectionAtom);
+    return {
+      queryKey: ['assetSessionUses', assetId, includeInspection],
+      queryFn: async (): Promise<AssetSessionUse[]> =>
+        (await api.coding.listAssetSessionUses(assetId, undefined, includeInspection)).data,
+      enabled: assetId.length > 0,
+    };
+  }),
 );
 
 export const generateAssetDiagramMutationAtom = atomWithMutation(() => ({

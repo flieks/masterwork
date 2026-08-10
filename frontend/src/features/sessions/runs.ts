@@ -98,3 +98,13 @@ export function windowSince(window: AssetWindow, now = Date.now()): string | und
 export function stageRunsLabel(count: number): string {
   return `${count} stage ${count === 1 ? 'run' : 'runs'}`;
 }
+
+/**
+ * The `interrupted` filter always comes back empty today, and "no runs matched"
+ * would read as a fact about the runs. Masterwork cannot tell a killed process
+ * from a lost hook, so it never derives this status — only the tool that ran
+ * the session can report one, and nothing does yet. The option stays because
+ * that can change; the empty state says which of the two it is.
+ */
+export const INTERRUPTED_NEVER_DERIVED =
+  'Masterwork never derives this status — only the tool that ran the session can report it, and nothing does yet.';

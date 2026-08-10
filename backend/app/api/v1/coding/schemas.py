@@ -51,6 +51,62 @@ class AgentIn(_NamedBlock):
     tokens_out: int | None = None
 
 
+class GateCheckIn(BaseModel):
+    """One item a gate checked. Any field it leaves out is taken from the gate
+    block around it, so a gate with a single verdict needs no entry at all."""
+
+    item: str | None = Field(None, description="The thing checked — a path, a command.")
+    ok: bool | None = Field(None, description="Did this item pass?")
+    note: str | None = Field(None, description="What the check wrote. The payload that matters.")
+
+
+class GateIn(BaseModel):
+    """One gate evaluation as the runner reports it.
+
+    With `checks`, one row per entry; without it, the block is itself the one
+    check. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the
+    minimal report is `{"name": "changed_files", "note": "…"}` on the event a
+    runner already sends.
+    """
+
+    name: str | None = Field(
+        None, description="The gate that ran — envelope, artifacts, changed_files, boundary, …"
+    )
+    attempt: int | None = Field(
+        None, description="1-based try within the stage; counted for you when omitted."
+    )
+    item: str | None = Field(None, description="Default item for the checks below.")
+    ok: bool | None = Field(None, description="Default verdict; else read off the event type.")
+    note: str | None = Field(None, description="Default note.")
+    checks: list[GateCheckIn] | None = Field(
+        None, description="One entry per item checked. Omit for a single whole-gate verdict."
+    )
+
+
+class EnvelopeIn(BaseModel):
+    """The envelope an agent returned on one attempt, as the runner read it."""
+
+    role: str | None = Field(None, description="The role that produced it; else the event's lane.")
+    attempt: int | None = Field(
+        None, description="1-based try within (stage, role); counted for you when omitted."
+    )
+    parsed: bool | None = Field(
+        None, description="Did it parse? Defaults to `parse_error` being absent."
+    )
+    parse_error: str | None = Field(None, description="Why it did not parse.")
+    status: str | None = Field(None, description="The status it declared: ok | blocked | failed.")
+    body: dict[str, Any] | None = Field(
+        None, description="The envelope object as returned; truncated past 32 KB serialized."
+    )
+    raw_text: str | None = Field(
+        None,
+        description=(
+            "The reply the envelope was read out of — the only body a rejected attempt has. "
+            "Truncated past 32 KB with a marker saying so."
+        ),
+    )
+
+
 class HookEventRequest(BaseModel):
     """One hook firing. Deliberately permissive: everything but `session_id` and
     `event_type` is optional, over-long values are truncated rather than
@@ -80,6 +136,12 @@ class HookEventRequest(BaseModel):
     agent: AgentIn | None = Field(None, description="Lane to upsert.")
     ok: bool | None = Field(None, description="Did the thing this event reports succeed?")
     duration_ms: int | None = Field(None, description="How long it took, when the hook knows.")
+    envelope: EnvelopeIn | None = Field(
+        None, description="The envelope this event's attempt returned, and whether it parsed."
+    )
+    gate: GateIn | None = Field(
+        None, description="The gate this event reports, and the note each check wrote."
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -252,7 +314,9 @@ class CodingSession(BaseModel):
         description=(
             "running | success | failed | interrupted | abandoned. `abandoned` is derived, "
             "never stored: an open run that has been silent for over 2 minutes. `running` "
-            "therefore only ever means genuinely live."
+            "therefore only ever means genuinely live. `interrupted` is the opposite — only "
+            "ever stored, never derived: masterwork cannot tell a killed run from a lost "
+            "hook, so silence reports `abandoned` and only a producer says `interrupted`."
         ),
     )
     started_at: datetime = Field(..., description="First event seen for this session.")
@@ -285,10 +349,69 @@ class CodingSession(BaseModel):
     assets: list[AssetUse] = Field(..., description="Skills and subagents used, most-used first.")
 
 
+class EnvelopeAttempt(BaseModel):
+    """One envelope an agent returned, and whether the runner could read it."""
+
+    id: int
+    phase_id: int | None = Field(..., description="The stage it was returned in; join on it.")
+    event_id: int | None = Field(..., description="The event that carried it.")
+    role: str | None = Field(..., description="The role that produced it — plan, build, review, …")
+    attempt: int = Field(..., description="1-based try within (stage, role).")
+    parsed: bool
+    parse_error: str | None = Field(..., description="Why it did not parse; null when it did.")
+    status: str | None = Field(..., description="The status it declared: ok | blocked | failed.")
+    body: dict[str, Any] | None = Field(..., description="The envelope object as returned.")
+    raw_text: str | None = Field(
+        ..., description="The reply it was read out of — often the only body a rejection has."
+    )
+    origin: str = Field(
+        ...,
+        description=(
+            "reported — the producer sent it, and only these can carry a body. recovered — "
+            "a replay reconstructed the attempt from a gate line, so `body` is always null."
+        ),
+    )
+    created_at: datetime
+
+
+class GateCheckItem(BaseModel):
+    """One check a gate ran, and the sentence it wrote."""
+
+    id: int
+    phase_id: int | None = Field(..., description="The stage it ran in; join on it.")
+    event_id: int | None = Field(..., description="The event that carried it.")
+    gate: str = Field(
+        ...,
+        description=("The gate that ran. `stage` is the catch-all for a verdict that named none."),
+    )
+    attempt: int = Field(..., description="1-based try within (stage, gate, item).")
+    item: str | None = Field(..., description="The thing checked; null for a whole-gate verdict.")
+    ok: bool
+    note: str | None = Field(..., description="What the check wrote. The reason this row exists.")
+    origin: str = Field(..., description="reported | recovered — see EnvelopeAttempt.origin.")
+    created_at: datetime
+
+
 class CodingSessionDetail(CodingSession):
-    """The same session with whole phase rows instead of card summaries."""
+    """The same session with whole phase rows instead of card summaries, plus
+    the run's evidence — kept as sibling arrays keyed by `phase_id`."""
 
     phases: list[CodingPhase] = Field(..., description="Ordered by seq.")  # type: ignore[assignment]
+    envelopes: list[EnvelopeAttempt] = Field(
+        ...,
+        description=(
+            "Every envelope attempt of the run, oldest first, so attempt 1 precedes attempt 2. "
+            "Group by `phase_id` to show a stage's own; a null `phase_id` belongs to no stage. "
+            "Capped at the most recent 100."
+        ),
+    )
+    gate_checks: list[GateCheckItem] = Field(
+        ...,
+        description=(
+            "Every gate check of the run, oldest first and grouped the same way. Capped at "
+            "the most recent 500."
+        ),
+    )
 
 
 class CodingEvent(BaseModel):
@@ -315,6 +438,10 @@ class BackfillResult(BaseModel):
     phases: int = Field(..., description="Stages the replay rebuilt.")
     agents: int = Field(..., description="Lanes the replay rebuilt.")
     assets: int = Field(..., description="Skill and subagent uses the replay rebuilt.")
+    envelopes: int = Field(
+        ..., description="Envelope attempts the session now holds, recovered and reported."
+    )
+    gate_checks: int = Field(..., description="Gate checks it now holds, recovered and reported.")
 
 
 class BackfillTotals(BaseModel):
@@ -325,3 +452,5 @@ class BackfillTotals(BaseModel):
     phases: int
     agents: int
     assets: int
+    envelopes: int
+    gate_checks: int

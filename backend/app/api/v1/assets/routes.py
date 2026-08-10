@@ -46,7 +46,7 @@ async def update_asset(
     body: AssetUpdateRequest,
     providers: list[Provider] = Depends(get_providers),
 ) -> AssetDetail:
-    return service.update_asset(providers, asset_id, body.content)
+    return await service.update_asset(providers, asset_id, body.content)
 
 
 @router.get(

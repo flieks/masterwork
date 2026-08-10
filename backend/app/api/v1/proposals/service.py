@@ -17,14 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.assets import service as asset_service
 from app.api.v1.chat import schemas, serializers
-from app.config import settings
 from app.core.exceptions import ProposalNotFoundError, ProposalNotPendingError
 from app.db.models.chat import Proposal
 from app.providers.base import Provider, resolve_within_roots
 from app.repositories import projects as project_repo
 from app.repositories import proposals as proposal_repo
+from app.services.asset_history import prepare_snapshots, snapshot_writes
 from app.services.file_changes import apply_change
-from app.services.skills_git import commit_snapshot
 
 # Failed proposals stay actionable so a transient error (e.g. permissions) can
 # be retried; applied/rejected are terminal.
@@ -126,6 +125,8 @@ async def accept_proposal(
             return await _fail(db, proposal, f"path outside allowed roots: {change.get('path')}")
         resolved_paths.append(resolved)
 
+    await prepare_snapshots(providers, resolved_paths)
+
     # Apply file changes first (so a newly-created asset can then be linked).
     for change, resolved in zip(proposal.changes, resolved_paths, strict=True):
         try:
@@ -143,8 +144,9 @@ async def accept_proposal(
     proposal.error = None
     proposal.applied_at = _utcnow()
     await db.commit()
-    await commit_snapshot(
-        settings.claude_skills_root.parent,
+    await snapshot_writes(
+        providers,
+        resolved_paths,
         f"masterwork: accept proposal: {(proposal.summary or '')[:72]}",
     )
     return serializers.proposal_to_schema(proposal)
