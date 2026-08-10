@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import run as cli  # factory/run.py, importable via the conftest path insert
+from adw.roles import ROLE_FILES, ROLES
 
 
 def dry_run(repo: Path, capsys, *args: str) -> str:
@@ -103,7 +104,8 @@ def test_the_first_run_seeds_the_role_library_and_says_so(
     (git_repo / "pyproject.toml").write_text("[project]\nname='x'\n")
     out = dry_run(git_repo, capsys, "x")
 
-    assert f"seeded 13 default role file(s) into {isolated_roles}" in out
+    expected = len(ROLES) * len(ROLE_FILES) + 1  # every role file, plus the library README
+    assert f"seeded {expected} default role file(s) into {isolated_roles}" in out
     assert (isolated_roles / "plan" / "system.md").is_file()
     # Seeded on this run, so the table already reports the files, not the built-ins.
     assert str(isolated_roles / "plan" / "role.json") in out

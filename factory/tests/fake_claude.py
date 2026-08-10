@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -94,6 +95,8 @@ def main() -> int:
 
     session_id = resume or spec.get("session_id") or f"fake-session-{index}"
     _emit({"type": "system", "subtype": "init", "session_id": session_id, "cwd": str(cwd)})
+    # A turn that does not come back on its own — how a hung run is reproduced.
+    time.sleep(float(spec.get("sleep_seconds", 0)))
 
     for tool in spec.get("tools") or [{"name": "Write", "input": {"file_path": "<scripted>"}}]:
         _emit(

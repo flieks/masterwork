@@ -1692,3 +1692,216 @@ looks complete is worse than no reply.
   so a rebuilt stage cannot delete the evidence, FK → `coding_events` ON DELETE
   CASCADE, and an index on `(session_id, phase_id)` plus one on `event_id`).
   Alembic migration **0017_coding_evidence**.
+
+---
+
+# API Contract v1.20 — Cross-run analytics, and child attribution (FROZEN additions)
+
+Additive on top of v1.19. Every run reports its stages, its per-CHECK gate
+evidence, its envelope attempts and its lanes — and every one of those numbers
+was only ever readable **one run at a time**. There was no `GROUP BY` and no
+`SUM` anywhere in the data layer, so *which gate keeps failing*, *which role
+keeps being sent back*, *is it getting worse* and *was the expensive model worth
+it* were all unanswerable from data that has been sitting in the database the
+whole time. v1.20 is those four aggregates, plus the one attribution fix that
+makes a pipeline's asset use visible at all.
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-analytics/gates?since=&workflow=&include_inspection=&include_children=` | `listGateStats` | the four shared filters | `GateStat[]` (failures desc, then checks desc, then gate) |
+| GET `/api/v1/coding-analytics/roles?since=&workflow=&include_inspection=&include_children=` | `listRoleStats` | the four shared filters | `RoleStat[]` (corrections desc, then gate failures desc, then role) |
+| GET `/api/v1/coding-analytics/runs?since=&workflow=&include_inspection=&include_children=&limit=` | `listRunStats` | the four, plus `limit` (1–500, default 100) | `RunStat[]` (**oldest first**) |
+| GET `/api/v1/coding-analytics/models?since=&workflow=&include_inspection=&include_children=` | `listModelStats` | the four shared filters | `ModelStat[]` (runs desc, then model; the unnamed model last) |
+
+All four carry the `coding` tag, so the generated client gains four methods on
+the class it already has rather than a new one.
+
+## New schemas
+
+```
+GateRoleStat {                        // one gate as one role experienced it
+  role: string | null                 // the lane whose stage the check ran in
+  checks: number                      // the rate's denominator
+  failures: number
+  failure_rate: number | null         // failures / checks
+  runs: number                        // distinct runs the pair was seen in
+}
+GateFailureNote {
+  note: string                        // verbatim; never normalized or clustered
+  role: string | null
+  occurrences: number
+  last_seen_at: string
+}
+GateStat {
+  gate: string                        // envelope | artifacts | changed_files | boundary | …
+  checks, failures: number
+  failure_rate: number | null
+  runs: number
+  by_role: GateRoleStat[]             // failure rate desc, then role
+  top_failure_notes: GateFailureNote[] // commonest first, capped at 5 per gate
+}
+
+RoleStat {                            // one lane across every run
+  role: string | null                 // plan | build | review | document | checks | git | main
+  runs, stages: number
+  corrections: number
+  avg_corrections: number | null      // corrections / stages
+  failed_stages: number
+  stage_failure_rate: number | null
+  timed_stages: number                // stages that reported a duration
+  total_duration_ms: number
+  avg_duration_ms: number | null
+  costed_stages: number               // stages that reported a cost
+  total_cost_usd: number
+  avg_cost_usd: number | null
+  tokens_in, tokens_out: number
+  gate_checks, gate_failures: number  // from the STAGE COUNTERS — see below
+  gate_failure_rate: number | null
+  envelope_attempts: number
+  envelope_failures: number           // attempts that did not parse
+  envelope_failure_rate: number | null
+}
+
+RunStat {                             // one run as a point on a trend line
+  session_id: string
+  title: string | null                // derived exactly as the Sessions screen derives it
+  workflow: string | null
+  git_repo: string | null
+  model: string | null
+  status: string                      // the DERIVED status, not the stored one
+  accepted: boolean                   // status == success
+  started_at: string
+  ended_at: string | null
+  wall_ms, active_ms: number
+  cost_usd: number | null
+  tokens_total, tokens_in, tokens_out: number | null
+  stages, corrections: number
+  gates_passed, gates_failed: number  // from the stage counters
+  gate_checks, gate_failures: number  // from the v1.19 evidence rows
+  envelope_attempts, envelope_failures: number
+  child_count: number
+}
+
+ModelStat {                           // one model, through the lanes it ran
+  model: string | null                // null is a real row, not a gap
+  lanes, runs, accepted_runs: number
+  acceptance_rate: number | null
+  stages, corrections: number
+  avg_corrections: number | null
+  failed_stages, timed_stages: number
+  total_duration_ms: number
+  avg_duration_ms: number | null
+  cost_usd: number                    // summed over the LANES, not the stages
+  tokens_in, tokens_out, turns: number
+  gate_checks, gate_failures: number
+  gate_failure_rate: number | null
+}
+```
+
+## Changed schemas
+
+```
+AssetUse += { via_children: number }  // how many of `uses` came from a run this one launched
+```
+
+`AssetUse` is the entry in `CodingSession.assets` and `CodingSessionDetail.assets`,
+so both the card and the detail gain the field. Nothing was removed and no
+field changed type; the client regenerates and existing readers keep working.
+
+## Behavior
+
+- **The four shared filters mean the same thing on all four endpoints**, or the
+  numbers would stop being comparable.
+  - `include_inspection=false` (default) drops masterwork's own analysis runs —
+    the ones launched with `~/.claude` as their working directory, which Read
+    every linked asset's `SKILL.md`. This is the same exclusion `/coding-assets`
+    applies and for the same reason: 14 of the first 22 recorded skill uses were
+    masterwork inspecting assets rather than an agent using one. Getting it
+    wrong does not make one number wrong, it makes every number a lie.
+  - `include_children=false` (default) drops runs that another run launched. A
+    pipeline's headless stage child is the *inside view* of a stage already
+    counted on its parent: the stage's cost, its verdict and its corrections are
+    reported on the parent, and the child additionally carries its own
+    synthesized chat turns. Counting both puts the same work in twice and adds a
+    `main` role that did the pipeline's work a second time. This is the exact
+    complement of the asset roll-up below — between them, every use, stage and
+    dollar is counted once.
+  - `workflow` matches as it does on `listCodingSessions`: `"chat"` also matches
+    the runs that never named a workflow, because nothing writes that value.
+  - `since` follows v1.17's rule — **a window counts what happened inside it**,
+    never the whole history of anything touched inside it. Each aggregate keys
+    off the clock of the thing it counts, which is stated on each query
+    parameter: a gate check by `created_at`, a role's figures by the stage's
+    `started_at`, a run and a model by the run's `started_at`. A lane has no
+    timestamp of its own, which is why the model comparison can only use the
+    run's.
+- **Every rate ships with its denominator, and an undefined rate is `null`.** A
+  100 % failure rate over one check is noise; the client can only say so if it
+  is handed the one. Nothing is hidden behind a server-side threshold — a
+  minimum sample size is a display decision, and pushing it into the API would
+  silently delete the only rows a small dataset has. Where a denominator is
+  zero the rate is `null` rather than `0.0`: a role that ran no gate has an
+  *unknown* failure rate, and `0.0` would read as *never fails*.
+- **The two gate sources are different populations, on purpose.**
+  `listRoleStats` and `listModelStats` read `gates_passed`/`gates_failed` off
+  the stage rows, which every run ever recorded carries. `listGateStats` reads
+  the v1.19 `coding_gate_checks` rows, which are the only place a gate's *name*
+  and its *note* exist — and which a run recorded before v1.19 only has after
+  `POST /coding-sessions/{id}/backfill` recovers what its stream still proves.
+  The two can therefore disagree, and the one that covers more history is the
+  role view. `RunStat` reports both side by side (`gates_failed` vs
+  `gate_failures`) so the gap is visible per run rather than inferred.
+- **Failure notes are grouped verbatim.** A gate's note usually names the files
+  it is about (*claimed but not changed on disk: README.md*), so most counts are
+  1 and the list reads as the most recent distinct failures rather than a
+  ranking. Collapsing two sentences into one bucket would be a claim that they
+  are the same failure, which masterwork has no basis for. Passing checks write
+  notes too; only the failures are listed, because that is the actionable half.
+- **`listRunStats` returns the most recent `limit` runs, oldest first.** A trend
+  wants the latest runs, and reading them left to right is what makes a
+  regression visible without the client re-sorting. `status` is the derived one
+  (silence turns an unclosed run into `abandoned`), and `accepted` is exactly
+  `status == success` — `abandoned` is silence, not a verdict, and counts as not
+  accepted. `active_ms` is the same figure the Sessions screen shows, computed
+  by the same function: a pipeline run prefers the measured sum of its stages.
+- **A model's stages are a join, never a guess.** `coding_phases.agent` names a
+  lane of the same run and that lane carries the model, so the stage's model is
+  the model that ran it. Cost is summed over the *lanes* rather than the stages,
+  because that is where a lane's cost is reported. The `model: null` row is
+  kept, sorted last, and labelled — dropping it would hide runs rather than
+  clean up the table — but it is **not a model**: it is every lane that named
+  none, which is the pipeline's own `git` and `checks` lanes (they run no model
+  and appear in every run) plus every agent lane recorded before the runner
+  started sending one. A run therefore appears under it *and* under its real
+  model, and its acceptance rate is close to the whole population's by
+  construction. The field description says so.
+- **A run's `assets` now include what the runs it launched used.** The pipeline
+  runner's own process makes no tool calls at all — every skill and subagent is
+  reached for inside a headless stage child — so a factory run's asset list was
+  empty by construction, however many skills the pipeline actually used, and
+  *which skills does the pipeline use* had no answer anywhere. The fold is
+  **on by default and has no opt-out**: the value it replaces is always the
+  empty list, an opt-out would default to a number that is always zero, and the
+  list and the detail share the one serializer so they cannot disagree.
+  - A child's uses arrive as a **laneless** row (`lane: null`): the child's lane
+    is its own `main`, which is not one of the parent's lanes and would read as
+    a lie. Rows still merge on `(kind, name, lane)`, so several children that
+    used the same skill collapse into one row.
+  - `via_children` keeps the fold legible — `uses - via_children` is what the
+    run did on its own — so the roll-up is inspectable rather than silent.
+  - **`/coding-assets` is unchanged and never folds.** The child is already a
+    run of its own in that rollup, so folding there too would count one call
+    twice. Between the fold here and `include_children=false` on the analytics,
+    every recorded use is counted exactly once from every angle.
+- **What was deliberately NOT built.** Percentile latencies (`p50`/`p95`) —
+  Postgres has `percentile_cont` and SQLite does not, and the packaged default
+  is SQLite; averages plus their denominators are what both dialects can say
+  honestly. Time-bucketed series (per day, per week) — `date_trunc` is
+  Postgres-only, and `listRunStats` hands the client the raw per-run points to
+  bucket however it likes. Note clustering — see above.
+- **DB**: unchanged. Every aggregate reads tables that already exist
+  (`coding_sessions`, `coding_phases`, `coding_agents`, `coding_assets`,
+  `coding_envelopes`, `coding_gate_checks`) through their existing indexes. No
+  migration.

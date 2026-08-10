@@ -8,24 +8,32 @@ import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from adw.roles import ResolvedRole, RoleError, RoleStore
+from adw import workflows
+from adw.roles import READ_ONLY_ROLES, ROLES, ResolvedRole, RoleError, RoleStore
 from adw.telemetry import DEFAULT_CONTEXT_WINDOW
+from adw.workflows import CHECKS, WorkflowError
 
 CONFIG_FILENAME = "factory.config.json"
 
-# `checks` sits between build and review because a reviewer should never be the
-# first thing to learn the suite is red.
-STAGE_ORDER = ("plan", "build", "checks", "review", "document")
-AGENT_STAGES = ("plan", "build", "review", "document")
+# The default shape. Every shape lives in adw/workflows.py now, including this one.
+STAGE_ORDER = workflows.FULL
+AGENT_STAGES = ROLES
 
 # Last-resort fallbacks. In practice the built-in role.json layer carries the same
 # values, so these only matter if a hand-written role.json omits a key.
-DEFAULT_MODELS = {"plan": "opus", "build": "sonnet", "review": "opus", "document": "sonnet"}
+DEFAULT_MODELS = {
+    "plan": "opus",
+    "build": "sonnet",
+    "review": "opus",
+    "document": "sonnet",
+    "scout": "sonnet",
+}
 DEFAULT_BOUNDARIES: dict[str, list[str] | None] = {
     "plan": ["plan.md", "docs/specs/**"],
     "build": None,  # unrestricted within the repo
     "review": [],  # read-only
     "document": ["docs/**", "README.md", "CHANGELOG.md"],
+    "scout": [],  # read-only
 }
 
 # No agent shells out: `checks` is the runner's job, and Task/web tools would
@@ -43,6 +51,10 @@ DEFAULT_TIMEOUT_SECONDS = 1800
 # Run logs are the runner's own output — they belong to the runner, not to the
 # repo it is operating on.
 DEFAULT_RUNS_ROOT = Path.home() / ".masterwork" / "runs"
+
+# Each run gets its own branch: committing onto whatever the user had checked out
+# is the more surprising of the two behaviours, so it costs an explicit opt-out.
+DEFAULT_BRANCH_PREFIX = "factory/"
 
 DETECTED = "detected"  # auto-detected from the repo's shape
 CONFIGURED = "configured"  # an explicit "checks" array in factory.config.json
@@ -64,8 +76,9 @@ class ConfigError(Exception):
     """factory.config.json is missing, unreadable, or malformed."""
 
 
-# A broken role file is a configuration problem too, so callers catch both as one.
-STARTUP_ERRORS = (ConfigError, RoleError)
+# A broken role file and an impossible workflow are configuration problems too, so
+# callers catch all three as one and exit 2 before any agent runs.
+STARTUP_ERRORS = (ConfigError, RoleError, WorkflowError)
 
 
 @dataclass(frozen=True)
@@ -99,6 +112,12 @@ class FactoryConfig:
     checks_source: str
     max_corrections: int
     max_review_rounds: int
+    # The branch this run creates and works on; None means "stay where we are".
+    branch: str | None
+    # Budget caps. None = uncapped, which is the default: a cap nobody asked for
+    # would stop runs that are behaving exactly as they always have.
+    max_cost_usd: float | None
+    max_tokens: int | None
     telemetry_url: str | None
     artifact_max_bytes: int
     timeout_seconds: int
@@ -109,16 +128,48 @@ class FactoryConfig:
     roles: dict[str, ResolvedRole] = field(default_factory=dict)
     roles_dir: Path | None = None
     project_roles_dir: Path | None = None
+    # The shape of this run: which stages, in which order, and what to call it.
+    workflow: tuple[str, ...] = STAGE_ORDER
+    workflow_name: str = workflows.DEFAULT_PRESET
+    # The shared conventions block every role is shown; empty when no file exists.
+    conventions: str = ""
+    conventions_sources: tuple[Path, ...] = ()
+
+    @property
+    def runs_checks(self) -> bool:
+        """Whether this workflow contains the one stage the runner executes itself."""
+        return CHECKS in self.workflow
+
+    @property
+    def runs_review(self) -> bool:
+        return "review" in self.workflow
 
     @property
     def verified(self) -> bool:
-        """False when the run executes no checks — it can prove nothing."""
-        return bool(self.checks)
+        """False when the run executes no checks — it can prove nothing. A workflow
+        without a `checks` stage is exactly as unverified as `--no-checks`, and says
+        so through this same flag rather than a second concept."""
+        return self.runs_checks and bool(self.checks)
 
     @property
     def undetectable_checks(self) -> bool:
-        """Auto-detection came up empty and nobody opted out: refuse to start."""
-        return self.checks_source == DETECTED and not self.checks
+        """Auto-detection came up empty and nobody opted out: refuse to start.
+        Only a workflow that would actually run the checks has anything to refuse."""
+        return self.runs_checks and self.checks_source == DETECTED and not self.checks
+
+    @property
+    def workflow_text(self) -> str:
+        return workflows.describe(self.workflow)
+
+    @property
+    def budget_text(self) -> str:
+        """What the caps are, in the words the breach message will use."""
+        parts = []
+        if self.max_cost_usd is not None:
+            parts.append(f"${self.max_cost_usd:g}")
+        if self.max_tokens is not None:
+            parts.append(f"{self.max_tokens:,} tokens")
+        return " and ".join(parts) or "(uncapped)"
 
     @property
     def run_dir_exclusions(self) -> tuple[str, ...]:
@@ -176,7 +227,7 @@ def _as_commands(raw: object, source: str) -> list[str]:
 
 
 def _disallowed_for(stage_name: str) -> tuple[str, ...]:
-    if stage_name == "review":
+    if stage_name in READ_ONLY_ROLES:
         return BASE_DISALLOWED + WRITE_TOOLS
     return BASE_DISALLOWED
 
@@ -205,8 +256,8 @@ def _agent_stage(
     )
 
 
-def resolve_runs_dir(repo: Path, run_id: str, configured: object, override: object) -> Path:
-    """`<runs root>/<run_id>`; the root defaults outside the target repo entirely."""
+def runs_root(repo: Path, configured: object, override: object) -> Path:
+    """The directory whose children are run dirs — what --list-runs and --resume read."""
     for candidate in (override, configured):
         if candidate is None:
             continue
@@ -214,8 +265,50 @@ def resolve_runs_dir(repo: Path, run_id: str, configured: object, override: obje
             raise ConfigError('"runs_dir" must be a non-empty path string')
         root = Path(str(candidate)).expanduser()
         # A relative override is relative to the repo, so `factory/runs` still works.
-        return (root if root.is_absolute() else repo / root) / run_id
-    return DEFAULT_RUNS_ROOT / repo.name / run_id
+        return root if root.is_absolute() else repo / root
+    return DEFAULT_RUNS_ROOT / repo.name
+
+
+def resolve_runs_dir(repo: Path, run_id: str, configured: object, override: object) -> Path:
+    """`<runs root>/<run_id>`; the root defaults outside the target repo entirely."""
+    return runs_root(repo, configured, override) / run_id
+
+
+def runs_root_for(repo: Path, config_path: Path | None, override: object) -> Path:
+    """The runs root without resolving roles or a workflow: --list-runs and --kill
+    must work for a repo whose role library or config would refuse a real run."""
+    return runs_root(repo, _overlay(repo, config_path).get("runs_dir"), override)
+
+
+def _branch(run_id: str, configured: object, override: str | None, no_branch: bool) -> str | None:
+    """`factory/<run_id>` unless told otherwise; None means "stay on this branch"."""
+    if no_branch:
+        return None
+    for candidate in (override, configured):
+        if candidate is None:
+            continue
+        if isinstance(candidate, bool):
+            if not candidate:
+                return None
+            break  # `true` — branch, with the generated name
+        if not isinstance(candidate, str) or not candidate.strip():
+            raise ConfigError('"branch" must be a branch name, or true/false')
+        return candidate.strip()
+    return f"{DEFAULT_BRANCH_PREFIX}{run_id}"
+
+
+def _cap(override: object, configured: object, name: str, *, whole: bool) -> float | None:
+    """An optional budget cap. Absent stays absent — 0 would be a cap nobody can meet."""
+    for candidate in (override, configured):
+        if candidate is None:
+            continue
+        ok = isinstance(candidate, int) if whole else isinstance(candidate, int | float)
+        if isinstance(candidate, bool) or not ok:
+            raise ConfigError(f'"{name}" must be a {"whole number" if whole else "number"}')
+        if candidate <= 0:
+            raise ConfigError(f'"{name}" must be greater than 0 (omit it to run uncapped)')
+        return int(candidate) if whole else float(candidate)
+    return None
 
 
 def _roles_dir(repo: Path, configured: object, override: object) -> Path | None:
@@ -241,15 +334,30 @@ def load_config(
     no_checks: bool = False,
     runs_dir: Path | str | None = None,
     roles_dir: Path | str | None = None,
+    workflow: str | list[str] | None = None,
+    branch: str | None = None,
+    no_branch: bool = False,
+    max_cost_usd: float | None = None,
+    max_tokens: int | None = None,
 ) -> FactoryConfig:
     """Role store, then factory.config.json, then CLI overrides (last wins)."""
     repo = repo.resolve()
     data = _overlay(repo, config_path)
     warnings: list[str] = []
 
+    # Before anything else: a shape that cannot run is refused with nothing spent.
+    workflow_name, workflow_stages = workflows.resolve(
+        workflow if workflow is not None else data.get("workflow"),
+        source="--workflow" if workflow is not None else f'{CONFIG_FILENAME} "workflow"',
+    )
+
     store = RoleStore(repo, roles_dir=_roles_dir(repo, data.get("roles_dir"), roles_dir))
     roles = store.resolve_all()
-    warnings += store.startup_warnings(roles)
+    # Only the roles this run will actually use: a warning about a role the workflow
+    # never reaches is noise the real ones then hide behind.
+    warnings += store.startup_warnings(
+        {name: roles[name] for name in workflow_stages if name in roles}
+    )
 
     # Only what the file actually said: absent is not the same as "set to the default".
     models: dict[str, str] = {}
@@ -286,13 +394,19 @@ def load_config(
     else:
         checks, checks_source = detect_checks(repo), DETECTED
 
+    if CHECKS not in workflow_stages:
+        warnings.append(
+            f'workflow "{workflow_name}" ({workflows.describe(workflow_stages)}) has no '
+            f"{CHECKS} stage — {UNVERIFIED_WARNING}"
+        )
+
     stages = {
         name: (
             Stage(name=name, model=None, boundary=None, disallowed_tools=())
-            if name == "checks"
+            if name == CHECKS
             else _agent_stage(name, roles[name], models, boundaries, model_override)
         )
-        for name in STAGE_ORDER
+        for name in workflow_stages
     }
 
     telemetry_url = data.get("telemetry_url", DEFAULT_TELEMETRY_URL)
@@ -300,6 +414,7 @@ def load_config(
         raise ConfigError('"telemetry_url" must be a string or null')
 
     resolved_run_id = run_id or new_run_id()
+    token_cap = _cap(max_tokens, data.get("max_tokens"), "max_tokens", whole=True)
     return FactoryConfig(
         repo=repo,
         run_id=resolved_run_id,
@@ -313,6 +428,9 @@ def load_config(
         max_review_rounds=_positive(
             max_review_rounds, data.get("max_review_rounds"), 2, "max_review_rounds"
         ),
+        branch=_branch(resolved_run_id, data.get("branch"), branch, no_branch),
+        max_cost_usd=_cap(max_cost_usd, data.get("max_cost_usd"), "max_cost_usd", whole=False),
+        max_tokens=None if token_cap is None else int(token_cap),
         telemetry_url=telemetry_url or None,
         artifact_max_bytes=_positive(
             None, data.get("artifact_max_bytes"), DEFAULT_ARTIFACT_MAX_BYTES, "artifact_max_bytes"
@@ -328,6 +446,10 @@ def load_config(
         roles=roles,
         roles_dir=store.global_dir,
         project_roles_dir=store.project_dir,
+        workflow=workflow_stages,
+        workflow_name=workflow_name,
+        conventions=store.conventions(),
+        conventions_sources=store.conventions_sources,
     )
 
 

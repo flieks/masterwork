@@ -16,6 +16,23 @@ class AgentError(Exception):
     """The CLI could not be launched."""
 
 
+# Every agent subprocess this process currently has open. A hung run is hung inside
+# one of them, so `--kill` would otherwise orphan a live `claude` behind the runner
+# it just terminated.
+_LIVE: set[subprocess.Popen] = set()
+
+
+def terminate_live() -> int:
+    """Ask every open agent subprocess to stop. Returns how many were signalled."""
+    open_now = list(_LIVE)
+    for proc in open_now:
+        try:
+            proc.terminate()
+        except (OSError, ValueError):  # already gone
+            pass
+    return len(open_now)
+
+
 @dataclass(frozen=True)
 class ToolEvent:
     kind: str  # "use" | "result"
@@ -112,6 +129,7 @@ class AgentSession:
         except (OSError, FileNotFoundError) as exc:
             raise AgentError(f"could not launch '{self.claude_bin}': {exc}") from exc
 
+        _LIVE.add(proc)
         stderr_chunks: list[str] = []
         drain = threading.Thread(target=_drain, args=(proc.stderr, stderr_chunks), daemon=True)
         drain.start()
@@ -127,6 +145,7 @@ class AgentSession:
             killer.cancel()
             proc.wait()
             drain.join(timeout=1)
+            _LIVE.discard(proc)
 
         turn.exit_code = proc.returncode
         if not turn.text:

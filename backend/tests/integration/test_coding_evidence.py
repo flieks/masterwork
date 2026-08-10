@@ -454,8 +454,6 @@ async def test_backfill_preserves_a_reported_envelope_body(client: AsyncClient) 
         envelope={"role": "build", "parsed": True, "status": "ok", "body": body},
         gate={"name": "envelope", "note": "parsed a valid build envelope"},
     )
-    old_phase_id = (await _detail(client))["phases"][0]["id"]
-
     r = await client.post("/api/v1/coding-sessions/s1/backfill")
     assert r.json()["envelopes"] == 1
     assert r.json()["gate_checks"] == 1
@@ -464,8 +462,10 @@ async def test_backfill_preserves_a_reported_envelope_body(client: AsyncClient) 
     (envelope,) = after["envelopes"]
     assert envelope["body"] == body
     assert envelope["origin"] == "reported"
-    # Re-pointed, not orphaned: the stage row is a new one.
-    assert after["phases"][0]["id"] != old_phase_id
+    # Re-pointed, not orphaned. Not asserted as "a different id than before":
+    # the replay drops and recreates the row, and SQLite hands the freed rowid
+    # straight back, so the old id is a dialect detail. That it points at the
+    # stage that exists NOW is the invariant either way.
     assert envelope["phase_id"] == after["phases"][0]["id"]
     # And the reported gate check was not doubled by a recovered twin.
     (check,) = after["gate_checks"]

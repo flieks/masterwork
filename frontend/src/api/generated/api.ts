@@ -475,6 +475,12 @@ export interface AssetUse {
      * @memberof AssetUse
      */
     'uses': number;
+    /**
+     * How many of `uses` came from runs this one launched, rather than from this run itself. `uses - via_children` is what this run did on its own.
+     * @type {number}
+     * @memberof AssetUse
+     */
+    'via_children': number;
 }
 /**
  * 
@@ -1649,6 +1655,37 @@ export interface GateCheckItem {
     'created_at': string;
 }
 /**
+ * One distinct sentence a gate wrote when it said no.
+ * @export
+ * @interface GateFailureNote
+ */
+export interface GateFailureNote {
+    /**
+     * Verbatim, never normalized or clustered.
+     * @type {string}
+     * @memberof GateFailureNote
+     */
+    'note': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateFailureNote
+     */
+    'role': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateFailureNote
+     */
+    'occurrences': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof GateFailureNote
+     */
+    'last_seen_at': string;
+}
+/**
  * One gate evaluation as the runner reports it.  With `checks`, one row per entry; without it, the block is itself the one check. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the minimal report is `{\"name\": \"changed_files\", \"note\": \"…\"}` on the event a runner already sends.
  * @export
  * @interface GateIn
@@ -1690,6 +1727,92 @@ export interface GateIn {
      * @memberof GateIn
      */
     'checks'?: Array<GateCheckIn> | null;
+}
+/**
+ * One gate as one role experienced it.
+ * @export
+ * @interface GateRoleStat
+ */
+export interface GateRoleStat {
+    /**
+     * 
+     * @type {string}
+     * @memberof GateRoleStat
+     */
+    'role': string | null;
+    /**
+     * Checks this pair ran — the rate\'s denominator.
+     * @type {number}
+     * @memberof GateRoleStat
+     */
+    'checks': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateRoleStat
+     */
+    'failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateRoleStat
+     */
+    'failure_rate': number | null;
+    /**
+     * Distinct runs the pair was seen in.
+     * @type {number}
+     * @memberof GateRoleStat
+     */
+    'runs': number;
+}
+/**
+ * One gate across every run: how often it ran, how often it failed, where.
+ * @export
+ * @interface GateStat
+ */
+export interface GateStat {
+    /**
+     * envelope | artifacts | changed_files | boundary | …
+     * @type {string}
+     * @memberof GateStat
+     */
+    'gate': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateStat
+     */
+    'checks': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateStat
+     */
+    'failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateStat
+     */
+    'failure_rate': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof GateStat
+     */
+    'runs': number;
+    /**
+     * The same numbers per role, failure rate first, then role.
+     * @type {Array<GateRoleStat>}
+     * @memberof GateStat
+     */
+    'by_role': Array<GateRoleStat>;
+    /**
+     * The failing notes, commonest first and capped at 5 per gate. A gate\'s note usually names the files it is about, so most counts are 1 and the list reads as the most recent distinct failures.
+     * @type {Array<GateFailureNote>}
+     * @memberof GateStat
+     */
+    'top_failure_notes': Array<GateFailureNote>;
 }
 /**
  * 
@@ -1872,6 +1995,127 @@ export const MessageRole = {
 export type MessageRole = typeof MessageRole[keyof typeof MessageRole];
 
 
+/**
+ * One model across every run that used it, through the lanes it ran.
+ * @export
+ * @interface ModelStat
+ */
+export interface ModelStat {
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelStat
+     */
+    'model': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'lanes': number;
+    /**
+     * Distinct runs with at least one lane on this model.
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'runs': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'accepted_runs': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'acceptance_rate': number | null;
+    /**
+     * Stages whose lane ran this model.
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'corrections': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'avg_corrections': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'failed_stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'timed_stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'total_duration_ms': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'avg_duration_ms': number | null;
+    /**
+     * Summed over the lanes, not the stages.
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'cost_usd': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'tokens_in': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'tokens_out': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'turns': number;
+    /**
+     * From the stage counters, as in RoleStat.
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'gate_checks': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'gate_failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ModelStat
+     */
+    'gate_failure_rate': number | null;
+}
 /**
  * One coding agent and whether it is reporting its sessions here.
  * @export
@@ -2450,6 +2694,290 @@ export const ProposalStatus = {
 export type ProposalStatus = typeof ProposalStatus[keyof typeof ProposalStatus];
 
 
+/**
+ * One role across every run: what it costs, and how often it is sent back.
+ * @export
+ * @interface RoleStat
+ */
+export interface RoleStat {
+    /**
+     * 
+     * @type {string}
+     * @memberof RoleStat
+     */
+    'role': string | null;
+    /**
+     * Distinct runs this role appeared in.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'runs': number;
+    /**
+     * Stage rows — the denominator of every per-stage average.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'corrections': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'avg_corrections': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'failed_stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'stage_failure_rate': number | null;
+    /**
+     * Stages that reported a duration.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'timed_stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'total_duration_ms': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'avg_duration_ms': number | null;
+    /**
+     * Stages that reported a cost.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'costed_stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'total_cost_usd': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'avg_cost_usd': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'tokens_in': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'tokens_out': number;
+    /**
+     * gates_passed + gates_failed summed off the stage counters, which every run has — not the v1.19 evidence rows, which only a reported or replayed run has.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'gate_checks': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'gate_failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'gate_failure_rate': number | null;
+    /**
+     * Envelopes this role returned; 0 for a run that reported none.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'envelope_attempts': number;
+    /**
+     * Attempts that did not parse.
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'envelope_failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RoleStat
+     */
+    'envelope_failure_rate': number | null;
+}
+/**
+ * One run as a point on a trend line.
+ * @export
+ * @interface RunStat
+ */
+export interface RunStat {
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'session_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'title': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'workflow': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'git_repo': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'model': string | null;
+    /**
+     * Derived run status, not the stored one.
+     * @type {string}
+     * @memberof RunStat
+     */
+    'status': string;
+    /**
+     * status == success. The acceptance signal the model comparison averages — `abandoned` is silence, not a verdict, and counts as not accepted.
+     * @type {boolean}
+     * @memberof RunStat
+     */
+    'accepted': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'started_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RunStat
+     */
+    'ended_at': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'wall_ms': number;
+    /**
+     * Working time; a pipeline run sums its stages.
+     * @type {number}
+     * @memberof RunStat
+     */
+    'active_ms': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'cost_usd': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'tokens_total': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'tokens_in': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'tokens_out': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'stages': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'corrections': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'gates_passed': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'gates_failed': number;
+    /**
+     * v1.19 evidence rows — 0 for a run that never reported or replayed any.
+     * @type {number}
+     * @memberof RunStat
+     */
+    'gate_checks': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'gate_failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'envelope_attempts': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'envelope_failures': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RunStat
+     */
+    'child_count': number;
+}
 /**
  * 
  * @export
@@ -4091,6 +4619,219 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
+         * @summary Which gates fail, how often, and on which role
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listGateStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-analytics/gates`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (since !== undefined) {
+                localVarQueryParameter['since'] = (since as any instanceof Date) ?
+                    (since as any).toISOString() :
+                    since;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (includeInspection !== undefined) {
+                localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+            if (includeChildren !== undefined) {
+                localVarQueryParameter['include_children'] = includeChildren;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Cost, corrections and acceptance per model, from the agent lanes
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listModelStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-analytics/models`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (since !== undefined) {
+                localVarQueryParameter['since'] = (since as any instanceof Date) ?
+                    (since as any).toISOString() :
+                    since;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (includeInspection !== undefined) {
+                localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+            if (includeChildren !== undefined) {
+                localVarQueryParameter['include_children'] = includeChildren;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary What each role costs: corrections, gate failures, duration, parse failures
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRoleStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-analytics/roles`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (since !== undefined) {
+                localVarQueryParameter['since'] = (since as any instanceof Date) ?
+                    (since as any).toISOString() :
+                    since;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (includeInspection !== undefined) {
+                localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+            if (includeChildren !== undefined) {
+                localVarQueryParameter['include_children'] = includeChildren;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Oldest first, so a client plots them left to right without re-sorting.
+         * @summary Cost, tokens, duration and outcome per run — the trend line
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {number} [limit] The most recent runs to return. They come back oldest first.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/coding-analytics/runs`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (since !== undefined) {
+                localVarQueryParameter['since'] = (since as any instanceof Date) ?
+                    (since as any).toISOString() :
+                    since;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (includeInspection !== undefined) {
+                localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+            if (includeChildren !== undefined) {
+                localVarQueryParameter['include_children'] = includeChildren;
+            }
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -4204,6 +4945,71 @@ export const CodingApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingSessions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
+         * @summary Which gates fail, how often, and on which role
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<GateStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listGateStats(since, workflow, includeInspection, includeChildren, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listGateStats']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Cost, corrections and acceptance per model, from the agent lanes
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ModelStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listModelStats(since, workflow, includeInspection, includeChildren, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listModelStats']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary What each role costs: corrections, gate failures, duration, parse failures
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RoleStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRoleStats(since, workflow, includeInspection, includeChildren, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listRoleStats']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Oldest first, so a client plots them left to right without re-sorting.
+         * @summary Cost, tokens, duration and outcome per run — the trend line
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {number} [limit] The most recent runs to return. They come back oldest first.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RunStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStats(since, workflow, includeInspection, includeChildren, limit, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.listRunStats']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -4295,6 +5101,59 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          */
         listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingSession>> {
             return localVarFp.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
+         * @summary Which gates fail, how often, and on which role
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<GateStat>> {
+            return localVarFp.listGateStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Cost, corrections and acceptance per model, from the agent lanes
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<ModelStat>> {
+            return localVarFp.listModelStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary What each role costs: corrections, gate failures, duration, parse failures
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<RoleStat>> {
+            return localVarFp.listRoleStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Oldest first, so a client plots them left to right without re-sorting.
+         * @summary Cost, tokens, duration and outcome per run — the trend line
+         * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {number} [limit] The most recent runs to return. They come back oldest first.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunStat>> {
+            return localVarFp.listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -4400,6 +5259,67 @@ export class CodingApi extends BaseAPI {
      */
     public listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig) {
         return CodingApiFp(this.configuration).listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
+     * @summary Which gates fail, how often, and on which role
+     * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+     * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listGateStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Cost, corrections and acceptance per model, from the agent lanes
+     * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+     * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listModelStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary What each role costs: corrections, gate failures, duration, parse failures
+     * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+     * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listRoleStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Oldest first, so a client plots them left to right without re-sorting.
+     * @summary Cost, tokens, duration and outcome per run — the trend line
+     * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+     * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {number} [limit] The most recent runs to return. They come back oldest first.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

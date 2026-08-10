@@ -877,6 +877,414 @@
                 }
             }
         },
+        "/api/v1/coding-analytics/gates": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Which gates fail, how often, and on which role",
+                "description": "Reads the v1.19 evidence rows, so it sees only the runs that reported or\nreplayed them \u2014 `/coding-analytics/roles` covers the rest from the counters.",
+                "operationId": "listGateStats",
+                "parameters": [
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Count only what happened at or after this instant. Omit for all time. Counted by the check's own clock.",
+                            "title": "Since"
+                        },
+                        "description": "Count only what happened at or after this instant. Omit for all time. Counted by the check's own clock."
+                    },
+                    {
+                        "name": "workflow",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "title": "Workflow"
+                        },
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                    },
+                    {
+                        "name": "include_inspection",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use.",
+                            "default": false,
+                            "title": "Include Inspection"
+                        },
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use."
+                    },
+                    {
+                        "name": "include_children",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.",
+                            "default": false,
+                            "title": "Include Children"
+                        },
+                        "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/GateStat"
+                                    },
+                                    "title": "Response Listgatestats"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-analytics/roles": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "What each role costs: corrections, gate failures, duration, parse failures",
+                "operationId": "listRoleStats",
+                "parameters": [
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.",
+                            "title": "Since"
+                        },
+                        "description": "Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window."
+                    },
+                    {
+                        "name": "workflow",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "title": "Workflow"
+                        },
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                    },
+                    {
+                        "name": "include_inspection",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use.",
+                            "default": false,
+                            "title": "Include Inspection"
+                        },
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use."
+                    },
+                    {
+                        "name": "include_children",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.",
+                            "default": false,
+                            "title": "Include Children"
+                        },
+                        "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/RoleStat"
+                                    },
+                                    "title": "Response Listrolestats"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-analytics/runs": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Cost, tokens, duration and outcome per run \u2014 the trend line",
+                "description": "Oldest first, so a client plots them left to right without re-sorting.",
+                "operationId": "listRunStats",
+                "parameters": [
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.",
+                            "title": "Since"
+                        },
+                        "description": "Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window."
+                    },
+                    {
+                        "name": "workflow",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "title": "Workflow"
+                        },
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                    },
+                    {
+                        "name": "include_inspection",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use.",
+                            "default": false,
+                            "title": "Include Inspection"
+                        },
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use."
+                    },
+                    {
+                        "name": "include_children",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.",
+                            "default": false,
+                            "title": "Include Children"
+                        },
+                        "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "description": "The most recent runs to return. They come back oldest first.",
+                            "default": 100,
+                            "title": "Limit"
+                        },
+                        "description": "The most recent runs to return. They come back oldest first."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/RunStat"
+                                    },
+                                    "title": "Response Listrunstats"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/coding-analytics/models": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Cost, corrections and acceptance per model, from the agent lanes",
+                "operationId": "listModelStats",
+                "parameters": [
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date-time"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.",
+                            "title": "Since"
+                        },
+                        "description": "Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window."
+                    },
+                    {
+                        "name": "workflow",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "title": "Workflow"
+                        },
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                    },
+                    {
+                        "name": "include_inspection",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use.",
+                            "default": false,
+                            "title": "Include Inspection"
+                        },
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use."
+                    },
+                    {
+                        "name": "include_children",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.",
+                            "default": false,
+                            "title": "Include Children"
+                        },
+                        "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ModelStat"
+                                    },
+                                    "title": "Response Listmodelstats"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/coding-sessions/backfill": {
             "post": {
                 "tags": [
@@ -2660,11 +3068,16 @@
                             }
                         ],
                         "title": "Lane",
-                        "description": "The lane that used it; null when it had none."
+                        "description": "The lane that used it; null when it had none \u2014 and always null for a use rolled up from a run this one launched, whose lane is its own and not one of these."
                     },
                     "uses": {
                         "type": "integer",
                         "title": "Uses"
+                    },
+                    "via_children": {
+                        "type": "integer",
+                        "title": "Via Children",
+                        "description": "How many of `uses` came from runs this one launched, rather than from this run itself. `uses - via_children` is what this run did on its own."
                     }
                 },
                 "type": "object",
@@ -2673,7 +3086,8 @@
                     "name",
                     "asset_id",
                     "lane",
-                    "uses"
+                    "uses",
+                    "via_children"
                 ],
                 "title": "AssetUse",
                 "description": "One skill or subagent this run reached for, and how often."
@@ -4331,6 +4745,44 @@
                 "title": "GateCheckItem",
                 "description": "One check a gate ran, and the sentence it wrote."
             },
+            "GateFailureNote": {
+                "properties": {
+                    "note": {
+                        "type": "string",
+                        "title": "Note",
+                        "description": "Verbatim, never normalized or clustered."
+                    },
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role"
+                    },
+                    "occurrences": {
+                        "type": "integer",
+                        "title": "Occurrences"
+                    },
+                    "last_seen_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Last Seen At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "note",
+                    "role",
+                    "occurrences",
+                    "last_seen_at"
+                ],
+                "title": "GateFailureNote",
+                "description": "One distinct sentence a gate wrote when it said no."
+            },
             "GateIn": {
                 "properties": {
                     "name": {
@@ -4412,6 +4864,119 @@
                 "type": "object",
                 "title": "GateIn",
                 "description": "One gate evaluation as the runner reports it.\n\nWith `checks`, one row per entry; without it, the block is itself the one\ncheck. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the\nminimal report is `{\"name\": \"changed_files\", \"note\": \"\u2026\"}` on the event a\nrunner already sends."
+            },
+            "GateRoleStat": {
+                "properties": {
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role",
+                        "description": "The lane whose stage the check ran in; null when none was resolved."
+                    },
+                    "checks": {
+                        "type": "integer",
+                        "title": "Checks",
+                        "description": "Checks this pair ran \u2014 the rate's denominator."
+                    },
+                    "failures": {
+                        "type": "integer",
+                        "title": "Failures"
+                    },
+                    "failure_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Failure Rate",
+                        "description": "failures / checks. Null when no check ran, which is not the same as 0."
+                    },
+                    "runs": {
+                        "type": "integer",
+                        "title": "Runs",
+                        "description": "Distinct runs the pair was seen in."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "role",
+                    "checks",
+                    "failures",
+                    "failure_rate",
+                    "runs"
+                ],
+                "title": "GateRoleStat",
+                "description": "One gate as one role experienced it."
+            },
+            "GateStat": {
+                "properties": {
+                    "gate": {
+                        "type": "string",
+                        "title": "Gate",
+                        "description": "envelope | artifacts | changed_files | boundary | \u2026"
+                    },
+                    "checks": {
+                        "type": "integer",
+                        "title": "Checks"
+                    },
+                    "failures": {
+                        "type": "integer",
+                        "title": "Failures"
+                    },
+                    "failure_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Failure Rate",
+                        "description": "failures / checks; null when checks is 0."
+                    },
+                    "runs": {
+                        "type": "integer",
+                        "title": "Runs"
+                    },
+                    "by_role": {
+                        "items": {
+                            "$ref": "#/components/schemas/GateRoleStat"
+                        },
+                        "type": "array",
+                        "title": "By Role",
+                        "description": "The same numbers per role, failure rate first, then role."
+                    },
+                    "top_failure_notes": {
+                        "items": {
+                            "$ref": "#/components/schemas/GateFailureNote"
+                        },
+                        "type": "array",
+                        "title": "Top Failure Notes",
+                        "description": "The failing notes, commonest first and capped at 5 per gate. A gate's note usually names the files it is about, so most counts are 1 and the list reads as the most recent distinct failures."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "gate",
+                    "checks",
+                    "failures",
+                    "failure_rate",
+                    "runs",
+                    "by_role",
+                    "top_failure_notes"
+                ],
+                "title": "GateStat",
+                "description": "One gate across every run: how often it ran, how often it failed, where."
             },
             "HTTPValidationError": {
                 "properties": {
@@ -4682,6 +5247,152 @@
                     "error"
                 ],
                 "title": "MessageRole"
+            },
+            "ModelStat": {
+                "properties": {
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "The model the lanes reported. Null is a real row rather than a gap, but it is not a model: it is every lane that named none \u2014 the pipeline's own `git` and `checks` lanes, which run no model at all and appear in every run, plus every agent lane recorded before the runner started sending one. Do not read it as a competitor to the named rows; a run appears under it and under its model both."
+                    },
+                    "lanes": {
+                        "type": "integer",
+                        "title": "Lanes"
+                    },
+                    "runs": {
+                        "type": "integer",
+                        "title": "Runs",
+                        "description": "Distinct runs with at least one lane on this model."
+                    },
+                    "accepted_runs": {
+                        "type": "integer",
+                        "title": "Accepted Runs"
+                    },
+                    "acceptance_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Acceptance Rate",
+                        "description": "accepted_runs / runs. Read `runs` before believing it \u2014 a rate over two runs is noise, and masterwork will not hide it behind a threshold."
+                    },
+                    "stages": {
+                        "type": "integer",
+                        "title": "Stages",
+                        "description": "Stages whose lane ran this model."
+                    },
+                    "corrections": {
+                        "type": "integer",
+                        "title": "Corrections"
+                    },
+                    "avg_corrections": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Corrections",
+                        "description": "corrections / stages."
+                    },
+                    "failed_stages": {
+                        "type": "integer",
+                        "title": "Failed Stages"
+                    },
+                    "timed_stages": {
+                        "type": "integer",
+                        "title": "Timed Stages"
+                    },
+                    "total_duration_ms": {
+                        "type": "integer",
+                        "title": "Total Duration Ms"
+                    },
+                    "avg_duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Duration Ms"
+                    },
+                    "cost_usd": {
+                        "type": "number",
+                        "title": "Cost Usd",
+                        "description": "Summed over the lanes, not the stages."
+                    },
+                    "tokens_in": {
+                        "type": "integer",
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "type": "integer",
+                        "title": "Tokens Out"
+                    },
+                    "turns": {
+                        "type": "integer",
+                        "title": "Turns"
+                    },
+                    "gate_checks": {
+                        "type": "integer",
+                        "title": "Gate Checks",
+                        "description": "From the stage counters, as in RoleStat."
+                    },
+                    "gate_failures": {
+                        "type": "integer",
+                        "title": "Gate Failures"
+                    },
+                    "gate_failure_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gate Failure Rate"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "model",
+                    "lanes",
+                    "runs",
+                    "accepted_runs",
+                    "acceptance_rate",
+                    "stages",
+                    "corrections",
+                    "avg_corrections",
+                    "failed_stages",
+                    "timed_stages",
+                    "total_duration_ms",
+                    "avg_duration_ms",
+                    "cost_usd",
+                    "tokens_in",
+                    "tokens_out",
+                    "turns",
+                    "gate_checks",
+                    "gate_failures",
+                    "gate_failure_rate"
+                ],
+                "title": "ModelStat",
+                "description": "One model across every run that used it, through the lanes it ran."
             },
             "ObservabilityIntegration": {
                 "properties": {
@@ -5498,6 +6209,382 @@
                     "failed"
                 ],
                 "title": "ProposalStatus"
+            },
+            "RoleStat": {
+                "properties": {
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role",
+                        "description": "Lane name \u2014 plan | build | review | document | checks | git for a pipeline run, \"main\" for a chat turn. Null when a stage recorded no lane."
+                    },
+                    "runs": {
+                        "type": "integer",
+                        "title": "Runs",
+                        "description": "Distinct runs this role appeared in."
+                    },
+                    "stages": {
+                        "type": "integer",
+                        "title": "Stages",
+                        "description": "Stage rows \u2014 the denominator of every per-stage average."
+                    },
+                    "corrections": {
+                        "type": "integer",
+                        "title": "Corrections"
+                    },
+                    "avg_corrections": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Corrections",
+                        "description": "corrections / stages."
+                    },
+                    "failed_stages": {
+                        "type": "integer",
+                        "title": "Failed Stages"
+                    },
+                    "stage_failure_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stage Failure Rate",
+                        "description": "failed_stages / stages."
+                    },
+                    "timed_stages": {
+                        "type": "integer",
+                        "title": "Timed Stages",
+                        "description": "Stages that reported a duration."
+                    },
+                    "total_duration_ms": {
+                        "type": "integer",
+                        "title": "Total Duration Ms"
+                    },
+                    "avg_duration_ms": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Duration Ms",
+                        "description": "total_duration_ms / timed_stages; null when none reported one."
+                    },
+                    "costed_stages": {
+                        "type": "integer",
+                        "title": "Costed Stages",
+                        "description": "Stages that reported a cost."
+                    },
+                    "total_cost_usd": {
+                        "type": "number",
+                        "title": "Total Cost Usd"
+                    },
+                    "avg_cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Cost Usd",
+                        "description": "total_cost_usd / costed_stages; null when none reported one."
+                    },
+                    "tokens_in": {
+                        "type": "integer",
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "type": "integer",
+                        "title": "Tokens Out"
+                    },
+                    "gate_checks": {
+                        "type": "integer",
+                        "title": "Gate Checks",
+                        "description": "gates_passed + gates_failed summed off the stage counters, which every run has \u2014 not the v1.19 evidence rows, which only a reported or replayed run has."
+                    },
+                    "gate_failures": {
+                        "type": "integer",
+                        "title": "Gate Failures"
+                    },
+                    "gate_failure_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gate Failure Rate"
+                    },
+                    "envelope_attempts": {
+                        "type": "integer",
+                        "title": "Envelope Attempts",
+                        "description": "Envelopes this role returned; 0 for a run that reported none."
+                    },
+                    "envelope_failures": {
+                        "type": "integer",
+                        "title": "Envelope Failures",
+                        "description": "Attempts that did not parse."
+                    },
+                    "envelope_failure_rate": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Envelope Failure Rate",
+                        "description": "A role that repeatedly fails this has a contract problem, not a bug."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "role",
+                    "runs",
+                    "stages",
+                    "corrections",
+                    "avg_corrections",
+                    "failed_stages",
+                    "stage_failure_rate",
+                    "timed_stages",
+                    "total_duration_ms",
+                    "avg_duration_ms",
+                    "costed_stages",
+                    "total_cost_usd",
+                    "avg_cost_usd",
+                    "tokens_in",
+                    "tokens_out",
+                    "gate_checks",
+                    "gate_failures",
+                    "gate_failure_rate",
+                    "envelope_attempts",
+                    "envelope_failures",
+                    "envelope_failure_rate"
+                ],
+                "title": "RoleStat",
+                "description": "One role across every run: what it costs, and how often it is sent back."
+            },
+            "RunStat": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "Derived exactly as the Sessions screen derives it."
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow"
+                    },
+                    "git_repo": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Git Repo"
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "The session's model; lanes may differ."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "Derived run status, not the stored one."
+                    },
+                    "accepted": {
+                        "type": "boolean",
+                        "title": "Accepted",
+                        "description": "status == success. The acceptance signal the model comparison averages \u2014 `abandoned` is silence, not a verdict, and counts as not accepted."
+                    },
+                    "started_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Started At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At"
+                    },
+                    "wall_ms": {
+                        "type": "integer",
+                        "title": "Wall Ms"
+                    },
+                    "active_ms": {
+                        "type": "integer",
+                        "title": "Active Ms",
+                        "description": "Working time; a pipeline run sums its stages."
+                    },
+                    "cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cost Usd"
+                    },
+                    "tokens_total": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Total"
+                    },
+                    "tokens_in": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens In"
+                    },
+                    "tokens_out": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tokens Out"
+                    },
+                    "stages": {
+                        "type": "integer",
+                        "title": "Stages"
+                    },
+                    "corrections": {
+                        "type": "integer",
+                        "title": "Corrections"
+                    },
+                    "gates_passed": {
+                        "type": "integer",
+                        "title": "Gates Passed"
+                    },
+                    "gates_failed": {
+                        "type": "integer",
+                        "title": "Gates Failed"
+                    },
+                    "gate_checks": {
+                        "type": "integer",
+                        "title": "Gate Checks",
+                        "description": "v1.19 evidence rows \u2014 0 for a run that never reported or replayed any."
+                    },
+                    "gate_failures": {
+                        "type": "integer",
+                        "title": "Gate Failures"
+                    },
+                    "envelope_attempts": {
+                        "type": "integer",
+                        "title": "Envelope Attempts"
+                    },
+                    "envelope_failures": {
+                        "type": "integer",
+                        "title": "Envelope Failures"
+                    },
+                    "child_count": {
+                        "type": "integer",
+                        "title": "Child Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "title",
+                    "workflow",
+                    "git_repo",
+                    "model",
+                    "status",
+                    "accepted",
+                    "started_at",
+                    "ended_at",
+                    "wall_ms",
+                    "active_ms",
+                    "cost_usd",
+                    "tokens_total",
+                    "tokens_in",
+                    "tokens_out",
+                    "stages",
+                    "corrections",
+                    "gates_passed",
+                    "gates_failed",
+                    "gate_checks",
+                    "gate_failures",
+                    "envelope_attempts",
+                    "envelope_failures",
+                    "child_count"
+                ],
+                "title": "RunStat",
+                "description": "One run as a point on a trend line."
             },
             "ScenarioGenerateResponse": {
                 "properties": {

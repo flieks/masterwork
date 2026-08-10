@@ -59,14 +59,63 @@ def derived_title(session: CodingSession) -> tuple[str | None, str | None]:
     return (where, TITLE_CWD) if where else (None, None)
 
 
-def _active_ms(session: CodingSession, phases: list[CodingPhase], from_events: int) -> int:
+def active_ms_for(session: CodingSession, phases: list[CodingPhase], from_events: int) -> int:
     """A pipeline run measures its own stages, so trust that over the gaps
-    between events; everything else gets the inferred figure."""
+    between events; everything else gets the inferred figure.
+
+    Public because the cross-run trend reports the same number, and two
+    definitions of "working time" would be one too many."""
     if session.workflow == WORKFLOW_FACTORY:
         measured = [p.duration_ms for p in phases if p.duration_ms is not None]
         if measured:
             return sum(measured)
     return from_events
+
+
+def asset_uses(
+    assets: list[CodingAsset], child_assets: list[tuple[str, str, int]]
+) -> list[schemas.AssetUse]:
+    """This run's assets, with what the runs it launched used folded in.
+
+    A pipeline's parent process issues no tool calls at all — every skill and
+    subagent is reached for inside a headless stage child — so a factory run's
+    own list is empty by construction and folding is the only way the question
+    *what does the pipeline use* has an answer. Nothing is overwritten by it.
+
+    A child's uses arrive as a laneless row: the child's lane is its own `main`,
+    which is not one of this run's lanes and would read as a lie. `via_children`
+    keeps the fold legible, so a reader can always subtract it back out.
+    """
+    rows: dict[tuple[str, str, str | None], schemas.AssetUse] = {}
+    order: list[tuple[str, str, str | None]] = []
+    for asset in assets:
+        key = (asset.kind, asset.name, asset.lane)
+        rows[key] = coding_asset_to_use(asset)
+        order.append(key)
+    for kind, name, uses in child_assets:
+        key = (kind, name, None)
+        existing = rows.get(key)
+        if existing is None:
+            rows[key] = schemas.AssetUse(
+                kind=kind,
+                name=name,
+                asset_id=asset_id_for(kind, name),
+                lane=None,
+                uses=uses,
+                via_children=uses,
+            )
+            order.append(key)
+        else:
+            rows[key] = existing.model_copy(
+                update={
+                    "uses": existing.uses + uses,
+                    "via_children": existing.via_children + uses,
+                }
+            )
+    merged = [rows[key] for key in order]
+    # The same order the counters came back in: most-used first, then stable.
+    merged.sort(key=lambda use: (-use.uses, use.kind, use.name))
+    return merged
 
 
 def _session_fields(
@@ -77,6 +126,7 @@ def _session_fields(
     phases: list[CodingPhase],
     agents: list[CodingAgent],
     assets: list[CodingAsset],
+    child_assets: list[tuple[str, str, int]],
     child_count: int,
     active_ms: int,
     now: datetime,
@@ -113,9 +163,9 @@ def _session_fields(
         "tool_call_count": tool_call_count,
         "duration_seconds": duration,
         "wall_ms": int(duration * 1000),
-        "active_ms": _active_ms(session, phases, active_ms),
+        "active_ms": active_ms_for(session, phases, active_ms),
         "agents": [coding_agent_to_lane(a) for a in agents],
-        "assets": [coding_asset_to_use(a) for a in assets],
+        "assets": asset_uses(assets, child_assets),
     }
 
 
@@ -127,6 +177,7 @@ def coding_session_to_schema(
     phases: list[CodingPhase],
     agents: list[CodingAgent],
     assets: list[CodingAsset],
+    child_assets: list[tuple[str, str, int]],
     child_count: int,
     active_ms: int,
     now: datetime,
@@ -139,6 +190,7 @@ def coding_session_to_schema(
             phases=phases,
             agents=agents,
             assets=assets,
+            child_assets=child_assets,
             child_count=child_count,
             active_ms=active_ms,
             now=now,
@@ -155,6 +207,7 @@ def coding_session_to_detail(
     phases: list[CodingPhase],
     agents: list[CodingAgent],
     assets: list[CodingAsset],
+    child_assets: list[tuple[str, str, int]],
     child_count: int,
     active_ms: int,
     envelopes: list[CodingEnvelope],
@@ -169,6 +222,7 @@ def coding_session_to_detail(
             phases=phases,
             agents=agents,
             assets=assets,
+            child_assets=child_assets,
             child_count=child_count,
             active_ms=active_ms,
             now=now,
@@ -218,6 +272,7 @@ def coding_asset_to_use(asset: CodingAsset) -> schemas.AssetUse:
         asset_id=asset_id_for(asset.kind, asset.name),
         lane=asset.lane,
         uses=asset.uses,
+        via_children=0,
     )
 
 

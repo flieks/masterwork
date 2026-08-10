@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from adw.config import Stage
-from adw.envelopes import REQUIRED_FIELDS, Envelope, owes_a_verdict
+from adw.envelopes import REQUIRED_FIELDS, Envelope, owes_a_verdict, owes_findings
 from adw.roles import NONE_MARKER, ResolvedRole, render
 
 PROMPTS_SUBDIR = "prompts"
@@ -28,13 +28,17 @@ The runner parses the LAST fenced json block; any prose after it fails the gate.
   "notes_for_next_agent": "what the next stage needs to know",
   "changed_files": {changed_files},
   "approved": false,
-  "blocking": [],
+  "blocking": [],{extra}
   "assumptions": ["anything you would have asked the user"]
 }}
 ```
 
 Required for the {stage} role: {required}.
 {rule}{verdict}"""
+
+# One extra skeleton line, for the one role whose output IS a list of findings.
+# Empty for every other role, so their compiled contract is unchanged to the byte.
+_FINDINGS_FIELD = '\n  "findings": ["one self-contained sentence each, naming the file"],'
 
 _WRITER_FIELDS = {
     "artifacts": '["paths you wrote that the next stage should read"]',
@@ -87,8 +91,9 @@ def envelope_contract(stage: Stage) -> str:
     fields = _READ_ONLY_FIELDS if stage.read_only else _WRITER_FIELDS
     required = ", ".join(REQUIRED_FIELDS.get(stage.name, ("status", "summary")))
     verdict = _VERDICT_RULE if owes_a_verdict(stage.name) else ""
+    extra = _FINDINGS_FIELD if owes_findings(stage.name) else ""
     return _CONTRACT_TEMPLATE.format(
-        stage=stage.name, required=required, verdict=verdict, **fields
+        stage=stage.name, required=required, verdict=verdict, extra=extra, **fields
     )
 
 
@@ -149,12 +154,15 @@ def template_values(
     previous_stage: str | None = None,
     previous: Envelope | None = None,
     artifact_max_bytes: int = 20_000,
+    conventions: str = "",
 ) -> dict[str, str]:
     """Every variable a role template may use. Documented in `roles.VARIABLES`."""
     return {
         "role": stage.name,
         "repo": str(repo),
         "request": request.strip(),
+        # Empty when no conventions file exists, so the block leaves no trace.
+        "conventions": conventions,
         "previous_stage": previous_stage or NONE_MARKER,
         "previous_envelope": previous.to_json() if previous is not None else NONE_MARKER,
         "artifacts": (
@@ -176,6 +184,7 @@ def compile_prompt(
     previous_stage: str | None = None,
     previous: Envelope | None = None,
     artifact_max_bytes: int = 20_000,
+    conventions: str = "",
 ) -> CompiledPrompt:
     values = template_values(
         stage=stage,
@@ -184,6 +193,7 @@ def compile_prompt(
         previous_stage=previous_stage,
         previous=previous,
         artifact_max_bytes=artifact_max_bytes,
+        conventions=conventions,
     )
     return CompiledPrompt(
         system=render(role.system, values, source=role.sources["system.md"]),

@@ -49,6 +49,7 @@ from app.db.models.coding import (
     CodingSession,
 )
 from app.repositories import coding as coding_repo
+from app.repositories import coding_analytics as analytics_repo
 
 # A runaway hook must not be able to bloat the database; anything past this is
 # replaced by a marker that keeps the head of the payload for debugging.
@@ -814,6 +815,7 @@ async def list_sessions(
     agents = await coding_repo.agents_by_session(db, ids)
     session_assets = await coding_repo.assets_by_session(db, ids)
     children = await coding_repo.child_counts(db, ids)
+    child_assets = await analytics_repo.child_assets_by_parent(db, ids)
     active = await coding_repo.active_ms_by_session(db, ids)
     now = _utcnow()
     return [
@@ -824,6 +826,7 @@ async def list_sessions(
             phases=phases[s.id],
             agents=agents[s.id],
             assets=session_assets[s.id],
+            child_assets=child_assets[s.id],
             child_count=children.get(s.id, 0),
             active_ms=active.get(s.id, 0),
             now=now,
@@ -847,6 +850,7 @@ async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessio
     agents = await coding_repo.agents_by_session(db, [session_id])
     session_assets = await coding_repo.assets_by_session(db, [session_id])
     children = await coding_repo.child_counts(db, [session_id])
+    child_assets = await analytics_repo.child_assets_by_parent(db, [session_id])
     active = await coding_repo.active_ms_by_session(db, [session_id])
     envelopes = await coding_repo.envelopes_for_session(db, session_id, limit=MAX_DETAIL_ENVELOPES)
     gate_checks = await coding_repo.gate_checks_for_session(
@@ -859,6 +863,7 @@ async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessio
         phases=phases[session_id],
         agents=agents[session_id],
         assets=session_assets[session_id],
+        child_assets=child_assets[session_id],
         child_count=children.get(session_id, 0),
         active_ms=active.get(session_id, 0),
         envelopes=envelopes,

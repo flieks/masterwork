@@ -9,5 +9,6 @@ __all__ = [
     "pipeline",
     "prompts",
     "roles",
+    "runs",
     "telemetry",
 ]

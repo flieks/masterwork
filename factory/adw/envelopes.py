@@ -14,6 +14,9 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "build": ("status", "summary", "changed_files"),
     "review": ("status", "summary", "approved", "blocking"),
     "document": ("status", "summary", "changed_files"),
+    # Recon writes nothing, so it owes no file claim — what it owes is the findings
+    # it was sent to get. A scout that reports none has not done its job.
+    "scout": ("status", "summary", "findings"),
 }
 
 VALID_STATUS = ("ok", "blocked", "failed")
@@ -22,6 +25,11 @@ VALID_STATUS = ("ok", "blocked", "failed")
 def owes_a_verdict(stage: str) -> bool:
     """Whether this role's envelope carries a judgement — the roles `approved` binds."""
     return "approved" in REQUIRED_FIELDS.get(stage, ())
+
+
+def owes_findings(stage: str) -> bool:
+    """Whether this role's whole output IS its findings list — recon, not production."""
+    return "findings" in REQUIRED_FIELDS.get(stage, ())
 
 # A fenced block: opening fence + info string, body, closing fence on its own line.
 _FENCE_RE = re.compile(r"^[ \t]*```([^\n`]*)\r?\n(.*?)\r?\n?^[ \t]*```[ \t]*$", re.S | re.M)
@@ -40,6 +48,7 @@ class Envelope:
     changed_files: list[str] = field(default_factory=list)
     approved: bool | None = None
     blocking: list[str] = field(default_factory=list)
+    findings: list[str] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     raw: dict = field(default_factory=dict)
 
@@ -101,6 +110,17 @@ def parse_envelope(text: str, stage: str) -> ParseResult:
     return ParseResult(envelope)
 
 
+def from_raw(data: object) -> Envelope | None:
+    """Rebuild an envelope from a body that was already parsed once and stored —
+    a resumed run reads its predecessor's envelopes back through here."""
+    if not isinstance(data, dict):
+        return None
+    try:
+        return _coerce(data)
+    except ValueError:
+        return None
+
+
 def attempt_block(
     result: ParseResult, *, role: str, attempt: int, raw_text: str
 ) -> dict[str, Any]:
@@ -153,6 +173,7 @@ def _coerce(data: dict) -> Envelope:
         changed_files=_str_list(data, "changed_files"),
         approved=approved,
         blocking=_str_list(data, "blocking"),
+        findings=_str_list(data, "findings"),
         assumptions=_str_list(data, "assumptions"),
         raw=data,
     )

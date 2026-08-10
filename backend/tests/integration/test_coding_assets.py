@@ -82,6 +82,7 @@ async def test_an_explicit_skill_call_is_recorded(client: AsyncClient) -> None:
             "asset_id": "claude:skill:caveman",
             "lane": "main",
             "uses": 1,
+            "via_children": 0,
         }
     ]
 
@@ -155,6 +156,7 @@ async def test_a_task_call_names_the_subagent(client: AsyncClient) -> None:
             "asset_id": "claude:agent:code-reviewer",
             "lane": "main",
             "uses": 1,
+            "via_children": 0,
         }
     ]
 

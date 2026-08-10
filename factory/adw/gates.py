@@ -18,6 +18,9 @@ ENVELOPE_GATE = "envelope"
 # A verdict the runner reaches outside the six named gates — a revert, a stage that
 # returned a non-ok status. Matches the name masterwork files such lines under.
 STAGE_GATE = "stage"
+# The budget caps. A verdict about the run rather than about a reply, so it rides
+# the same block as the others instead of inventing an event type for itself.
+BUDGET_GATE = "budget"
 
 # The write boundary is git-relative, so a write OUTSIDE the repo root would be
 # invisible to it. Probed 2026-08-10 against the runner's exact flag set

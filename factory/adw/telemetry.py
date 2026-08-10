@@ -109,6 +109,9 @@ class Telemetry:
     echo: bool = False
     workflow: str = DEFAULT_WORKFLOW
     title: str = ""
+    # A resumed run appends to the SAME session, so its phases must not re-use the
+    # sequence numbers the interrupted process already reported under that session.
+    seq_start: int = 1
     _handle: Any = field(default=None, init=False, repr=False)
     _post_failures: int = field(default=0, init=False, repr=False)
     _cumulative_input: int = field(default=0, init=False, repr=False)
@@ -123,6 +126,7 @@ class Telemetry:
         # The run dir lives outside the target repo by default, so the runner
         # writes nothing — not even a .gitignore — into someone else's tree.
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        self._next_seq = max(1, int(self.seq_start))
         self._handle = (self.run_dir / "telemetry.jsonl").open("a", encoding="utf-8")
 
     @property

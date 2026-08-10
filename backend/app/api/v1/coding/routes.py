@@ -14,10 +14,28 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.api.v1.coding import schemas, service
+from app.api.v1.coding import analytics, schemas, service
 
 router = APIRouter(tags=["coding"])
 hooks_router = APIRouter(tags=["hooks"])
+
+# The four filters every analytics endpoint takes, described once. They are
+# declared per-route rather than as a dependency so the generated TS client gets
+# named arguments instead of an opaque object.
+_SINCE = "Count only what happened at or after this instant. Omit for all time."
+_WORKFLOW = (
+    'Keep only runs of this workflow — "factory" for pipeline runs, "chat" for plain '
+    "Claude Code sessions (which also matches the ones that never named one)."
+)
+_INSPECTION = (
+    "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md "
+    "and would otherwise rank assets by inspection rather than use."
+)
+_CHILDREN = (
+    "Include runs that another run launched. Off by default: a pipeline's headless "
+    "stage child is the inside view of a stage already counted on its parent, so "
+    "counting both reports the same work twice."
+)
 
 
 @hooks_router.post(
@@ -152,6 +170,118 @@ async def list_asset_session_uses(
     """Matched on the id's kind and name, so a plugin asset's own id works too."""
     return await service.list_asset_sessions(
         db, asset_id, limit=limit, include_inspection=include_inspection
+    )
+
+
+@router.get(
+    "/coding-analytics/gates",
+    response_model=list[schemas.GateStat],
+    operation_id="listGateStats",
+    summary="Which gates fail, how often, and on which role",
+)
+async def list_gate_stats(
+    since: datetime | None = Query(None, description=_SINCE + " Counted by the check's own clock."),
+    workflow: str | None = Query(None, description=_WORKFLOW),
+    include_inspection: bool = Query(False, description=_INSPECTION),
+    include_children: bool = Query(False, description=_CHILDREN),
+    db: AsyncSession = Depends(get_db),
+) -> list[schemas.GateStat]:
+    """Reads the v1.19 evidence rows, so it sees only the runs that reported or
+    replayed them — `/coding-analytics/roles` covers the rest from the counters."""
+    return await analytics.list_gate_stats(
+        db,
+        scope=analytics.scope_for(
+            since=since,
+            workflow=workflow,
+            include_inspection=include_inspection,
+            include_children=include_children,
+        ),
+    )
+
+
+@router.get(
+    "/coding-analytics/roles",
+    response_model=list[schemas.RoleStat],
+    operation_id="listRoleStats",
+    summary="What each role costs: corrections, gate failures, duration, parse failures",
+)
+async def list_role_stats(
+    since: datetime | None = Query(
+        None, description=_SINCE + " Counted over the stages that STARTED inside the window."
+    ),
+    workflow: str | None = Query(None, description=_WORKFLOW),
+    include_inspection: bool = Query(False, description=_INSPECTION),
+    include_children: bool = Query(False, description=_CHILDREN),
+    db: AsyncSession = Depends(get_db),
+) -> list[schemas.RoleStat]:
+    return await analytics.list_role_stats(
+        db,
+        scope=analytics.scope_for(
+            since=since,
+            workflow=workflow,
+            include_inspection=include_inspection,
+            include_children=include_children,
+        ),
+    )
+
+
+@router.get(
+    "/coding-analytics/runs",
+    response_model=list[schemas.RunStat],
+    operation_id="listRunStats",
+    summary="Cost, tokens, duration and outcome per run — the trend line",
+)
+async def list_run_stats(
+    since: datetime | None = Query(
+        None, description=_SINCE + " Counted over the runs that STARTED inside the window."
+    ),
+    workflow: str | None = Query(None, description=_WORKFLOW),
+    include_inspection: bool = Query(False, description=_INSPECTION),
+    include_children: bool = Query(False, description=_CHILDREN),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=500,
+        description="The most recent runs to return. They come back oldest first.",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> list[schemas.RunStat]:
+    """Oldest first, so a client plots them left to right without re-sorting."""
+    return await analytics.list_run_stats(
+        db,
+        scope=analytics.scope_for(
+            since=since,
+            workflow=workflow,
+            include_inspection=include_inspection,
+            include_children=include_children,
+        ),
+        limit=limit,
+    )
+
+
+@router.get(
+    "/coding-analytics/models",
+    response_model=list[schemas.ModelStat],
+    operation_id="listModelStats",
+    summary="Cost, corrections and acceptance per model, from the agent lanes",
+)
+async def list_model_stats(
+    since: datetime | None = Query(
+        None, description=_SINCE + " Counted over the runs that STARTED inside the window."
+    ),
+    workflow: str | None = Query(None, description=_WORKFLOW),
+    include_inspection: bool = Query(False, description=_INSPECTION),
+    include_children: bool = Query(False, description=_CHILDREN),
+    db: AsyncSession = Depends(get_db),
+) -> list[schemas.ModelStat]:
+    return await analytics.list_model_stats(
+        db,
+        scope=analytics.scope_for(
+            since=since,
+            workflow=workflow,
+            include_inspection=include_inspection,
+            include_children=include_children,
+        ),
     )
 
 

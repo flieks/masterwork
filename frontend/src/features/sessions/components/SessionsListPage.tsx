@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
 import { TrackingBanner, integrationsQueryAtom, isRecording } from '~/features/observability';
+import { AnalyticsPanel } from '~/features/analytics';
 import {
   INTERRUPTED_NEVER_DERIVED,
   codingSessionsQueryAtom,
@@ -21,18 +22,25 @@ import { LiveIndicator } from './LiveIndicator';
 import { RunCard } from './RunCard';
 import { RunFilters } from './RunFilters';
 
-type View = 'runs' | 'assets';
+const VIEWS = ['runs', 'assets', 'analytics'] as const;
+type View = (typeof VIEWS)[number];
+
+function isView(value: string | null): value is View {
+  return VIEWS.includes(value as View);
+}
 
 /**
- * Runs and the assets they used are two readings of the same recording, so they
- * are two tabs rather than two screens. The view lives in the URL so a rollup
- * can be linked to; Radix unmounts the inactive panel, which also stops the run
- * grid polling while the rollup is open.
+ * Runs, the assets they used and what the whole history adds up to are three
+ * readings of the same recording, so they are three tabs rather than three
+ * screens. The view lives in the URL so a rollup can be linked to; Radix
+ * unmounts the inactive panel, which also stops the run grid polling while one
+ * of the others is open — the analytics fire four requests on mount, and paying
+ * for those on top of a 2.5s poll would be the worst of both.
  */
 export function SessionsListPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('view');
-  const view: View = raw === 'assets' ? 'assets' : 'runs';
+  const view: View = isView(raw) ? raw : 'runs';
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 p-6">
@@ -56,6 +64,7 @@ export function SessionsListPage() {
         <TabsList className="self-start">
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="runs" className="flex flex-col gap-4">
@@ -63,6 +72,9 @@ export function SessionsListPage() {
         </TabsContent>
         <TabsContent value="assets">
           <AssetUsagePanel />
+        </TabsContent>
+        <TabsContent value="analytics">
+          <AnalyticsPanel />
         </TabsContent>
       </Tabs>
     </div>

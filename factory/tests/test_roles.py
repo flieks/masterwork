@@ -78,7 +78,15 @@ def write_role_file(base: Path, role: str, filename: str, text: str) -> Path:
 # --- behavioural equivalence with the pre-refactor prompts.py ---------------
 
 
-@pytest.mark.parametrize("role", ROLES)
+# The roles that existed when the golden file was captured (`_note` is its header).
+# A role added later has no pre-refactor prompt to be equivalent to, so it is pinned
+# by its own tests instead.
+GOLDEN_ROLES = tuple(
+    sorted(key for key in json.loads(GOLDEN.read_text(encoding="utf-8")) if key != "_note")
+)
+
+
+@pytest.mark.parametrize("role", GOLDEN_ROLES)
 def test_the_builtin_defaults_reproduce_the_hardcoded_prompts(tmp_path: Path, role: str):
     """system + user must be byte-identical to what prompts.py produced before.
 
@@ -376,7 +384,8 @@ def test_the_builtin_role_json_agrees_with_the_config_defaults():
         data = json.loads(roles.builtin_text(role, CONFIG_FILE))
         assert data["model"] == DEFAULT_MODELS[role]
         assert data["writes"] == DEFAULT_BOUNDARIES[role]
-        expected = list(BASE_DISALLOWED) + (list(WRITE_TOOLS) if role == "review" else [])
+        read_only = role in roles.READ_ONLY_ROLES
+        expected = list(BASE_DISALLOWED) + (list(WRITE_TOOLS) if read_only else [])
         assert data["disallowed_tools"] == expected
         assert data["purpose"]
 

@@ -221,8 +221,21 @@ class AssetUse(BaseModel):
     asset_id: str = Field(
         ..., description='"claude:skill:<name>" / "claude:agent:<name>" — links to the asset page.'
     )
-    lane: str | None = Field(..., description="The lane that used it; null when it had none.")
+    lane: str | None = Field(
+        ...,
+        description=(
+            "The lane that used it; null when it had none — and always null for a use rolled "
+            "up from a run this one launched, whose lane is its own and not one of these."
+        ),
+    )
     uses: int
+    via_children: int = Field(
+        ...,
+        description=(
+            "How many of `uses` came from runs this one launched, rather than from this run "
+            "itself. `uses - via_children` is what this run did on its own."
+        ),
+    )
 
 
 class CodingAssetUsage(BaseModel):
@@ -454,3 +467,173 @@ class BackfillTotals(BaseModel):
     assets: int
     envelopes: int
     gate_checks: int
+
+
+# --- v1.20: the cross-run aggregates. Every rate ships with its denominator, and
+# a rate whose denominator is zero is null rather than 0.0 — see the contract.
+
+
+class GateRoleStat(BaseModel):
+    """One gate as one role experienced it."""
+
+    role: str | None = Field(
+        ..., description="The lane whose stage the check ran in; null when none was resolved."
+    )
+    checks: int = Field(..., description="Checks this pair ran — the rate's denominator.")
+    failures: int
+    failure_rate: float | None = Field(
+        ..., description="failures / checks. Null when no check ran, which is not the same as 0."
+    )
+    runs: int = Field(..., description="Distinct runs the pair was seen in.")
+
+
+class GateFailureNote(BaseModel):
+    """One distinct sentence a gate wrote when it said no."""
+
+    note: str = Field(..., description="Verbatim, never normalized or clustered.")
+    role: str | None
+    occurrences: int
+    last_seen_at: datetime
+
+
+class GateStat(BaseModel):
+    """One gate across every run: how often it ran, how often it failed, where."""
+
+    gate: str = Field(..., description="envelope | artifacts | changed_files | boundary | …")
+    checks: int
+    failures: int
+    failure_rate: float | None = Field(..., description="failures / checks; null when checks is 0.")
+    runs: int
+    by_role: list[GateRoleStat] = Field(
+        ..., description="The same numbers per role, failure rate first, then role."
+    )
+    top_failure_notes: list[GateFailureNote] = Field(
+        ...,
+        description=(
+            "The failing notes, commonest first and capped at 5 per gate. A gate's note "
+            "usually names the files it is about, so most counts are 1 and the list reads "
+            "as the most recent distinct failures."
+        ),
+    )
+
+
+class RoleStat(BaseModel):
+    """One role across every run: what it costs, and how often it is sent back."""
+
+    role: str | None = Field(
+        ...,
+        description=(
+            "Lane name — plan | build | review | document | checks | git for a pipeline run, "
+            '"main" for a chat turn. Null when a stage recorded no lane.'
+        ),
+    )
+    runs: int = Field(..., description="Distinct runs this role appeared in.")
+    stages: int = Field(..., description="Stage rows — the denominator of every per-stage average.")
+    corrections: int
+    avg_corrections: float | None = Field(..., description="corrections / stages.")
+    failed_stages: int
+    stage_failure_rate: float | None = Field(..., description="failed_stages / stages.")
+    timed_stages: int = Field(..., description="Stages that reported a duration.")
+    total_duration_ms: int
+    avg_duration_ms: float | None = Field(
+        ..., description="total_duration_ms / timed_stages; null when none reported one."
+    )
+    costed_stages: int = Field(..., description="Stages that reported a cost.")
+    total_cost_usd: float
+    avg_cost_usd: float | None = Field(
+        ..., description="total_cost_usd / costed_stages; null when none reported one."
+    )
+    tokens_in: int
+    tokens_out: int
+    gate_checks: int = Field(
+        ...,
+        description=(
+            "gates_passed + gates_failed summed off the stage counters, which every run "
+            "has — not the v1.19 evidence rows, which only a reported or replayed run has."
+        ),
+    )
+    gate_failures: int
+    gate_failure_rate: float | None
+    envelope_attempts: int = Field(
+        ..., description="Envelopes this role returned; 0 for a run that reported none."
+    )
+    envelope_failures: int = Field(..., description="Attempts that did not parse.")
+    envelope_failure_rate: float | None = Field(
+        ..., description="A role that repeatedly fails this has a contract problem, not a bug."
+    )
+
+
+class RunStat(BaseModel):
+    """One run as a point on a trend line."""
+
+    session_id: str
+    title: str | None = Field(..., description="Derived exactly as the Sessions screen derives it.")
+    workflow: str | None
+    git_repo: str | None
+    model: str | None = Field(..., description="The session's model; lanes may differ.")
+    status: str = Field(..., description="Derived run status, not the stored one.")
+    accepted: bool = Field(
+        ...,
+        description=(
+            "status == success. The acceptance signal the model comparison averages — "
+            "`abandoned` is silence, not a verdict, and counts as not accepted."
+        ),
+    )
+    started_at: datetime
+    ended_at: datetime | None
+    wall_ms: int
+    active_ms: int = Field(..., description="Working time; a pipeline run sums its stages.")
+    cost_usd: float | None
+    tokens_total: int | None
+    tokens_in: int | None
+    tokens_out: int | None
+    stages: int
+    corrections: int
+    gates_passed: int
+    gates_failed: int
+    gate_checks: int = Field(
+        ..., description="v1.19 evidence rows — 0 for a run that never reported or replayed any."
+    )
+    gate_failures: int
+    envelope_attempts: int
+    envelope_failures: int
+    child_count: int
+
+
+class ModelStat(BaseModel):
+    """One model across every run that used it, through the lanes it ran."""
+
+    model: str | None = Field(
+        ...,
+        description=(
+            "The model the lanes reported. Null is a real row rather than a gap, but it is "
+            "not a model: it is every lane that named none — the pipeline's own `git` and "
+            "`checks` lanes, which run no model at all and appear in every run, plus every "
+            "agent lane recorded before the runner started sending one. Do not read it as a "
+            "competitor to the named rows; a run appears under it and under its model both."
+        ),
+    )
+    lanes: int
+    runs: int = Field(..., description="Distinct runs with at least one lane on this model.")
+    accepted_runs: int
+    acceptance_rate: float | None = Field(
+        ...,
+        description=(
+            "accepted_runs / runs. Read `runs` before believing it — a rate over two runs "
+            "is noise, and masterwork will not hide it behind a threshold."
+        ),
+    )
+    stages: int = Field(..., description="Stages whose lane ran this model.")
+    corrections: int
+    avg_corrections: float | None = Field(..., description="corrections / stages.")
+    failed_stages: int
+    timed_stages: int
+    total_duration_ms: int
+    avg_duration_ms: float | None
+    cost_usd: float = Field(..., description="Summed over the lanes, not the stages.")
+    tokens_in: int
+    tokens_out: int
+    turns: int
+    gate_checks: int = Field(..., description="From the stage counters, as in RoleStat.")
+    gate_failures: int
+    gate_failure_rate: float | None
