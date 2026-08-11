@@ -488,10 +488,12 @@ export function formatTokens(value: number | null | undefined): string {
   return `${trimZeros((value / 1_000_000).toFixed(2))}M`;
 }
 
-/** `$0.1924` — four decimals, because a run often costs less than a cent. */
+/** `$39.52` — cents, since that is the precision anyone reads. A run that cost
+ *  something must not round to `$0.00` and read as free, so the floor says so. */
 export function formatCost(value: number | null | undefined): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-  return `$${value.toFixed(4)}`;
+  if (value > 0 && value < 0.01) return '<$0.01';
+  return `$${value.toFixed(2)}`;
 }
 
 /** `11%` of a lane's context window, or null when nobody reported one. */

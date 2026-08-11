@@ -24,7 +24,7 @@ async def _go_quiet(factory: async_sessionmaker, session_id: str) -> None:
         await db.execute(
             update(CodingSession)
             .where(CodingSession.id == session_id)
-            .values(last_event_at=datetime.now(tz=UTC) - timedelta(minutes=10))
+            .values(last_event_at=datetime.now(tz=UTC) - timedelta(minutes=45))
         )
         await db.commit()
 

@@ -5,14 +5,17 @@ Against the real test database, like the rest of the coding suite.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.v1.coding import service
 from app.core.exceptions import CodingSessionNotFoundError
+from app.db.models.coding import CodingSession
 from app.repositories import coding as coding_repo
 
 
@@ -427,6 +430,46 @@ async def test_backfill_over_http_closes_a_turn_recorded_before_the_fix(
     # Idempotent: the derived rows are dropped and rebuilt, never doubled.
     await client.post("/api/v1/coding-sessions/s1/backfill")
     assert len((await _session(client))["phases"]) == 2
+
+
+async def test_backfill_reopens_a_run_that_was_resumed_after_it_closed(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """The repair path has to reach the runs recorded before the live fix: their
+    stored `ended_at` is from a life they already left, and replaying the events
+    that disprove it must clear it rather than preserve it."""
+    await _ingest(client, session_id="s1", event_type="SessionStart")
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "a"})
+    await _ingest(client, session_id="s1", event_type="SessionEnd", ended=True)
+    await _ingest(client, session_id="s1", event_type="SessionStart")
+    # Put the row back in the state the old ingest left it in: resumed, but
+    # still carrying the timestamp and outcome of the life before.
+    async with session_factory() as db:
+        await db.execute(
+            update(CodingSession)
+            .where(CodingSession.id == "s1")
+            .values(ended_at=datetime.now(tz=UTC), status="success")
+        )
+        await db.commit()
+
+    assert (await client.post("/api/v1/coding-sessions/s1/backfill")).status_code == 200
+
+    reopened = await _session(client)
+    assert reopened["ended_at"] is None
+    assert reopened["status"] == "running"
+
+
+async def test_backfill_keeps_a_run_that_really_did_close_closed(
+    client: AsyncClient,
+) -> None:
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "a"})
+    await _ingest(client, session_id="s1", event_type="SessionEnd", ended=True)
+
+    assert (await client.post("/api/v1/coding-sessions/s1/backfill")).status_code == 200
+
+    closed = await _session(client)
+    assert closed["ended_at"] is not None
+    assert closed["status"] == "success"
 
 
 async def test_backfill_of_an_unknown_session_is_a_404(client: AsyncClient) -> None:

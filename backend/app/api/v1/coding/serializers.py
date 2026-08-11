@@ -15,7 +15,6 @@ from typing import Any
 
 from app.api.v1.coding import schemas
 from app.db.models.coding import (
-    IDLE_WINDOW,
     LAUNCH_AUTOMATED,
     STATUS_ABANDONED,
     STATUS_RUNNING,
@@ -31,6 +30,7 @@ from app.db.models.coding import (
     CodingPhase,
     CodingSession,
     asset_id_for,
+    idle_window,
 )
 
 
@@ -39,13 +39,14 @@ def derived_status(session: CodingSession, *, now: datetime) -> str:
 
     SessionEnd rides an async hook the dying process outruns, so most runs never
     close themselves and the stored `running` is a lie — 78 of 113 rows claimed
-    it, the oldest last heard from a day and a half earlier. Silence past
-    IDLE_WINDOW reports `abandoned` instead. A run that did report an outcome
-    keeps it: only the absence of one is filled in from silence.
+    it, the oldest last heard from a day and a half earlier. Silence past this
+    kind of run's idle window reports `abandoned` instead. A run that did report
+    an outcome keeps it: only the absence of one is filled in from silence.
     """
     if session.status != STATUS_RUNNING or session.ended_at is not None:
         return session.status
-    return STATUS_ABANDONED if session.last_event_at < now - IDLE_WINDOW else STATUS_RUNNING
+    silent_since = now - idle_window(session.workflow)
+    return STATUS_ABANDONED if session.last_event_at < silent_since else STATUS_RUNNING
 
 
 def derived_title(session: CodingSession) -> tuple[str | None, str | None]:

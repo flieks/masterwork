@@ -198,9 +198,9 @@ async def test_live_runs_outrank_stale_ones(
     await _ingest(
         client, session_id="stale", event_type="UserPromptSubmit", payload={"prompt": "b"}
     )
-    # `stale` spoke most recently of the two, but not recently enough to be live.
-    await _age_session(session_factory, "live", minutes=10)
-    await _age_session(session_factory, "stale", minutes=5)
+    # `stale` is past its idle window; `live` is bumped back to now below.
+    await _age_session(session_factory, "live", minutes=45)
+    await _age_session(session_factory, "stale", minutes=40)
     async with session_factory() as db:
         await db.execute(
             update(CodingSession)
@@ -612,7 +612,7 @@ async def test_silence_is_abandoned_and_never_interrupted(
     """A killed run and a lost SessionEnd hook leave identical evidence, so
     silence gets the word that claims less."""
     await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "hi"})
-    await _age_session(session_factory, "s1", minutes=10)
+    await _age_session(session_factory, "s1", minutes=45)
 
     assert (await _session(client))["status"] == "abandoned"
     assert await _list(client, status="interrupted") == []
@@ -624,7 +624,70 @@ async def test_the_interrupted_filter_matches_only_reported_ones(
     await _ingest(client, session_id="stopped", event_type="run_end", status="interrupted")
     await _ingest(client, session_id="broke", event_type="run_end", status="failed")
     await _ingest(client, session_id="quiet", event_type="UserPromptSubmit", payload={"p": "hi"})
-    await _age_session(session_factory, "quiet", minutes=10)
+    await _age_session(session_factory, "quiet", minutes=45)
 
     assert [s["id"] for s in await _list(client, status="interrupted")] == ["stopped"]
     assert [s["id"] for s in await _list(client, status="abandoned")] == ["quiet"]
+
+
+# ------------------------------------------------- how long silence may last ---
+
+
+async def test_a_chat_waiting_on_its_human_is_still_running(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """The two-minute window called every answered question abandoned: a chat is
+    silent for exactly as long as the person is reading."""
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "hi"})
+    await _age_session(session_factory, "s1", minutes=10)
+
+    assert (await _session(client))["status"] == "running"
+    assert [s["id"] for s in await _list(client, status="running")] == ["s1"]
+
+
+async def test_a_chat_silent_for_half_an_hour_is_abandoned(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "hi"})
+    await _age_session(session_factory, "s1", minutes=45)
+
+    assert (await _session(client))["status"] == "abandoned"
+
+
+async def test_a_pipeline_stage_gets_no_such_grace(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """Nothing is waiting on a human inside a pipeline, so silence there still
+    means the run died."""
+    await _ingest(client, session_id="s1", event_type="phase_start", workflow="factory")
+    await _age_session(session_factory, "s1", minutes=10)
+
+    assert (await _session(client))["status"] == "abandoned"
+
+
+async def test_resuming_a_closed_run_reopens_it(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """`claude --resume` keeps the session id, so a finished run starts working
+    again — and kept reporting the outcome it had already stamped."""
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "hi"})
+    await _ingest(client, session_id="s1", event_type="SessionEnd", ended=True)
+    assert (await _session(client))["status"] == "success"
+
+    await _ingest(client, session_id="s1", event_type="SessionStart", payload={"source": "resume"})
+
+    reopened = await _session(client)
+    assert reopened["status"] == "running"
+    assert reopened["ended_at"] is None
+
+
+async def test_a_late_async_hook_does_not_reopen_a_closed_run(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """Every hook but SessionEnd is async, so one of them landing after the run
+    closed is a race — only SessionStart means somebody resumed it."""
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "hi"})
+    await _ingest(client, session_id="s1", event_type="SessionEnd", ended=True)
+    await _ingest(client, session_id="s1", event_type="PostToolUse", tool_name="Read")
+
+    assert (await _session(client))["status"] == "success"

@@ -81,10 +81,7 @@ test('a run that used nothing says so rather than showing an empty box', async (
   await expect(page.getByText(/No skill or agent was recorded/)).toBeVisible();
 });
 
-test('cards carry a capped row of asset chips, and never nest an anchor', async ({
-  mount,
-  page,
-}) => {
+test('cards chip the skills only, and never nest an anchor', async ({ mount, page }) => {
   const chat = chatRun();
   await mount(
     <TestProviders>
@@ -95,11 +92,13 @@ test('cards carry a capped row of asset chips, and never nest an anchor', async 
     </TestProviders>,
   );
 
-  const row = page.getByLabel('Assets used');
-  await expect(row).toContainText('subagent');
+  const row = page.getByLabel('Skills used');
   await expect(row).toContainText('agent-factory');
-  // Five assets, four shown.
-  await expect(row).toContainText('+1 more');
+  await expect(row).toContainText('frontend-dev');
+  // Agents are already named in the lane chart above; the row would repeat them.
+  await expect(row).not.toContainText('subagent');
+  await expect(row).not.toContainText('general-purpose');
+  await expect(row).not.toContainText('backend-developer');
 
   // The card is the only link — chips inside it are plain spans, because an
   // anchor inside an anchor is invalid HTML that browsers silently unnest.
@@ -112,7 +111,19 @@ test('a card with no recorded assets shows no chip row', async ({ mount, page })
       <RunCard session={factoryRunSummary({ assets: [] })} now={NOW} />
     </TestProviders>,
   );
-  await expect(page.getByLabel('Assets used')).toHaveCount(0);
+  await expect(page.getByLabel('Skills used')).toHaveCount(0);
+});
+
+test('a card whose run used only agents shows no chip row', async ({ mount, page }) => {
+  await mount(
+    <TestProviders>
+      <RunCard
+        session={factoryRunSummary({ assets: [assetUse('agent', 'subagent', 7, null)] })}
+        now={NOW}
+      />
+    </TestProviders>,
+  );
+  await expect(page.getByLabel('Skills used')).toHaveCount(0);
 });
 
 test('grouping keeps the API order and gathers each lane once', () => {

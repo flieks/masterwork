@@ -39,7 +39,7 @@ test('the cost is written once, not twice', async ({ mount, page }) => {
 
   const cost = page.getByTitle('Cost');
   // The formatter emits the `$`; pairing it with a dollar icon read "$ $0.2716".
-  await expect(cost).toHaveText('Cost: $0.2716');
+  await expect(cost).toHaveText('Cost: $0.27');
   await expect(page.getByText('$$')).toHaveCount(0);
   await expect(cost.locator('svg')).toHaveCount(0);
 

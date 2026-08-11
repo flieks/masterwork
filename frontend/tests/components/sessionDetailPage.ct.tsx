@@ -75,7 +75,7 @@ test('the run header states the request, the outcome and the telemetry', async (
 
   // Cost, duration, total / cache-read / output tokens. The cost carries its
   // own `$` and no longer doubles one up with a dollar icon.
-  await expect(page.getByTitle('Cost')).toHaveText('Cost: $0.1924');
+  await expect(page.getByTitle('Cost')).toHaveText('Cost: $0.19');
   await expect(page.getByText('1m 54s active')).toBeVisible();
   await expect(page.getByText('899.9k')).toBeVisible();
   await expect(page.getByText('1.11M')).toBeVisible();

@@ -718,6 +718,13 @@ async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
             session.git_repo = _clip(_git_repo_for(session.cwd), MAX_SESSION_ID)
         if body.model:  # /model mid-session: latest wins
             session.model = body.model[:MAX_MODEL]
+        # `claude --resume` reopens a closed run under its own id, so a finished
+        # session can start working again. Only SessionStart reopens it: every
+        # other hook is async and one of them landing after SessionEnd is a race,
+        # not a resume.
+        if session.ended_at is not None and body.event_type == "SessionStart":
+            session.ended_at = None
+            session.status = STATUS_RUNNING
 
     session.last_event_at = now
     if body.ended:
@@ -802,6 +809,19 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     _promote_stats(session, session.stats)
 
     events = await coding_repo.session_events(db, session_id)
+    # A run whose last lifecycle event reopens one it had already closed was
+    # resumed, and the stored `ended_at` belongs to the life it left. Nothing
+    # else is inferred from the stream: a factory run closes on a `run_end`
+    # body, which leaves no lifecycle event to read the timestamp back out of.
+    lifecycle = [e for e in events if e.event_type in coding_repo.LIFECYCLE_EVENTS]
+    resumed = (
+        bool(lifecycle)
+        and lifecycle[-1].event_type == "SessionStart"
+        and any(event.event_type == "SessionEnd" for event in lifecycle)
+    )
+    if resumed:
+        session.ended_at = None
+
     for event in events:
         derived = derive.from_event(event.event_type, event.tool_name, event.payload)
         await _apply_derived(
@@ -814,9 +834,13 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
             replayed=replayed,
         )
 
-    if session.status == STATUS_RUNNING and reported_status != STATUS_RUNNING:
+    if resumed:
+        # The replay walked past the SessionEnd that stamped an outcome, so the
+        # outcome — derived or reported — is one the run has already left.
+        session.status = STATUS_RUNNING
+    elif session.status == STATUS_RUNNING and reported_status != STATUS_RUNNING:
         session.status = reported_status
-    # A replayed stream has no `ended` flag; the stored timestamp says the same.
+    # A replayed stream has no `ended` flag; the closing timestamp says the same.
     if session.ended_at is not None and session.status == STATUS_RUNNING:
         session.status = STATUS_SUCCESS
 

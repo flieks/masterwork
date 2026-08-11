@@ -76,7 +76,7 @@ test('runs are cards in one grid, pipeline runs and chat sessions alike', async 
   await expect(factory).toContainText('factory-3f5a20b0');
   await expect(factory).toContainText('factory');
   await expect(factory).toContainText('Add a subtract(a, b) function');
-  await expect(factory).toContainText('$0.1924');
+  await expect(factory).toContainText('$0.19');
   await expect(factory).toContainText('899.9k');
   await expect(factory).toContainText('success');
 

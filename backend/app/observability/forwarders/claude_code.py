@@ -97,6 +97,106 @@ def factory_stage() -> dict[str, str]:
     return stated
 
 
+# USD per million tokens, (input, output), keyed by the family name inside the
+# model id — matching on the family rather than the exact id means a model
+# released after this script was written is still priced, at its tier's rate.
+# Cache is billed off the input rate everywhere: 0.1x to read, 1.25x to write a
+# 5-minute entry, 2x for a 1-hour one.
+PRICES: dict[str, tuple[float, float]] = {
+    "fable": (10.0, 50.0),
+    "mythos": (10.0, 50.0),
+    "opus": (5.0, 25.0),
+    "sonnet": (3.0, 15.0),
+    "haiku": (1.0, 5.0),
+}
+CACHE_READ_RATE = 0.1
+CACHE_WRITE_RATES = {"ephemeral_5m_input_tokens": 1.25, "ephemeral_1h_input_tokens": 2.0}
+# Fast mode runs the same model at premium pricing — exactly double on the
+# models that offer it.
+FAST_MULTIPLIER = 2.0
+
+
+def price_of(model: str, usage: dict[str, Any]) -> tuple[float, float] | None:
+    """The (input, output) rate one message billed at, or None if unrecognised —
+    an unknown model still contributes its tokens, just not a price."""
+    for family, rate in PRICES.items():
+        if family in model:
+            if usage.get("speed") == "fast":
+                return rate[0] * FAST_MULTIPLIER, rate[1] * FAST_MULTIPLIER
+            return rate
+    return None
+
+
+def transcript_usage(path: str) -> dict[str, Any]:
+    """Roll a session's tokens and cost out of its transcript file.
+
+    Claude Code records no cost anywhere — only per-message `usage` — so the
+    number on the card has to be computed, and this is the only place that sees
+    both the usage and the model that billed it. Subagent turns live in the same
+    file and count too.
+
+    One API response can span several transcript lines (text and a tool call are
+    written separately) and each carries the *same* cumulative usage, so the
+    dedupe by message id is what keeps the total from doubling.
+    """
+    cost = 0.0
+    tokens_in = tokens_out = cache_read = cache_write = 0
+    seen: set[str] = set()
+    try:
+        with open(path, encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue  # a half-written last line while the session runs
+                message = record.get("message")
+                if record.get("type") != "assistant" or not isinstance(message, dict):
+                    continue
+                usage = message.get("usage")
+                message_id = message.get("id")
+                if not isinstance(usage, dict) or not isinstance(message_id, str):
+                    continue
+                if message_id in seen:
+                    continue
+                seen.add(message_id)
+
+                plain_in = int(usage.get("input_tokens") or 0)
+                out = int(usage.get("output_tokens") or 0)
+                read = int(usage.get("cache_read_input_tokens") or 0)
+                written = usage.get("cache_creation") or {}
+                write_total = int(usage.get("cache_creation_input_tokens") or 0)
+
+                tokens_in += plain_in + read + write_total
+                tokens_out += out
+                cache_read += read
+                cache_write += write_total
+
+                rate = price_of(str(message.get("model") or ""), usage)
+                if rate is None:
+                    continue
+                billed = plain_in + read * CACHE_READ_RATE
+                by_ttl = sum(int(written.get(key) or 0) for key in CACHE_WRITE_RATES)
+                if by_ttl:
+                    for key, multiplier in CACHE_WRITE_RATES.items():
+                        billed += int(written.get(key) or 0) * multiplier
+                else:
+                    # No per-TTL breakdown (older transcripts): assume the 5m default.
+                    billed += write_total * CACHE_WRITE_RATES["ephemeral_5m_input_tokens"]
+                cost += (billed * rate[0] + out * rate[1]) / 1_000_000
+    except OSError:
+        return {}
+    if not seen:
+        return {}
+    return {
+        "cost_usd": round(cost, 6),
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "tokens_total": tokens_in + tokens_out,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+    }
+
+
 def compact(value: Any, limit: int) -> Any:
     """Keep JSON structure when small; collapse to a truncated string when huge."""
     try:
@@ -149,6 +249,15 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
         body["ended"] = True
         if raw.get("reason"):
             payload["reason"] = raw["reason"]
+
+    # End of a turn is the first moment the transcript holds a complete answer,
+    # and SessionEnd is the last chance to read it. The totals are absolute, so
+    # a re-read simply restates them.
+    if event in ("Stop", "SessionEnd") and raw.get("transcript_path"):
+        stats = transcript_usage(raw["transcript_path"])
+        if stats:
+            body["stats"] = stats
+
     if payload:
         body["payload"] = payload
     return body

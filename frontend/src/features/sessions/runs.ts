@@ -15,12 +15,22 @@ export function sessionDetailPath(sessionId: string): string {
   return `/sessions/${encodeURIComponent(sessionId)}`;
 }
 
+/**
+ * How long a run may stay silent and still count as live. Mirrors the backend's
+ * two idle windows, and has to: the dot and the status chip on the same card
+ * are computed on opposite sides of the wire, so a shorter window here says
+ * "abandoned" over a run the API still calls running. A pipeline stage is never
+ * quiet while it works; a chat is quiet for exactly as long as its human reads.
+ */
+export const FACTORY_IDLE_MS = 2 * 60 * 1000;
+export const CHAT_IDLE_MS = 30 * 60 * 1000;
+
 /** True while the session is open and still producing events. */
 export function isSessionLive(session: CodingSession, now = Date.now()): boolean {
   if (session.ended_at !== null) return false;
   const last = new Date(session.last_event_at).getTime();
   if (Number.isNaN(last)) return false;
-  return now - last < LIVE_WINDOW_MS;
+  return now - last < (runWorkflow(session) === 'factory' ? FACTORY_IDLE_MS : CHAT_IDLE_MS);
 }
 
 /** True when a `claude -p` one-shot started the run — a script, hook or scheduler. */

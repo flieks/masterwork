@@ -301,7 +301,7 @@ test('the header leads with the request and its telemetry, stats stay collapsed'
   await expect(page.getByRole('heading', { name: 'add a sessions screen' })).toBeVisible();
   await expect(page.getByText('success')).toBeVisible();
   await expect(page.getByText('/Users/dev/Projects/masterwork')).toBeVisible();
-  await expect(page.getByTitle('Cost')).toContainText('$0.4213');
+  await expect(page.getByTitle('Cost')).toContainText('$0.42');
   await expect(page.getByText('2m 31s active')).toBeVisible();
   await expect(page.getByTitle('Total tokens')).toContainText('899.9k');
   // Nothing reported a cache-read count for this session.

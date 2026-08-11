@@ -126,3 +126,118 @@ def test_env_beats_the_sidecar(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     monkeypatch.setenv("MASTERWORK_INGEST_URL", "http://localhost:1/y")
     monkeypatch.setattr(forwarder, "__file__", str(tmp_path / "claude_code.py"))
     assert forwarder.ingest_url() == "http://localhost:1/y"
+
+
+def _assistant(message_id: str, model: str, **usage: object) -> str:
+    """One transcript line, shaped as Claude Code writes it."""
+    return json.dumps(
+        {"type": "assistant", "message": {"id": message_id, "model": model, "usage": usage}}
+    )
+
+
+def test_cost_is_computed_from_the_transcript_since_claude_code_records_none(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant("msg_1", "claude-opus-5", input_tokens=1_000_000, output_tokens=1_000_000) + "\n"
+    )
+    assert forwarder.transcript_usage(str(transcript)) == {
+        "cost_usd": 30.0,  # $5 in + $25 out
+        "tokens_in": 1_000_000,
+        "tokens_out": 1_000_000,
+        "tokens_total": 2_000_000,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
+
+
+def test_cache_is_billed_at_its_own_rates(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant(
+            "msg_1",
+            "claude-opus-5",
+            input_tokens=0,
+            output_tokens=0,
+            cache_read_input_tokens=1_000_000,
+            cache_creation_input_tokens=2_000_000,
+            cache_creation={
+                "ephemeral_5m_input_tokens": 1_000_000,
+                "ephemeral_1h_input_tokens": 1_000_000,
+            },
+        )
+    )
+    # $5/M input × (0.1 to read, 1.25 to write for 5m, 2 for 1h).
+    assert forwarder.transcript_usage(str(transcript))["cost_usd"] == 0.5 + 6.25 + 10.0
+
+
+def test_a_write_with_no_ttl_breakdown_bills_as_the_5m_default(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant(
+            "msg_1",
+            "claude-opus-5",
+            input_tokens=0,
+            output_tokens=0,
+            cache_creation_input_tokens=1_000_000,
+        )
+    )
+    assert forwarder.transcript_usage(str(transcript))["cost_usd"] == 6.25
+
+
+def test_fast_mode_bills_at_its_premium(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant("msg_1", "claude-opus-5", input_tokens=1_000_000, output_tokens=0, speed="fast")
+    )
+    assert forwarder.transcript_usage(str(transcript))["cost_usd"] == 10.0
+
+
+def test_one_response_split_across_lines_is_counted_once(tmp_path: Path) -> None:
+    """Text and a tool call are separate lines carrying the same cumulative
+    usage — summing them would double the bill."""
+    line = _assistant("msg_1", "claude-opus-5", input_tokens=1_000_000, output_tokens=0)
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(line + "\n" + line + "\n")
+    assert forwarder.transcript_usage(str(transcript))["cost_usd"] == 5.0
+
+
+def test_a_half_written_line_does_not_lose_the_rest(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant("msg_1", "claude-opus-5", input_tokens=1_000_000, output_tokens=0)
+        + "\n"
+        + '{"type": "assis'
+    )
+    assert forwarder.transcript_usage(str(transcript))["cost_usd"] == 5.0
+
+
+def test_an_unpriced_model_still_reports_its_tokens(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(_assistant("msg_1", "gpt-something", input_tokens=100, output_tokens=1))
+    stats = forwarder.transcript_usage(str(transcript))
+    assert stats["cost_usd"] == 0.0
+    assert stats["tokens_total"] == 101
+
+
+def test_a_transcript_that_is_not_there_reports_nothing(tmp_path: Path) -> None:
+    assert forwarder.transcript_usage(str(tmp_path / "gone.jsonl")) == {}
+
+
+def test_stop_carries_the_totals_and_other_events_do_not(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant("msg_1", "claude-opus-5", input_tokens=1_000_000, output_tokens=0)
+    )
+    stop = forwarder.build_body(
+        {"session_id": "s1", "hook_event_name": "Stop", "transcript_path": str(transcript)}
+    )
+    assert stop is not None
+    assert stop["stats"]["cost_usd"] == 5.0
+
+    mid_run = forwarder.build_body(
+        {"session_id": "s1", "hook_event_name": "PostToolUse", "transcript_path": str(transcript)}
+    )
+    assert mid_run is not None
+    assert "stats" not in mid_run

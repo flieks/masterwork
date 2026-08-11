@@ -244,7 +244,10 @@ test('only the worst gaps are cut, and a run without them stays linear', () => {
 });
 
 test('telemetry formats read as telemetry', () => {
-  expect(formatCost(0.192431)).toBe('$0.1924');
+  expect(formatCost(0.192431)).toBe('$0.19');
+  // A run that cost something must never read as free.
+  expect(formatCost(0.0004)).toBe('<$0.01');
+  expect(formatCost(0)).toBe('$0.00');
   expect(formatCost(null)).toBe('—');
   expect(formatTokens(899_924)).toBe('899.9k');
   expect(formatTokens(1_110_000)).toBe('1.11M');

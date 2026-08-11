@@ -30,12 +30,15 @@ const WORKFLOW_TINT: Record<string, string> = {
 };
 
 /** Enough to see the shape of what a run used; the detail page has them all. */
-const MAX_CARD_ASSETS = 4;
+const MAX_CARD_SKILLS = 4;
 
 export function RunCard({ session, now = Date.now() }: { session: CodingSession; now?: number }) {
   const live = isSessionLive(session, now);
   const workflow = runWorkflow(session);
   const title = runTitleMeta(session);
+  // `last_event_at`, not `ended_at`: a closed run stamps both at the same
+  // instant, and a resumed one has an `ended_at` from a life it already left.
+  const lastActive = session.last_event_at;
 
   return (
     <Link
@@ -83,12 +86,16 @@ export function RunCard({ session, now = Date.now() }: { session: CodingSession;
         <div className="mt-auto flex items-center gap-2 pt-1">
           <RunStatusChip status={session.status} />
           <PhaseDots session={session} />
+          {/* When it was last doing something, not when it began: the grid
+              sorts on that, and a card dated by its start reads as unsorted —
+              a run opened yesterday and answered a minute ago showed "1 day
+              ago" from the top row. */}
           <time
             className="ml-auto shrink-0 text-[11px] text-muted-foreground"
-            dateTime={session.started_at}
-            title={absoluteDateTime(session.started_at)}
+            dateTime={lastActive}
+            title={`Last active ${absoluteDateTime(lastActive)} · started ${absoluteDateTime(session.started_at)}`}
           >
-            {relativeTime(session.started_at)}
+            {relativeTime(lastActive)}
           </time>
         </div>
 
@@ -107,25 +114,28 @@ export function RunCard({ session, now = Date.now() }: { session: CodingSession;
           ) : null}
         </div>
 
-        <CardAssets assets={session.assets} />
+        <CardSkills assets={session.assets} />
       </Card>
     </Link>
   );
 }
 
 /**
- * The run's skills and agents at a glance. Not links: the card is already one,
- * and nesting anchors is invalid HTML — the detail page carries the real links.
+ * The run's skills at a glance. Agents are left out: the lane chart above
+ * already names every one of them, so chipping them again says nothing new.
+ *
+ * Not links: the card is already one, and nesting anchors is invalid HTML —
+ * the detail page carries the real links.
  */
-function CardAssets({ assets }: { assets: CodingSession['assets'] }) {
+function CardSkills({ assets }: { assets: CodingSession['assets'] }) {
   // The card has no lanes, so the API's per-lane rows collapse to one per name.
-  const merged = mergeAssetUses(assets);
+  const merged = mergeAssetUses(assets).filter((asset) => asset.kind !== 'agent');
   if (merged.length === 0) return null;
-  const shown = merged.slice(0, MAX_CARD_ASSETS);
+  const shown = merged.slice(0, MAX_CARD_SKILLS);
   const rest = merged.length - shown.length;
 
   return (
-    <div className="flex flex-wrap items-center gap-1" aria-label="Assets used">
+    <div className="flex flex-wrap items-center gap-1" aria-label="Skills used">
       {shown.map((asset) => (
         <AssetChip key={assetUseKey(asset)} asset={asset} asLink={false} />
       ))}

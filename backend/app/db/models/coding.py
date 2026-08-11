@@ -62,7 +62,12 @@ STATUS_ABANDONED = "abandoned"
 
 # Live means recent. A run with no `ended_at` that has been silent this long is
 # reported as abandoned, and sorts below the ones that are genuinely working.
+# How long silence is allowed depends on who is waiting: a pipeline stage is
+# never quiet while it works, so two minutes of nothing means it died — but a
+# chat is quiet for exactly as long as the person is reading the answer, and the
+# short window called every answered question abandoned.
 IDLE_WINDOW = timedelta(minutes=2)
+CHAT_IDLE_WINDOW = timedelta(minutes=30)
 # Longer than this between two consecutive events is a pause (a closed laptop, a
 # person reading), not work — so it does not count towards `active_ms`.
 ACTIVE_GAP = timedelta(seconds=60)
@@ -70,6 +75,11 @@ ACTIVE_GAP = timedelta(seconds=60)
 # Which producer wrote the run. Null means the same as "chat": nobody said.
 WORKFLOW_FACTORY = "factory"
 WORKFLOW_CHAT = "chat"
+
+
+def idle_window(workflow: str | None) -> timedelta:
+    """How long this kind of run may stay silent and still count as live."""
+    return IDLE_WINDOW if workflow == WORKFLOW_FACTORY else CHAT_IDLE_WINDOW
 
 # Outcome of one stage. Anything but `running` is final and stamps ended_at.
 # `abandoned` is the stage-level twin of the run-level one: the turn never

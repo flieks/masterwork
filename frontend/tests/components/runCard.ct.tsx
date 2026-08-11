@@ -46,7 +46,7 @@ test('a pipeline run reads as a run: id, workflow, request, lanes and telemetry'
   await expect(page.locator('[data-phase-dot="passed"]')).toHaveCount(5);
 
   // Stat chips.
-  await expect(page.getByText('$0.1924')).toBeVisible();
+  await expect(page.getByText('$0.19')).toBeVisible();
   await expect(page.getByText('1m 54s active')).toBeVisible();
   await expect(page.getByText('899.9k')).toBeVisible();
 
@@ -152,18 +152,22 @@ test('a long run caps its phase dots instead of walking out of the card', async 
 /**
  * The duplicate React key this guards against is only *warned* about by a
  * development React, and CT bundles the production one — so the assertion is on
- * the symptom the same rows produced on screen: one agent, two chips.
+ * the symptom the same rows produced on screen: one skill, two chips.
  */
-test('an agent used on two lanes is one chip, not a duplicate key', async ({ mount, page }) => {
-  // The API counts per lane: backend-developer is recorded once for the lane
-  // that dispatched it and again for the lane it then ran under.
+test('a skill used on two lanes is one chip, and agents stay out of the row', async ({
+  mount,
+  page,
+}) => {
+  // The API counts per lane: backend-dev is recorded once for each lane that
+  // loaded it.
   const run = factoryRunSummary({
     assets: [
-      assetUse('agent', 'backend-developer', 2, 'main'),
-      assetUse('agent', 'backend-developer', 3, 'backend-developer'),
-      assetUse('skill', 'backend-dev', 4, 'backend-developer'),
+      assetUse('skill', 'backend-dev', 2, 'main'),
+      assetUse('skill', 'backend-dev', 3, 'backend-developer'),
+      assetUse('agent', 'backend-developer', 4, 'main'),
       assetUse('skill', 'frontend-dev', 3, 'main'),
-      assetUse('agent', 'qa-tester', 2, 'main'),
+      assetUse('skill', 'alembic-heads', 2, 'backend-developer'),
+      assetUse('skill', 'concise-comments', 2, 'main'),
       assetUse('skill', 'tdd', 1, 'qa-tester'),
     ],
   });
@@ -174,13 +178,16 @@ test('an agent used on two lanes is one chip, not a duplicate key', async ({ mou
     </TestProviders>,
   );
 
-  const assets = page.getByLabel('Assets used');
-  await expect(assets.getByText('backend-developer', { exact: true })).toHaveCount(1);
+  const assets = page.getByLabel('Skills used');
+  await expect(assets.getByText('backend-dev', { exact: true })).toHaveCount(1);
   // Both lanes' counts, on the one chip.
-  await expect(assets.getByTitle('agent backend-developer — used 5×')).toBeVisible();
+  await expect(assets.getByTitle('skill backend-dev — used 5×')).toBeVisible();
   await expect(assets.getByText('×5')).toBeVisible();
 
-  // Five assets after merging, so four chips and one hidden — not six and two.
+  // The lane chart above already names every agent, so the row never repeats one.
+  await expect(assets.getByText('backend-developer', { exact: true })).toHaveCount(0);
+
+  // Five skills after merging, so four chips and one hidden — not six and two.
   await expect(assets.getByText('+1 more')).toBeVisible();
   await expect(assets.getByText('tdd', { exact: true })).toHaveCount(0);
 });
@@ -197,4 +204,39 @@ test('a run with no phases and no lanes still renders', async ({ mount, page }) 
   await expect(page.getByText('factory-e2e')).toBeVisible();
   await expect(page.getByText('session')).toBeVisible();
   await expect(page.locator('[data-phase-dot]')).toHaveCount(0);
+});
+
+test('the card is dated by its last activity, not by when it started', async ({ mount, page }) => {
+  // The grid sorts on last activity, so a card dated by its start reads as
+  // unsorted: this run began a day ago and answered a minute before `now`.
+  // `ended_at` is from the life it already left; the run spoke again after it.
+  const dayOld = factoryRunSummary({
+    started_at: '2026-08-07T00:00:19.434Z',
+    ended_at: '2026-08-07T00:02:14.589Z',
+    last_event_at: RUN_END,
+  });
+
+  await mount(
+    <TestProviders>
+      <RunCard session={dayOld} now={NOW} />
+    </TestProviders>,
+  );
+
+  // The label itself is relative to the real clock, so the machine-readable
+  // attribute is what pins which instant the card chose.
+  await expect(page.locator('time')).toHaveAttribute('datetime', RUN_END);
+});
+
+test('a chat waiting on its human still reads as live', async ({ mount, page }) => {
+  // Ten minutes of silence is a person reading, not a dead run — the backend
+  // says `running` for the same gap, and the dot has to agree with the chip.
+  const waiting = chatRun({ ended_at: null, last_event_at: '2026-08-08T09:00:00.000Z' });
+
+  await mount(
+    <TestProviders>
+      <RunCard session={waiting} now={Date.parse('2026-08-08T09:10:00.000Z')} />
+    </TestProviders>,
+  );
+
+  await expect(page.getByText('Live')).toBeVisible();
 });

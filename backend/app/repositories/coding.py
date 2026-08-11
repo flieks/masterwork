@@ -11,6 +11,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models.coding import (
     ACTIVE_GAP,
+    CHAT_IDLE_WINDOW,
     EVIDENCE_RECOVERED,
     IDLE_WINDOW,
     LAUNCH_AUTOMATED,
@@ -41,22 +42,45 @@ TOOL_CALL_EVENT = "PostToolUse"
 LIFECYCLE_EVENTS = ("SessionStart", "SessionEnd")
 
 
-def _idle_cutoff() -> datetime:
-    """The instant before which silence means the run is no longer live.
+def _idle_cutoff() -> tuple[datetime, datetime]:
+    """The instants before which silence means the run is no longer live — one
+    per idle window, since how long a run may stay quiet depends on who is
+    waiting (see `idle_window`).
 
     Computed in Python rather than as `func.now() - IDLE_WINDOW`: SQLite (the
     packaged default) cannot do date arithmetic on CURRENT_TIMESTAMP, so that
     form silently never matched and ghosts stayed listed forever.
     """
-    return datetime.now(tz=UTC).replace(tzinfo=None) - IDLE_WINDOW
+    now = datetime.now(tz=UTC).replace(tzinfo=None)
+    return now - IDLE_WINDOW, now - CHAT_IDLE_WINDOW
 
 
-def _is_live(cutoff: datetime) -> ColumnElement[bool]:
+def _went_quiet(cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
+    """Silent for longer than this kind of run is allowed to be. Written as two
+    typed comparisons rather than one CASE so the bound values keep their
+    DateTime type on both backends."""
+    factory_cutoff, chat_cutoff = cutoff
+    # Both halves are null-safe comparisons: `workflow = 'factory'` is NULL for
+    # the unclassified rows, and one NULL branch makes the whole OR unknown —
+    # which is neither live nor abandoned, so such a run matched no filter at all.
+    return or_(
+        and_(
+            CodingSession.workflow.is_not_distinct_from(WORKFLOW_FACTORY),
+            CodingSession.last_event_at < factory_cutoff,
+        ),
+        and_(
+            CodingSession.workflow.is_distinct_from(WORKFLOW_FACTORY),
+            CodingSession.last_event_at < chat_cutoff,
+        ),
+    )
+
+
+def _is_live(cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     """Open and recent. The only thing that may call itself `running`."""
-    return and_(CodingSession.ended_at.is_(None), CodingSession.last_event_at >= cutoff)
+    return and_(CodingSession.ended_at.is_(None), not_(_went_quiet(cutoff)))
 
 
-def _is_empty_session(cutoff: datetime) -> ColumnElement[bool]:
+def _is_empty_session(cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     """Nothing but lifecycle events, and no longer live — see IDLE_WINDOW."""
     did_something = (
         select(CodingEvent.id)
@@ -68,14 +92,11 @@ def _is_empty_session(cutoff: datetime) -> ColumnElement[bool]:
     )
     # SessionEnd rides an async hook that the dying process can outrun, so a ghost
     # is not reliably closed — silence has to count as finished too.
-    finished = or_(
-        CodingSession.ended_at.is_not(None),
-        CodingSession.last_event_at < cutoff,
-    )
+    finished = or_(CodingSession.ended_at.is_not(None), _went_quiet(cutoff))
     return and_(not_(did_something), finished)
 
 
-def _status_filter(status: str, cutoff: datetime) -> ColumnElement[bool]:
+def _status_filter(status: str, cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     """Match the status the reader will actually see, not the stored one.
 
     `abandoned` is derived from silence and `running` is narrowed by it, so
