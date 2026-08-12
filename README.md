@@ -172,6 +172,15 @@ cd frontend && npm run test:ct && npm run test:e2e
 Local dev-server setup, including the optional launchd services used on macOS,
 is documented in [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 
+## Credits
+
+The `factory/` pipeline — staged agent runs with typed envelopes, per-stage write
+boundaries and deterministic gates — takes its shape from
+[disler/super-simple-software-factory](https://github.com/disler/super-simple-software-factory)
+by [IndyDevDan](https://www.youtube.com/@indydevdan). `SSSF` in a couple of code
+comments refers to that repo. The code here is ours; the idea to structure it
+this way is not.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

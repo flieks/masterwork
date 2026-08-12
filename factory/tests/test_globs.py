@@ -9,10 +9,10 @@ from adw.gates import matches_boundary, normalize_path, translate_glob
 @pytest.mark.parametrize(
     ("pattern", "path", "expected"),
     [
-        # The SSSF gotcha: a single star must not swallow a directory separator.
-        ("adws/adw_*.py", "adws/adw_plan.py", True),
-        ("adws/adw_*.py", "adws/adw_data/x/y.py", False),
-        ("adws/adw_*.py", "adws/nested/adw_plan.py", False),
+        # A single star must not swallow a directory separator.
+        ("factory/adw/*.py", "factory/adw/gates.py", True),
+        ("factory/adw/*.py", "factory/adw/sub/x/y.py", False),
+        ("factory/adw/*.py", "factory/adw/nested/gates.py", False),
         ("*.md", "README.md", True),
         ("*.md", "docs/README.md", False),
         ("plan.md", "plan.md", True),
