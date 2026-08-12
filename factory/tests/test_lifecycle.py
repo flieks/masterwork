@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -451,15 +452,34 @@ def test_list_runs_needs_no_roles_no_checks_and_no_request(
 
 @pytest.fixture
 def sleeper(tmp_path: Path):
-    """A process whose command line looks like a factory run, and nothing else."""
+    """The pid of a process whose command line looks like a factory run.
+
+    Spawned through an intermediate that exits at once, so the sleeper is init's
+    child, not ours: dead means reaped, and `alive()` can never see a zombie —
+    our own child would stay one whenever the reaping thread got starved under a
+    full-suite run.
+    """
     script = tmp_path / "run.py"
     script.write_text("import time\ntime.sleep(120)\n", encoding="utf-8")
-    proc = subprocess.Popen([sys.executable, str(script), "--repo", str(tmp_path)])
-    # Reaped promptly, so `alive()` tells the truth instead of seeing a zombie child.
-    threading.Thread(target=proc.wait, daemon=True).start()
-    yield proc
-    if proc.poll() is None:
-        proc.kill()
+    spawner = (
+        "import subprocess, sys;"
+        "p = subprocess.Popen([sys.executable] + sys.argv[1:],"
+        " stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);"
+        "print(p.pid)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", spawner, str(script), "--repo", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    pid = int(out.stdout.strip())
+    yield pid
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass  # already gone
 
 
 def registered(root: Path, run_id: str, **fields) -> Path:
@@ -473,14 +493,14 @@ def registered(root: Path, run_id: str, **fields) -> Path:
 
 def test_kill_terminates_a_verified_run_and_records_the_stop(tmp_path: Path, sleeper, capsys):
     root = tmp_path / "runs"
-    registered(root, "live0001", pid=sleeper.pid, cmdline=runs.process_cmdline(sleeper.pid) or "")
+    registered(root, "live0001", pid=sleeper, cmdline=runs.process_cmdline(sleeper) or "")
 
     assert cli.kill_run(root, "live0001") == 0
     out = capsys.readouterr().out
-    assert f"pid {sleeper.pid} verified as this run" in out
-    assert f"SIGTERM sent to pid {sleeper.pid}" in out
+    assert f"pid {sleeper} verified as this run" in out
+    assert f"SIGTERM sent to pid {sleeper}" in out
     assert "is gone, state is now stopped" in out
-    assert not runs.alive(sleeper.pid)
+    assert not runs.alive(sleeper)
 
     record = runs.read(root / "live0001")
     assert record is not None
