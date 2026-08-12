@@ -129,8 +129,12 @@ def role_tree(tmp_path: Path) -> Path:
     import json
 
     store = tmp_path / "masterwork-agents"
+    store.mkdir()
+    (store / "conventions.md").write_text(
+        "# House conventions\nNever hardcode a secret.\n", encoding="utf-8"
+    )
     plan = store / "plan"
-    plan.mkdir(parents=True)
+    plan.mkdir()
     (plan / "system.md").write_text(
         "You are the PLAN stage of a deterministic pipeline.\nWrite plan.md.\n",
         encoding="utf-8",

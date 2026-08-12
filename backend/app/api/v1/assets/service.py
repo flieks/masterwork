@@ -88,8 +88,8 @@ async def update_asset(providers: list[Provider], asset_id: str, content: str) -
     asset = find_asset(providers, asset_id)
     if asset.read_only:
         raise ReadOnlyAssetError(
-            f"{asset_id} is provided by a plugin and is read-only; "
-            "manage it through the plugin's marketplace instead"
+            f"{asset_id} is read-only and cannot be edited through the API; "
+            "a plugin asset is managed by its marketplace, a role config on disk"
         )
     roots = [root for provider in providers for root in provider.roots()]
     resolved = resolve_within_roots(asset.path, roots)

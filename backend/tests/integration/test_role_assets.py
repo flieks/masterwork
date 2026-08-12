@@ -15,6 +15,8 @@ from tests.helpers import FakeRunner, providers_for
 
 PLAN_SYSTEM = "masterwork:agent:plan:system"
 PLAN_USER = "masterwork:agent:plan:user"
+PLAN_CONFIG = "masterwork:agent:plan:config"
+CONVENTIONS = "masterwork:agent:conventions"
 
 
 @pytest_asyncio.fixture
@@ -52,9 +54,10 @@ async def test_roles_filter_as_agents(roles_client: AsyncClient) -> None:
 
 
 async def test_search_matches_role_purpose_and_content(roles_client: AsyncClient) -> None:
-    # `purpose` from role.json reaches search through the description.
+    # `purpose` from role.json reaches search through the description — on the
+    # prompts and on the read-only config asset alike.
     by_purpose = (await roles_client.get("/api/v1/assets", params={"q": "implementation"})).json()
-    assert {a["id"] for a in by_purpose} == {PLAN_SYSTEM, PLAN_USER}
+    assert {a["id"] for a in by_purpose} == {PLAN_SYSTEM, PLAN_USER, PLAN_CONFIG}
     # ...and the prompt body itself is searchable like any other asset.
     by_body = (await roles_client.get("/api/v1/assets", params={"q": "{{request}}"})).json()
     assert [a["id"] for a in by_body] == [PLAN_USER]
@@ -69,9 +72,30 @@ async def test_get_role_asset(roles_client: AsyncClient) -> None:
     assert "PLAN stage" in body["content"]
 
 
-async def test_role_json_is_not_an_asset(roles_client: AsyncClient) -> None:
-    assert (await roles_client.get(_url("masterwork:agent:plan:config"))).status_code == 404
+async def test_role_json_is_a_read_only_asset(roles_client: AsyncClient, role_tree: Path) -> None:
+    r = await roles_client.get(_url(PLAN_CONFIG))
+    assert r.status_code == 200
+    assert r.json()["read_only"] is True
+    assert '"writes"' in r.json()["content"]
+    denied = await roles_client.put(_url(PLAN_CONFIG), json={"content": "{}"})
+    assert denied.status_code == 403
+    assert "read-only" in denied.json()["detail"]
+    assert '"writes"' in (role_tree / "plan" / "role.json").read_text(encoding="utf-8")
+    # The raw filename is still not an id.
     assert (await roles_client.get(_url("masterwork:agent:plan:role.json"))).status_code == 404
+
+
+async def test_conventions_are_a_writable_asset(
+    roles_client: AsyncClient, role_tree: Path
+) -> None:
+    r = await roles_client.get(_url(CONVENTIONS))
+    assert r.status_code == 200
+    assert r.json()["read_only"] is False
+    assert "Never hardcode a secret" in r.json()["content"]
+    new = "# House conventions\nComments say why, not what.\n"
+    updated = await roles_client.put(_url(CONVENTIONS), json={"content": new})
+    assert updated.status_code == 200
+    assert (role_tree / "conventions.md").read_text(encoding="utf-8") == new
 
 
 async def test_update_role_prompt_writes_the_file(

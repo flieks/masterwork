@@ -124,9 +124,14 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
             {data.read_only ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
-                title="Plugin assets are managed by their marketplace and can't be edited here."
+                title={
+                  data.provider === 'claude-plugin'
+                    ? "Plugin assets are managed by their marketplace and can't be edited here."
+                    : 'Machine config, managed on disk — read-only here.'
+                }
               >
-                <Lock className="size-3.5" /> Read-only · plugin
+                <Lock className="size-3.5" /> Read-only
+                {data.provider === 'claude-plugin' ? ' · plugin' : null}
               </span>
             ) : mode === 'view' ? (
               <Button size="sm" variant="outline" onClick={startEdit}>

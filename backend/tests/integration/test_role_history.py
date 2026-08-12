@@ -165,7 +165,8 @@ async def test_the_database_and_run_logs_are_never_versioned(
         ".gitignore",
         "build/system.md",
         "build/user.md",
-        "plan/role.json",  # config is versioned even though it is not an asset
+        "conventions.md",
+        "plan/role.json",  # versioned although read-only as an asset
         "plan/system.md",
         "plan/user.md",
     ]

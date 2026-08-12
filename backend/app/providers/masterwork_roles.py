@@ -5,19 +5,21 @@ prompts used to be Python string literals. They now live on disk so masterwork's
 own improvement machinery (edit, chat proposals, project links, simulations) can
 work on them like any other asset:
 
+    <store>/conventions.md     shared rules, every role   -> "conventions"
     <store>/<role>/system.md   static identity            -> "<role>:system"
     <store>/<role>/user.md     per-turn task template     -> "<role>:user"
-    <store>/<role>/role.json   model / writes / purpose   -> NOT an asset
+    <store>/<role>/role.json   model / writes / purpose   -> "<role>:config", read-only
 
 One asset per editable file, because `update_asset` writes a whole file and every
 LLM writer in this app emits prose: a role-as-one-asset would need a synthetic
 multi-file envelope that chat and simulations would have to reproduce byte-exactly
 or corrupt both halves at once.
 
-`role.json` is read for its `model` and `purpose` but is never exposed as an
-asset: it is machine config (including the `writes` boundary that decides what a
-headless agent may touch), and the improvement loop only knows how to write
-markdown.
+`role.json` is exposed read-only: it is machine config (including the `writes`
+boundary that decides what a headless agent may touch), so it must be visible —
+the boundary is half the role's behavior — but the improvement loop only knows
+how to write markdown, and an LLM writer must never be able to widen its own
+boundary. Edits happen on disk.
 
 The store may not exist yet — the factory seeds it on first run — so an absent
 directory scans to zero assets, never an error.
@@ -40,6 +42,9 @@ from app.providers.claude import _KIND_AGENT, _safe_resolve
 _KIND = _KIND_AGENT
 
 _CONFIG_FILE = "role.json"
+_CONFIG_PART = "config"
+_CONVENTIONS_FILE = "conventions.md"
+_CONVENTIONS_NAME = "conventions"
 
 # part -> filename, in list order.
 _PARTS = {"system": "system.md", "user": "user.md"}
@@ -49,6 +54,8 @@ _PART_BLURB = {
     "system": "Static identity, sent as the system prompt on every turn.",
     "user": "Per-turn task; the runner fills its {{placeholders}}.",
 }
+_CONFIG_BLURB = "Machine config: model, write boundary, tool denies. Read-only — edit on disk."
+_CONVENTIONS_BLURB = "House conventions, shown to every role on every run."
 
 # Role names become the first colon-separated half of an asset name, so they must
 # not contain a colon (the id would stop round-tripping), a slash or a space.
@@ -114,6 +121,9 @@ class MasterworkRoleProvider:
     def scan(self) -> Iterable[ScannedAsset]:
         if not self._store_root.is_dir():
             return  # not seeded yet
+        conventions = _build_conventions_asset(self.name, self._store_root / _CONVENTIONS_FILE)
+        if conventions is not None:
+            yield conventions
         try:
             entries = sorted(self._store_root.iterdir())
         except OSError:
@@ -129,11 +139,18 @@ class MasterworkRoleProvider:
                 asset = _build_role_asset(self.name, entry.name, part, path, config)
                 if asset is not None:
                     yield asset
+            config_asset = _build_config_asset(self.name, entry.name, entry / _CONFIG_FILE, config)
+            if config_asset is not None:
+                yield config_asset
 
     def asset_id_for_path(self, path: Path) -> str | None:
         resolved = _safe_resolve(path)
         root = _safe_resolve(self._store_root)
         if resolved is None or root is None:
+            return None
+        if resolved.parent == root:
+            if resolved.name == _CONVENTIONS_FILE:
+                return f"{self.name}:{_KIND}:{_CONVENTIONS_NAME}"
             return None
         role_dir = resolved.parent
         if role_dir.parent != root or not is_valid_role_name(role_dir.name):
@@ -141,7 +158,9 @@ class MasterworkRoleProvider:
         for part, filename in _PARTS.items():
             if resolved.name == filename:
                 return f"{self.name}:{_KIND}:{role_dir.name}:{part}"
-        return None  # role.json and anything else is not an asset
+        if resolved.name == _CONFIG_FILE:
+            return f"{self.name}:{_KIND}:{role_dir.name}:{_CONFIG_PART}"
+        return None
 
 
 def _build_role_asset(
@@ -167,5 +186,53 @@ def _build_role_asset(
         content=content,
         read_only=False,
         model=config.model,
+        created_at=created_at,
+    )
+
+
+def _build_config_asset(
+    provider: str, role: str, path: Path, config: RoleConfig
+) -> ScannedAsset | None:
+    """The role's `role.json`, visible but read-only — an LLM writer must never
+    be able to widen its own `writes` boundary."""
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+        updated_at, created_at = file_times(path)
+    except OSError:
+        return None
+    return ScannedAsset(
+        provider=provider,
+        kind=_KIND,
+        name=f"{role}:{_CONFIG_PART}",
+        title=f"{role} · config",
+        description=(
+            f"{config.purpose} — {_CONFIG_BLURB}" if config.purpose else _CONFIG_BLURB
+        ),
+        path=path,
+        updated_at=updated_at,
+        content=content,
+        read_only=True,
+        model=config.model,
+        created_at=created_at,
+    )
+
+
+def _build_conventions_asset(provider: str, path: Path) -> ScannedAsset | None:
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+        updated_at, created_at = file_times(path)
+    except OSError:
+        return None
+    return ScannedAsset(
+        provider=provider,
+        kind=_KIND,
+        name=_CONVENTIONS_NAME,
+        title="conventions · shared rules",
+        description=_CONVENTIONS_BLURB,
+        path=path,
+        updated_at=updated_at,
+        content=content,
+        read_only=False,
+        model=None,
         created_at=created_at,
     )
