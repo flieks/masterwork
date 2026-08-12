@@ -1,4 +1,4 @@
-import type { CodingSession } from '~/api/generated';
+import type { CodingEvent, CodingSession } from '~/api/generated';
 import { LIVE_WINDOW_MS } from '~/lib/timeline';
 
 /**
@@ -107,6 +107,34 @@ export function windowSince(window: AssetWindow, now = Date.now()): string | und
 /** "4 stage runs" — a pipeline's stages, counted. Plural that reads right at one. */
 export function stageRunsLabel(count: number): string {
   return `${count} stage ${count === 1 ? 'run' : 'runs'}`;
+}
+
+/**
+ * The factory-or-chat router announces its verdict by running
+ * `echo "masterwork:route=chat -- reason"` — echo exists everywhere, and the
+ * hook forwarder ships the command here with the session id attached, which the
+ * agent itself never knows. Latest marker wins: one session can route several
+ * tasks.
+ */
+const ROUTE_MARKER = /masterwork:route=(chat|factory)(?:\s*--\s*([^"'\n]*))?/;
+
+export interface RouteDecision {
+  verdict: 'chat' | 'factory';
+  reason: string | null;
+}
+
+/** The router's latest verdict in this session, or null if it never spoke. */
+export function routeDecision(events: CodingEvent[]): RouteDecision | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const input = events[i].payload?.['tool_input'] as { command?: unknown } | undefined;
+    const command = input?.command;
+    if (typeof command !== 'string') continue;
+    const match = ROUTE_MARKER.exec(command);
+    if (!match) continue;
+    const reason = match[2]?.trim();
+    return { verdict: match[1] as RouteDecision['verdict'], reason: reason || null };
+  }
+  return null;
 }
 
 /**

@@ -14,6 +14,7 @@ import {
 } from '../queries';
 import { ChildRuns } from './ChildRuns';
 import { EventTimeline } from './EventTimeline';
+import { RouteDecisionNote } from './RouteDecisionNote';
 import { PhasePanel } from './PhasePanel';
 import { RunWaterfall } from './RunWaterfall';
 import { SessionAssets } from './SessionAssets';
@@ -54,6 +55,7 @@ export function SessionDetailPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-6">
       <Breadcrumb runId={runIdLabel(session)} />
       <SessionHeader session={session} />
+      <RouteDecisionNote sessionId={session.id} />
       <SessionAssets session={session} />
       <ChildRuns sessionId={session.id} childCount={session.child_count} />
       <RunViews sessionId={session.id} />
