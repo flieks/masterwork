@@ -24,9 +24,7 @@ def upgrade() -> None:
     # foreign key. Making it one would force SQLite to rebuild `coding_sessions`
     # while three child tables reference it, and the link is soft anyway — an
     # unresolvable parent just means the child is shown as a root.
-    op.add_column(
-        "coding_sessions", sa.Column("title_source", sa.String(length=20), nullable=True)
-    )
+    op.add_column("coding_sessions", sa.Column("title_source", sa.String(length=20), nullable=True))
     op.add_column(
         "coding_sessions", sa.Column("parent_session_id", sa.String(length=200), nullable=True)
     )

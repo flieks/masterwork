@@ -16,7 +16,9 @@ import {
   type TimelineRow,
   type ToolSummary,
 } from '../events';
+import { eventImages } from '../media';
 import { codingSessionEventsQueryAtom } from '../queries';
+import { EventImages } from './EventImages';
 import { EventTypeChip } from './EventTypeChip';
 import { ToolChip } from './ToolChip';
 
@@ -77,9 +79,19 @@ export function EventTimeline({ sessionId, live = false, phaseId }: EventTimelin
     <ol className="flex flex-col">
       {rows.map((row, index) =>
         row.kind === 'event' ? (
-          <EventRow key={row.key} event={row.event} isLast={index === rows.length - 1} />
+          <EventRow
+            key={row.key}
+            sessionId={sessionId}
+            event={row.event}
+            isLast={index === rows.length - 1}
+          />
         ) : (
-          <EventGroupRow key={row.key} row={row} isLast={index === rows.length - 1} />
+          <EventGroupRow
+            key={row.key}
+            sessionId={sessionId}
+            row={row}
+            isLast={index === rows.length - 1}
+          />
         ),
       )}
     </ol>
@@ -91,9 +103,11 @@ export function EventTimeline({ sessionId, live = false, phaseId }: EventTimelin
  * the rows they would have been — which four files, each with its own payload.
  */
 function EventGroupRow({
+  sessionId,
   row,
   isLast,
 }: {
+  sessionId: string;
   row: Extract<TimelineRow, { kind: 'group' }>;
   isLast: boolean;
 }) {
@@ -129,7 +143,13 @@ function EventGroupRow({
         {expanded ? (
           <ol className="mt-2 flex flex-col border-l pl-3">
             {row.events.map((event, i) => (
-              <EventRow key={event.id} event={event} isLast={i === row.events.length - 1} nested />
+              <EventRow
+                key={event.id}
+                sessionId={sessionId}
+                event={event}
+                isLast={i === row.events.length - 1}
+                nested
+              />
             ))}
           </ol>
         ) : null}
@@ -158,10 +178,12 @@ function RowGutter({ at, isLast }: { at: string; isLast: boolean }) {
 }
 
 function EventRow({
+  sessionId,
   event,
   isLast,
   nested = false,
 }: {
+  sessionId: string;
   event: CodingEvent;
   isLast: boolean;
   /** Inside an expanded group: the clock is already carried by the group's row. */
@@ -171,6 +193,7 @@ function EventRow({
   const prompt = promptText(event);
   const payload = formatJson(event.payload);
   const summary = toolSummary(event);
+  const images = eventImages(event);
 
   return (
     <li className="flex gap-3">
@@ -212,6 +235,8 @@ function EventRow({
             {prompt.text}
           </p>
         ) : null}
+
+        <EventImages sessionId={sessionId} images={images} />
 
         {payload && expanded ? (
           <pre className="mt-1.5 max-h-80 overflow-auto rounded-md border bg-muted/40 p-3 text-xs leading-relaxed">

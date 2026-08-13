@@ -80,6 +80,12 @@ class CodingSessionNotFoundError(DomainError):
     status_code = 404
 
 
+class CodingMediaNotFoundError(DomainError):
+    """No image with this id was extracted from that session's events."""
+
+    status_code = 404
+
+
 class SimulationNotFoundError(DomainError):
     status_code = 404
 

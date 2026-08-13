@@ -113,11 +113,13 @@ class ClaudeCodeIntegration:
         hooks_dir: Path,
         forwarder: Path,
         ingest_url: str,
+        media_dir: Path,
     ) -> None:
         self._settings_path = settings_path
         self._hooks_dir = hooks_dir
         self._forwarder = forwarder
         self._ingest_url = ingest_url
+        self._media_dir = media_dir
 
     # ── read ─────────────────────────────────────────────────────────────────
 
@@ -183,7 +185,7 @@ class ClaudeCodeIntegration:
             before = self._read()
         except ObservabilityIOError as exc:
             raise ObservabilityUnavailableError(exc.detail) from exc
-        install_forwarder(self._forwarder, self._hooks_dir, self._ingest_url)
+        install_forwarder(self._forwarder, self._hooks_dir, self._ingest_url, self._media_dir)
 
         after = copy.deepcopy(before)
         hooks = _hooks_of(after)

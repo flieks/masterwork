@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from httpx import AsyncClient
+from pytest import MonkeyPatch
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.config import settings
 from app.db.models.coding import CodingSession
 
 
@@ -313,3 +315,38 @@ async def test_ingest_requires_session_and_type(client: AsyncClient) -> None:
         await client.post("/api/v1/hooks/events", json={"event_type": "Stop"})
     ).status_code == 422
     assert (await client.post("/api/v1/hooks/events", json={"session_id": "s1"})).status_code == 422
+
+
+async def test_media_serves_the_image_the_hook_pulled_out_of_a_payload(
+    client: AsyncClient, tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "masterwork_media_root", tmp_path)
+    name = f"{'a' * 64}.png"
+    (tmp_path / "s1").mkdir()
+    (tmp_path / "s1" / name).write_bytes(b"\x89PNG\r\n\x1a\nnot-really")
+
+    r = await client.get(f"/api/v1/coding-sessions/s1/media/{name}")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content == b"\x89PNG\r\n\x1a\nnot-really"
+
+
+async def test_media_ids_that_are_not_hashes_never_reach_the_disk(
+    client: AsyncClient, tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Both halves of the path arrive over HTTP, so both are matched, not cleaned."""
+    monkeypatch.setattr(settings, "masterwork_media_root", tmp_path)
+    (tmp_path.parent / "secret.png").write_bytes(b"private")
+
+    for bad in ("../secret.png", "..%2Fsecret.png", "nope.png", f"{'a' * 64}.exe"):
+        r = await client.get(f"/api/v1/coding-sessions/s1/media/{bad}")
+        assert r.status_code == 404, bad
+
+
+async def test_media_that_was_cleaned_off_disk_is_a_404(
+    client: AsyncClient, tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """These bytes live outside the database, so an event can outlive its image."""
+    monkeypatch.setattr(settings, "masterwork_media_root", tmp_path)
+    assert (await client.get(f"/api/v1/coding-sessions/s1/media/{'b' * 64}.png")).status_code == 404

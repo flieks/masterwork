@@ -8,7 +8,6 @@ from pathlib import Path
 from app.api.v1.assets.service import parse_asset_id
 from app.providers.masterwork_roles import MasterworkRoleProvider, read_role_config
 
-
 EXPECTED_IDS = {
     "masterwork:agent:conventions",
     "masterwork:agent:plan:system",

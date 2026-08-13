@@ -205,9 +205,7 @@ def _build_config_asset(
         kind=_KIND,
         name=f"{role}:{_CONFIG_PART}",
         title=f"{role} · config",
-        description=(
-            f"{config.purpose} — {_CONFIG_BLURB}" if config.purpose else _CONFIG_BLURB
-        ),
+        description=(f"{config.purpose} — {_CONFIG_BLURB}" if config.purpose else _CONFIG_BLURB),
         path=path,
         updated_at=updated_at,
         content=content,

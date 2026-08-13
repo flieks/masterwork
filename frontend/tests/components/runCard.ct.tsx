@@ -1,5 +1,6 @@
 import { test, expect, type Locator } from '@playwright/experimental-ct-react';
 import { RunCard } from '~/features/sessions/components/RunCard';
+import { projectTint, sessionLabel } from '~/features/sessions/runs';
 import { TestProviders } from './harness/TestProviders';
 import {
   assetUse,
@@ -52,6 +53,44 @@ test('a pipeline run reads as a run: id, workflow, request, lanes and telemetry'
 
   // The whole card opens the run.
   await expect(page.getByRole('link')).toHaveAttribute('href', '/sessions/factory-3f5a20b0');
+});
+
+test('the card names the project the run touched, in that project’s colour', async ({
+  mount,
+  page,
+}) => {
+  await mount(
+    <TestProviders>
+      <RunCard session={factoryRunSummary()} now={NOW} />
+    </TestProviders>,
+  );
+
+  const badge = page.locator('[data-project]');
+  await expect(badge).toHaveText('factory-e2e');
+  await expect(badge).toHaveAttribute('title', 'Project factory-e2e — /tmp/scratch/factory-e2e');
+  // Tinted, so the grid can be scanned by colour rather than read.
+  await expect(badge).toHaveClass(/bg-\w+-500\/15/);
+});
+
+test('a project keeps the same colour wherever it appears', () => {
+  // Hashed, not assigned: the palette must not shift as runs come and go.
+  expect(projectTint('masterwork')).toBe(projectTint('masterwork'));
+  expect(projectTint('masterwork')).not.toBe(projectTint('buurtchef'));
+  // Two halves of one product are one colour.
+  expect(projectTint('MoveMatch/mobile')).toBe(projectTint('MoveMatch/api'));
+});
+
+test('a folder that names a part, not a product, is qualified by its parent', () => {
+  const run = factoryRunSummary({
+    git_repo: null,
+    cwd: '/Users/dev/Projects/Translation Tool/APP',
+  });
+  expect(sessionLabel(run)).toBe('Translation Tool/APP');
+
+  // A name that already identifies the product is left alone.
+  expect(sessionLabel(factoryRunSummary())).toBe('factory-e2e');
+  // And so is a run with no path to fall back on.
+  expect(sessionLabel(factoryRunSummary({ git_repo: null, cwd: '' }))).toBe('factory-3f5a20b0');
 });
 
 test('phase bars sit at their real position on the run axis', async ({ mount, page }) => {
@@ -201,7 +240,7 @@ test('a run with no phases and no lanes still renders', async ({ mount, page }) 
 
   await expect(page.getByText('factory-3f5a20b0')).toBeVisible();
   // Falls back to the repo name for the request line and to one implicit lane.
-  await expect(page.getByText('factory-e2e')).toBeVisible();
+  await expect(page.getByTitle('Untitled run — showing factory-e2e')).toBeVisible();
   await expect(page.getByText('session')).toBeVisible();
   await expect(page.locator('[data-phase-dot]')).toHaveCount(0);
 });

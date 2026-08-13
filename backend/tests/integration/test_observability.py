@@ -41,6 +41,7 @@ def wire(client: AsyncClient, claude_home: Path, tmp_path: Path) -> Path:
         hooks_dir=tmp_path / "masterwork" / "hooks",
         forwarder=FORWARDERS / "claude_code.py",
         ingest_url=INGEST,
+        media_dir=tmp_path / "masterwork" / "media",
     )
     app.dependency_overrides[get_integrations] = lambda: [integration]
     return settings_path
@@ -86,7 +87,11 @@ async def test_connect_installs_hooks_and_the_forwarder(client: AsyncClient, wir
     script = Path(body["script_path"])
     assert script.exists()
     assert commands(settings, "SessionStart")[0].endswith(str(script))
-    assert json.loads((script.parent / "config.json").read_text())["ingest_url"] == INGEST
+    # The sidecar states both destinations: where events post, and where the
+    # images pulled out of them are written for the backend to serve back.
+    sidecar = json.loads((script.parent / "config.json").read_text())
+    assert sidecar["ingest_url"] == INGEST
+    assert sidecar["media_dir"].endswith("media")
 
     # Only the subagent-spawn tool is matched on PreToolUse.
     assert settings["hooks"]["PreToolUse"][0]["matcher"] == "Task|Agent"
@@ -105,6 +110,7 @@ async def test_a_path_with_a_space_stays_one_argument(
         hooks_dir=tmp_path / "Ada Lovelace" / "hooks",
         forwarder=FORWARDERS / "claude_code.py",
         ingest_url=INGEST,
+        media_dir=tmp_path / "Ada Lovelace" / "media",
     )
     app.dependency_overrides[get_integrations] = lambda: [integration]
 
@@ -258,6 +264,7 @@ async def test_unavailable_when_the_agent_never_ran_here(
         hooks_dir=tmp_path / "masterwork" / "hooks",
         forwarder=FORWARDERS / "claude_code.py",
         ingest_url=INGEST,
+        media_dir=tmp_path / "masterwork" / "media",
     )
     app.dependency_overrides[get_integrations] = lambda: [integration]
 

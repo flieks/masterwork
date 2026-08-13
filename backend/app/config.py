@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # (<role>/system.md + user.md + role.json). Seeded by the factory on first
     # run, so it may not exist yet.
     masterwork_agents_root: Path = MASTERWORK_HOME / "agents"
+    # Images a hook pulled out of a tool response before it was truncated, one
+    # directory per session. Written by the forwarder, served back by the events
+    # API — the only bytes in this app that live outside the database.
+    masterwork_media_root: Path = MASTERWORK_HOME / "media"
     # The port uvicorn was actually started on, so the hook command a connected
     # agent runs posts to this backend and not to a stale default. The launcher
     # passes it through; running uvicorn by hand on another port needs it set.

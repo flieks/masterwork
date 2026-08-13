@@ -21,6 +21,7 @@ import { CostChip } from './CostChip';
 import { DurationChip } from './DurationChip';
 import { LiveIndicator } from './LiveIndicator';
 import { MiniLaneChart } from './MiniLaneChart';
+import { ProjectBadge } from './ProjectBadge';
 import { RunStatusChip, StatChip } from './RunStatusChip';
 
 /** A pipeline run and a chat session are the same object here — one grid, no sections. */
@@ -48,6 +49,9 @@ export function RunCard({ session, now = Date.now() }: { session: CodingSession;
       <Card className="flex h-full flex-col gap-3 p-4 transition-colors hover:border-ring hover:bg-accent/40">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
+            {/* Above the request, because scanning the grid starts with "which
+                app?" — and the tint answers that without reading. */}
+            <ProjectBadge session={session} className="mb-1.5" />
             {/* The request is what a human recognises a run by; the id is how
                 they refer to it afterwards, so it sits underneath. */}
             <p

@@ -551,6 +551,32 @@ async def test_a_truncated_tool_input_does_not_invent_a_lane(client: AsyncClient
     assert list(_lanes(await _session(client))) == ["main"]
 
 
+async def test_a_truncated_spawn_recovers_its_lane_from_the_json_prefix(
+    client: AsyncClient,
+) -> None:
+    """A huge Plan prompt once collapsed the whole spawn call to a prefix, so the
+    stop landed on a lane nobody had opened — an instant 'start not recorded'."""
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "a"})
+    truncated = (
+        '{"description": "Ontwerp feature", "subagent_type": "Plan", "prompt": "Lees \\"alles\\" en'
+    )
+    await _ingest(
+        client,
+        session_id="s1",
+        event_type="PreToolUse",
+        tool_name="Task",
+        payload={"tool_input": {"_truncated": truncated}},
+    )
+    await _ingest(
+        client, session_id="s1", event_type="SubagentStop", payload={"agent_type": "Plan"}
+    )
+
+    lane = [p for p in (await _session(client))["phases"] if p["agent"] == "Plan"]
+    assert [p["status"] for p in lane] == ["passed"]
+    assert lane[0]["name"] == "Ontwerp feature"
+    assert "start not recorded" not in (lane[0]["description"] or "")
+
+
 async def test_a_spawn_opens_a_span_on_the_subagents_own_lane(client: AsyncClient) -> None:
     """The gap that left every subagent lane an empty row: a lane was declared,
     but nothing ever gave it a stage, so it had nothing to draw."""

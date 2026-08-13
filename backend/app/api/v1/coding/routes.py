@@ -11,6 +11,7 @@ from dataclasses import asdict
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
@@ -341,3 +342,24 @@ async def list_coding_session_events(
     db: AsyncSession = Depends(get_db),
 ) -> list[schemas.CodingEvent]:
     return await service.list_events(db, session_id, after=after, limit=limit)
+
+
+@router.get(
+    "/coding-sessions/{session_id}/media/{media_id}",
+    response_class=FileResponse,
+    operation_id="getCodingSessionMedia",
+    responses={200: {"content": {"image/*": {}}, "description": "The image itself."}},
+    description=(
+        "An image the hook pulled out of a tool response before it was truncated, named "
+        "by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the "
+        "UI points an <img> at this."
+    ),
+)
+async def get_coding_session_media(session_id: str, media_id: str) -> FileResponse:
+    path, media_type = service.media_file(session_id, media_id)
+    # The name is a hash of the content, so the file behind a URL can never change.
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )

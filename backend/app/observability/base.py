@@ -81,18 +81,21 @@ def resolve_interpreter() -> str | None:
     return sys.executable or None
 
 
-def install_forwarder(source: Path, target_dir: Path, ingest_url: str) -> Path:
+def install_forwarder(source: Path, target_dir: Path, ingest_url: str, media_dir: Path) -> Path:
     """Copy a forwarder to its stable home and write the sidecar it reads.
 
     Overwrites on every connect, so upgrading masterwork upgrades the script an
-    already-connected agent runs.
+    already-connected agent runs. The sidecar states both halves of where events
+    go — the endpoint, and the directory images are written to for the backend
+    to serve — so a relocated masterwork home moves the two together.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / source.name
     shutil.copyfile(source, target)
     target.chmod(target.stat().st_mode | stat.S_IXUSR)
     config = target_dir / "config.json"
-    config.write_text(json.dumps({"ingest_url": ingest_url}, indent=2) + "\n", encoding="utf-8")
+    settings = {"ingest_url": ingest_url, "media_dir": str(media_dir)}
+    config.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
     return target
 
 

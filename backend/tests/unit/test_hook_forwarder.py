@@ -6,6 +6,7 @@ the check that it stays importable and stdlib-only.
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
@@ -50,6 +51,139 @@ def test_huge_tool_payloads_collapse_instead_of_being_sent_whole() -> None:
     assert body is not None
     assert body["tool_name"] == "Read"
     assert "_truncated" in body["payload"]["tool_response"]
+
+
+def test_a_truncated_spawn_keeps_its_identity_keys() -> None:
+    body = forwarder.build_body(
+        {
+            "session_id": "s1",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Task",
+            "tool_input": {
+                "description": "Design the feature",
+                "prompt": "x" * 9000,
+                "subagent_type": "Plan",
+            },
+        }
+    )
+    assert body is not None
+    tool_input = body["payload"]["tool_input"]
+    assert "_truncated" in tool_input
+    assert tool_input["subagent_type"] == "Plan"
+    assert tool_input["description"] == "Design the feature"
+
+
+PIXEL = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQ"
+    "AAAABJRU5ErkJggg=="
+)
+
+
+def _screenshot(data: str = PIXEL, media_type: str = "image/png") -> dict[str, object]:
+    """A tool response shaped the way a screenshot tool answers."""
+    return {
+        "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}}
+        ]
+    }
+
+
+def test_an_image_is_written_to_disk_instead_of_riding_the_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The whole point: base64 in the payload is truncated to an unreadable
+    prefix, so the bytes have to leave the payload before any cap sees them."""
+    monkeypatch.setenv("MASTERWORK_MEDIA_DIR", str(tmp_path))
+
+    body = forwarder.build_body(
+        {
+            "session_id": "s1",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "mcp__Claude_Browser__computer",
+            "tool_response": _screenshot(),
+        }
+    )
+
+    assert body is not None
+    ref = body["payload"]["tool_response"]["content"][0]
+    assert ref["type"] == "image_ref"
+    assert ref["media_type"] == "image/png"
+    assert ref["media_id"].endswith(".png")
+    written = tmp_path / "s1" / ref["media_id"]
+    assert written.read_bytes() == base64.b64decode(PIXEL)
+    assert PIXEL not in json.dumps(body)
+
+
+def test_the_same_image_twice_is_one_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MASTERWORK_MEDIA_DIR", str(tmp_path))
+    raw = {"session_id": "s1", "hook_event_name": "PostToolUse", "tool_response": _screenshot()}
+
+    first = forwarder.build_body(raw)
+    second = forwarder.build_body(raw)
+
+    assert first is not None and second is not None
+    assert first["payload"] == second["payload"]  # content addressed, so identical
+    assert len(list((tmp_path / "s1").iterdir())) == 1
+
+
+def test_a_session_id_never_becomes_a_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MASTERWORK_MEDIA_DIR", str(tmp_path))
+
+    forwarder.build_body(
+        {
+            "session_id": "../../escaped",
+            "hook_event_name": "PostToolUse",
+            "tool_response": _screenshot(),
+        }
+    )
+
+    assert (tmp_path / "escaped").is_dir()
+    assert not (tmp_path.parent / "escaped").exists()
+
+
+def test_an_undecodable_image_costs_its_bytes_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("MASTERWORK_MEDIA_DIR", str(tmp_path))
+
+    body = forwarder.build_body(
+        {
+            "session_id": "s1",
+            "hook_event_name": "PostToolUse",
+            "tool_response": _screenshot(data="not base64 at all!!"),
+        }
+    )
+
+    assert body is not None
+    assert body["payload"]["tool_response"]["content"][0] == {
+        "type": "image_omitted",
+        "media_type": "image/png",
+    }
+
+
+def test_an_image_held_by_url_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Nothing to write, and the reference it already carries is small."""
+    monkeypatch.setenv("MASTERWORK_MEDIA_DIR", str(tmp_path))
+    block = {"type": "image", "source": {"type": "url", "url": "https://example.test/a.png"}}
+
+    body = forwarder.build_body(
+        {"session_id": "s1", "hook_event_name": "PostToolUse", "tool_response": {"c": [block]}}
+    )
+
+    assert body is not None
+    assert body["payload"]["tool_response"]["c"][0] == block
+    assert not tmp_path.exists() or not any(tmp_path.iterdir())
+
+
+def test_media_dir_comes_from_the_sidecar_connect_wrote(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "config.json").write_text(json.dumps({"media_dir": "/var/pics"}))
+    monkeypatch.delenv("MASTERWORK_MEDIA_DIR", raising=False)
+    monkeypatch.setattr(forwarder, "__file__", str(tmp_path / "claude_code.py"))
+    assert forwarder.media_dir() == Path("/var/pics")
 
 
 def test_a_stage_child_forwards_what_the_runner_told_it(monkeypatch: pytest.MonkeyPatch) -> None:

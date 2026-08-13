@@ -4427,6 +4427,44 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
+         * An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the UI points an <img> at this.
+         * @summary Get Coding Session Media
+         * @param {string} sessionId 
+         * @param {string} mediaId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCodingSessionMedia: async (sessionId: string, mediaId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('getCodingSessionMedia', 'sessionId', sessionId)
+            // verify required parameter 'mediaId' is not null or undefined
+            assertParamExists('getCodingSessionMedia', 'mediaId', mediaId)
+            const localVarPath = `/api/v1/coding-sessions/{session_id}/media/{media_id}`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)))
+                .replace(`{${"media_id"}}`, encodeURIComponent(String(mediaId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
          * @summary The runs that used one asset, with the arguments each call carried
          * @param {string} assetId 
@@ -4893,6 +4931,20 @@ export const CodingApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the UI points an <img> at this.
+         * @summary Get Coding Session Media
+         * @param {string} sessionId 
+         * @param {string} mediaId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCodingSessionMedia(sessionId: string, mediaId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCodingSessionMedia(sessionId, mediaId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.getCodingSessionMedia']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
          * @summary The runs that used one asset, with the arguments each call carried
          * @param {string} assetId 
@@ -5062,6 +5114,17 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.getCodingSession(sessionId, options).then((request) => request(axios, basePath));
         },
         /**
+         * An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the UI points an <img> at this.
+         * @summary Get Coding Session Media
+         * @param {string} sessionId 
+         * @param {string} mediaId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCodingSessionMedia(sessionId: string, mediaId: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+            return localVarFp.getCodingSessionMedia(sessionId, mediaId, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
          * @summary The runs that used one asset, with the arguments each call carried
          * @param {string} assetId 
@@ -5210,6 +5273,19 @@ export class CodingApi extends BaseAPI {
      */
     public getCodingSession(sessionId: string, options?: RawAxiosRequestConfig) {
         return CodingApiFp(this.configuration).getCodingSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the UI points an <img> at this.
+     * @summary Get Coding Session Media
+     * @param {string} sessionId 
+     * @param {string} mediaId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public getCodingSessionMedia(sessionId: string, mediaId: string, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).getCodingSessionMedia(sessionId, mediaId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

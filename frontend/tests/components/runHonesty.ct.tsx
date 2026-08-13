@@ -166,12 +166,13 @@ test('a cwd title reads as the absence of one', async ({ mount, page }) => {
     </TestProviders>,
   );
 
-  const fallback = page.getByText('factory-e2e');
+  // By its tooltip, not its text: the project badge on the same card carries
+  // the folder name too.
+  const fallback = page.getByTitle('Untitled run — showing factory-e2e');
   await expect(fallback).toBeVisible();
   // Italic, muted, mono — a folder name, not a request.
   await expect(fallback).toHaveClass(/italic/);
   await expect(fallback).toHaveClass(/text-muted-foreground/);
-  await expect(fallback).toHaveAttribute('title', 'Untitled run — showing factory-e2e');
 });
 
 test('a pipeline stage announces its provenance', async ({ mount, page }) => {

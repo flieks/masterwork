@@ -1462,6 +1462,54 @@
                 }
             }
         },
+        "/api/v1/coding-sessions/{session_id}/media/{media_id}": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "Get Coding Session Media",
+                "description": "An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON \u2014 the UI points an <img> at this.",
+                "operationId": "getCodingSessionMedia",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    },
+                    {
+                        "name": "media_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Media Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The image itself.",
+                        "content": {
+                            "image/*": {}
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/hooks/events": {
             "post": {
                 "tags": [
@@ -3832,7 +3880,7 @@
                             }
                         ],
                         "title": "Title Source",
-                        "description": "Where `title` came from: prompt | factory | provenance | cwd. Null when the session has no title at all."
+                        "description": "Where `title` came from: prompt | summary | factory | provenance | cwd. Null when the session has no title at all."
                     },
                     "parent_session_id": {
                         "anyOf": [
@@ -4117,7 +4165,7 @@
                             }
                         ],
                         "title": "Title Source",
-                        "description": "Where `title` came from: prompt | factory | provenance | cwd. Null when the session has no title at all."
+                        "description": "Where `title` came from: prompt | summary | factory | provenance | cwd. Null when the session has no title at all."
                     },
                     "parent_session_id": {
                         "anyOf": [

@@ -300,6 +300,8 @@ test('the header leads with the request and its telemetry, stats stay collapsed'
 
   await expect(page.getByRole('heading', { name: 'add a sessions screen' })).toBeVisible();
   await expect(page.getByText('success')).toBeVisible();
+  // The project leads the header, with the working directory beside it.
+  await expect(page.locator('[data-project]')).toHaveText('masterwork');
   await expect(page.getByText('/Users/dev/Projects/masterwork')).toBeVisible();
   await expect(page.getByTitle('Cost')).toContainText('$0.42');
   await expect(page.getByText('2m 31s active')).toBeVisible();
@@ -314,4 +316,70 @@ test('the header leads with the request and its telemetry, stats stay collapsed'
   await expect(page.getByText('some_future_key')).toHaveCount(0);
   await page.getByRole('button', { name: 'Raw stats' }).click();
   await expect(page.getByText(/some_future_key/)).toBeVisible();
+});
+
+/** A 1x1 PNG, so the browser has real bytes to decode. */
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+const MEDIA_ID = `${'a'.repeat(64)}.png`;
+
+test('a screenshot in a payload renders as the picture it is', async ({ mount, page }) => {
+  await mockEvents(page, [
+    makeEvent({
+      id: 1,
+      event_type: 'PostToolUse',
+      tool_name: 'mcp__Claude_Browser__computer',
+      payload: {
+        tool_input: { action: 'screenshot' },
+        tool_response: {
+          content: [{ type: 'image_ref', media_id: MEDIA_ID, media_type: 'image/png', bytes: 68 }],
+        },
+      },
+    }),
+  ]);
+  // Registered last, so it wins over the catch-all the event mock installed.
+  await page.route('**/media/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'image/png', headers: CORS, body: PIXEL });
+  });
+
+  await mount(
+    <TestProviders>
+      <EventTimeline sessionId="sess-1" />
+    </TestProviders>,
+  );
+
+  // Shown without expanding: the image is what the tool call was about.
+  const thumbnail = page.getByRole('button', { name: 'Open image full size' });
+  await expect(thumbnail).toBeVisible();
+  await expect(page.locator('img')).toHaveJSProperty('naturalWidth', 1);
+  await expect(page.locator(`img[src$="${MEDIA_ID}"]`)).toHaveCount(1);
+
+  // Clicking it opens the full size copy over the timeline.
+  await thumbnail.click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+});
+
+test('an image the hook could not write leaves the row intact', async ({ mount, page }) => {
+  await mockEvents(page, [
+    makeEvent({
+      id: 1,
+      event_type: 'PostToolUse',
+      tool_name: 'Read',
+      payload: {
+        tool_input: { file_path: '/tmp/broken.png' },
+        tool_response: { content: [{ type: 'image_omitted', media_type: 'image/png' }] },
+      },
+    }),
+  ]);
+
+  await mount(
+    <TestProviders>
+      <EventTimeline sessionId="sess-1" />
+    </TestProviders>,
+  );
+
+  await expect(page.getByText('broken.png')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open image full size' })).toHaveCount(0);
 });

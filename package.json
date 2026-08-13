@@ -1,6 +1,6 @@
 {
   "name": "masterwork",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local workbench for AI-coding agent skills and subagents — browse, edit, AI-refine, and prove them with scored simulation runs.",
   "license": "Elastic-2.0",
   "type": "module",

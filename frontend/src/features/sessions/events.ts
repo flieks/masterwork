@@ -139,6 +139,29 @@ export function promptText(event: CodingEvent): PromptText | null {
   return { text: prompt, automated: false };
 }
 
+export interface FirstRequest {
+  /** The prompt event itself, so its images can be read off the payload. */
+  event: CodingEvent;
+  /** The whole prompt, as typed. */
+  text: string;
+}
+
+/**
+ * The request that started the run: the first prompt a *person* sent.
+ *
+ * The title is a summary of this, so the prompt itself is no longer on the
+ * card — this is where a reader goes to check what the summary summarised.
+ * Envelopes are skipped: a run resumed by a background task before its human
+ * ever typed still has a human request further down the stream.
+ */
+export function firstRequest(events: CodingEvent[]): FirstRequest | null {
+  for (const event of events) {
+    const prompt = promptText(event);
+    if (prompt && !prompt.automated) return { event, text: prompt.text };
+  }
+  return null;
+}
+
 function tagBody(text: string, tag: string): string | null {
   const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(text);
   return match ? match[1].trim() || null : null;

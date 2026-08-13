@@ -11,7 +11,8 @@ import {
   Configuration,
 } from './generated';
 
-const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8008';
+/** Origin only — exported for the URLs the browser fetches itself, like an <img>. */
+export const baseURL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8008';
 
 // Generous default. The generated per-operation paths already bake in `/api/v1`,
 // so the axios instance's baseURL must be the ORIGIN only (basePath = '').

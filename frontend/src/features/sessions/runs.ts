@@ -38,11 +38,73 @@ export function isAutomatedSession(session: CodingSession): boolean {
   return session.launch_mode === 'automated';
 }
 
-/** Repo name, falling back to the last path segment of the cwd. */
+/**
+ * Folder names that name a part of a product rather than the product — a run
+ * in `Translation Tool/APP` is not a run in "APP".
+ */
+const GENERIC_DIRS = new Set([
+  'android',
+  'api',
+  'app',
+  'apps',
+  'backend',
+  'client',
+  'frontend',
+  'ios',
+  'main',
+  'mobile',
+  'packages',
+  'repo',
+  'server',
+  'src',
+  'web',
+]);
+
+/**
+ * Which project a run belongs to: the repo name, or the last path segment of
+ * the cwd — qualified with the folder above it when that name alone says
+ * nothing ("MoveMatch/mobile", not "mobile").
+ */
 export function sessionLabel(session: CodingSession): string {
-  if (session.git_repo) return session.git_repo;
   const segments = session.cwd.split('/').filter(Boolean);
-  return segments.length > 0 ? segments[segments.length - 1] : session.id;
+  const leaf = session.git_repo || segments[segments.length - 1];
+  if (!leaf) return session.id;
+  if (!GENERIC_DIRS.has(leaf.toLowerCase())) return leaf;
+  const parent = segments[segments.length - 2];
+  return parent ? `${parent}/${leaf}` : leaf;
+}
+
+/**
+ * One colour per project, hashed from its name. Colour answers "which app is
+ * this?" before the word is read, and a hash keeps the answer stable — a
+ * palette assigned in list order would repaint every card as projects come
+ * and go.
+ */
+const PROJECT_TINTS = [
+  'border-sky-500/25 bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  'border-violet-500/25 bg-violet-500/15 text-violet-700 dark:text-violet-300',
+  'border-emerald-500/25 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  'border-amber-500/25 bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  'border-rose-500/25 bg-rose-500/15 text-rose-700 dark:text-rose-300',
+  'border-cyan-500/25 bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
+  'border-orange-500/25 bg-orange-500/15 text-orange-700 dark:text-orange-300',
+  'border-fuchsia-500/25 bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300',
+  'border-lime-500/25 bg-lime-500/15 text-lime-700 dark:text-lime-300',
+  'border-indigo-500/25 bg-indigo-500/15 text-indigo-700 dark:text-indigo-300',
+  'border-teal-500/25 bg-teal-500/15 text-teal-700 dark:text-teal-300',
+  'border-pink-500/25 bg-pink-500/15 text-pink-700 dark:text-pink-300',
+];
+
+/**
+ * The tint classes for a project name. Same name, same colour, always — and
+ * hashed on the part before the slash, so a product's halves ("MoveMatch/api",
+ * "MoveMatch/mobile") read as one colour.
+ */
+export function projectTint(project: string): string {
+  const key = project.split('/')[0];
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return PROJECT_TINTS[Math.abs(hash % PROJECT_TINTS.length)];
 }
 
 /**

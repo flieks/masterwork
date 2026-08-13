@@ -9,6 +9,8 @@ recorded in `settings.json` survives an npx cache prune, and drops a
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -19,6 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 DEFAULT_INGEST_URL = "http://localhost:8008/api/v1/hooks/events"
+DEFAULT_MEDIA_DIR = Path.home() / ".masterwork" / "media"
 
 # The pipeline runner exports these into the environment of each `claude -p`
 # stage child. They are the whole reason a stage can be attached to its run
@@ -33,20 +36,31 @@ MAX_RUN_ID = 200
 MAX_STAGE = 100
 
 
-def ingest_url() -> str:
-    """Env first (a launcher can override per run), then the sidecar written at
-    connect time, then the default port."""
-    from_env = os.environ.get("MASTERWORK_INGEST_URL")
+def setting(env_var: str, key: str) -> str | None:
+    """Env first (a launcher can override per run), then the sidecar `connect()`
+    writes beside this script. None when neither says anything."""
+    from_env = os.environ.get(env_var)
     if from_env:
         return from_env
     try:
         config = json.loads(Path(__file__).with_name("config.json").read_text(encoding="utf-8"))
-        url = config.get("ingest_url")
-        if isinstance(url, str) and url:
-            return url
+        value = config.get(key)
+        if isinstance(value, str) and value:
+            return value
     except (OSError, ValueError):
         pass
-    return DEFAULT_INGEST_URL
+    return None
+
+
+def ingest_url() -> str:
+    return setting("MASTERWORK_INGEST_URL", "ingest_url") or DEFAULT_INGEST_URL
+
+
+def media_dir() -> Path:
+    """Where images pulled out of payloads are written for the backend to serve.
+    The sidecar carries it so a relocated masterwork home still lines up."""
+    configured = setting("MASTERWORK_MEDIA_DIR", "media_dir")
+    return Path(configured) if configured else DEFAULT_MEDIA_DIR
 
 
 def redact(args: str) -> str:
@@ -208,6 +222,83 @@ def compact(value: Any, limit: int) -> Any:
     return {"_truncated": text[:limit]}
 
 
+# A screenshot tool answers with the image inline, base64, hundreds of KB of it.
+# Left in the payload it meets `compact()` and becomes an unreadable prefix of a
+# JPEG — the bytes are gone before they reach the backend, so no UI downstream
+# can ever show the picture. Written to disk here, ahead of every cap, what
+# stays in the payload is a reference small enough to survive them all.
+IMAGE_EXTENSIONS = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+MAX_IMAGE_BYTES = 12 * 1024 * 1024
+# Tool responses nest a few levels at most; the bound is what keeps a cyclic or
+# pathological blob from walking forever in a hook that must not hang.
+MAX_IMAGE_DEPTH = 12
+
+
+def safe_id(value: str) -> str:
+    """A session id as a directory name — it reaches us over HTTP from an agent,
+    so it never gets to be a path."""
+    return "".join(c for c in value if c.isalnum() or c in "-_")[:64] or "unknown"
+
+
+def image_source(node: Any) -> tuple[str, str] | None:
+    """(media_type, base64) if this node is an inline image, else None."""
+    if not isinstance(node, dict) or node.get("type") != "image":
+        return None
+    source = node.get("source")
+    if isinstance(source, dict):
+        if source.get("type") != "base64":
+            return None  # a URL image holds no bytes for us to write
+    else:
+        source = node  # the flat {"type": "image", "media_type": …, "data": …} form
+    data, media_type = source.get("data"), source.get("media_type")
+    if not isinstance(data, str) or media_type not in IMAGE_EXTENSIONS:
+        return None
+    return media_type, data
+
+
+def write_image(directory: Path, media_type: str, data: str) -> dict[str, Any]:
+    """Content-address one image onto disk and describe it. Raises on anything
+    that isn't a decodable image of a sane size."""
+    raw = base64.b64decode(data, validate=True)
+    if not raw or len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError(f"image of {len(raw)} bytes is out of bounds")
+    name = f"{hashlib.sha256(raw).hexdigest()}.{IMAGE_EXTENSIONS[media_type]}"
+    path = directory / name
+    if not path.exists():
+        # The same screenshot taken twice is the same file, so a re-run of a
+        # session costs nothing. Write beside and rename: the backend may be
+        # serving this directory while we write into it.
+        directory.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f"{name}.{os.getpid()}.part")
+        temporary.write_bytes(raw)
+        temporary.replace(path)
+    return {"type": "image_ref", "media_id": name, "media_type": media_type, "bytes": len(raw)}
+
+
+def extract_images(value: Any, directory: Path, depth: int = 0) -> Any:
+    """The same payload with every inline image replaced by a reference to it."""
+    if depth > MAX_IMAGE_DEPTH:
+        return value
+    if isinstance(value, list):
+        return [extract_images(item, directory, depth + 1) for item in value]
+    if not isinstance(value, dict):
+        return value
+    found = image_source(value)
+    if found is not None:
+        try:
+            return write_image(directory, *found)
+        except Exception:
+            # An unwritable image costs its bytes, never the event: what's left
+            # still says a picture was here and what kind.
+            return {"type": "image_omitted", "media_type": found[0]}
+    return {key: extract_images(item, directory, depth + 1) for key, item in value.items()}
+
+
 def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Map one Claude Code hook firing onto the ingest contract, or None to skip."""
     session_id = raw.get("session_id")
@@ -228,10 +319,22 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
     elif event == "PreToolUse":
         # Only fires for Task/Agent (see the installer's matcher): the spawn call
         # is the one place a subagent's start time is knowable.
-        payload["tool_input"] = compact(raw.get("tool_input", {}), 4000)
+        tool_input = raw.get("tool_input", {})
+        compacted = compact(tool_input, 4000)
+        truncated = isinstance(compacted, dict) and "_truncated" in compacted
+        if truncated and isinstance(tool_input, dict):
+            # A huge prompt must not swallow the spawn's identity keys — losing
+            # `subagent_type` here strands the SubagentStop on a lane nobody opened.
+            for key in ("subagent_type", "description"):
+                if isinstance(tool_input.get(key), str):
+                    compacted[key] = tool_input[key]
+        payload["tool_input"] = compacted
     elif event == "PostToolUse":
-        payload["tool_input"] = compact(raw.get("tool_input", {}), 4000)
-        payload["tool_response"] = compact(raw.get("tool_response", {}), 2000)
+        media = media_dir() / safe_id(str(session_id))
+        payload["tool_input"] = compact(extract_images(raw.get("tool_input", {}), media), 4000)
+        payload["tool_response"] = compact(
+            extract_images(raw.get("tool_response", {}), media), 2000
+        )
     elif event == "SubagentStop":
         for key in ("agent_type", "agent_transcript_path"):
             if raw.get(key):

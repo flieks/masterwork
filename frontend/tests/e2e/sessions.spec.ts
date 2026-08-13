@@ -136,3 +136,36 @@ test.describe('sessions: grid → waterfall', () => {
     await expect(children.first()).toContainText('active');
   });
 });
+
+test.describe('sessions: the request under the title', () => {
+  test.skip(!process.env.BACKEND_URL, 'requires a running backend (set BACKEND_URL)');
+
+  test('shows three lines of the prompt, and the rest on demand', async ({ page }) => {
+    await page.goto('/sessions');
+    await expect(page.getByText(/^\d+ runs?$/)).toBeVisible();
+
+    const cards = page.locator('a[href^="/sessions/"]');
+    if ((await cards.count()) === 0) return; // a fresh install has no runs
+
+    // The first run long enough to be clamped; a two-word prompt never is.
+    const request = page.getByRole('region').filter({ hasText: 'Request' }).first();
+    for (let i = 0; i < Math.min(await cards.count(), 6); i += 1) {
+      await cards.nth(i).click();
+      await expect(page.getByLabel('Run waterfall')).toBeVisible();
+      const expand = page.getByRole('button', { name: 'Show full request' });
+      if (await expand.isVisible().catch(() => false)) {
+        const text = request.locator('p').first();
+        const clamped = await text.evaluate((el) => el.clientHeight);
+        // Three lines, and everything past them still in the DOM to be found.
+        expect(await text.evaluate((el) => el.scrollHeight)).toBeGreaterThan(clamped);
+
+        await expand.click();
+        expect(await text.evaluate((el) => el.clientHeight)).toBeGreaterThan(clamped);
+        await expect(page.getByRole('button', { name: 'Show less' })).toBeVisible();
+        return;
+      }
+      await page.goBack();
+      await expect(page.getByText(/^\d+ runs?$/)).toBeVisible();
+    }
+  });
+});

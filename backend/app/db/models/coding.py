@@ -81,6 +81,7 @@ def idle_window(workflow: str | None) -> timedelta:
     """How long this kind of run may stay silent and still count as live."""
     return IDLE_WINDOW if workflow == WORKFLOW_FACTORY else CHAT_IDLE_WINDOW
 
+
 # Outcome of one stage. Anything but `running` is final and stamps ended_at.
 # `abandoned` is the stage-level twin of the run-level one: the turn never
 # reported a `Stop`, and the only thing known about its end is that it had
@@ -144,6 +145,7 @@ USE_SUBAGENT_STOP = "subagent_stop"
 # provenance name that puts the child under its parent.
 TITLE_CWD = "cwd"
 TITLE_PROMPT = "prompt"
+TITLE_SUMMARY = "summary"
 TITLE_PROVENANCE = "provenance"
 TITLE_FACTORY = "factory"
 

@@ -260,7 +260,7 @@ function LaneRail({
   const subtitleHint =
     phases.length === 0
       ? 'This lane was declared but no stage was ever recorded against it.'
-      : 'Every diamond is when one ran. How long each took was never recorded, so there is nothing to draw a bar from — usually a session from before the spawn hook was installed.';
+      : 'Every diamond is when one ran. How long each took was never recorded, so there is nothing to draw a bar from — no spawn event arrived: a pre-hook session, an internal agent, or a resumed agent stopping again.';
 
   return (
     <div className="sticky left-0 z-10 w-44 shrink-0 border-r bg-card px-3 py-2.5">

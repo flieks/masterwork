@@ -20,6 +20,7 @@ export {
   LIVE_WINDOW_MS,
   isAutomatedSession,
   isSessionLive,
+  projectTint,
   runIdLabel,
   runTitleMeta,
   runWorkflow,

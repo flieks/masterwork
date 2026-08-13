@@ -21,5 +21,6 @@ def build_integrations(settings: Settings) -> list[Integration]:
             hooks_dir=settings.masterwork_home / "hooks",
             forwarder=FORWARDERS / "claude_code.py",
             ingest_url=settings.ingest_url,
+            media_dir=settings.masterwork_media_root,
         )
     ]

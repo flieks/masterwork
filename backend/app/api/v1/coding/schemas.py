@@ -313,8 +313,8 @@ class CodingSession(BaseModel):
     title_source: str | None = Field(
         ...,
         description=(
-            "Where `title` came from: prompt | factory | provenance | cwd. Null when the "
-            "session has no title at all."
+            "Where `title` came from: prompt | summary | factory | provenance | cwd. Null "
+            "when the session has no title at all."
         ),
     )
     parent_session_id: str | None = Field(

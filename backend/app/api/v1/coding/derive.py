@@ -12,6 +12,7 @@ replay stored events through exactly the code path a live hook takes.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,12 +30,16 @@ from app.db.models.coding import (
     STATUS_SUCCESS,
     TITLE_FACTORY,
     TITLE_PROMPT,
+    TITLE_SUMMARY,
     UNKNOWN_AGENT,
     WORKFLOW_FACTORY,
 )
 
 # A first prompt is a whole message; a card only has room for its opening.
 TITLE_CHARS = 300
+
+# An agent-written title is a phrase, not a message — 15 words never reach this.
+SUMMARY_CHARS = 120
 
 # A span's label comes from the spawn call's own one-liner; a lane rail is narrow.
 SPAN_LABEL_CHARS = 60
@@ -348,12 +353,15 @@ def _from_hook(event_type: str, tool_name: str | None, payload: dict[str, Any] |
         derived.turn_detail = turn_detail(prompt)
     elif event_type == "Stop":
         derived.closes_turn = True
+    elif title := marker_title(payload):
+        # A shell command carrying the marker — the agent naming its own run.
+        derived.title, derived.title_source = title, TITLE_SUMMARY
     elif tool_name in SPAWN_TOOLS:
         # The call that finished naming a subagent type, for sessions recorded
         # before the PreToolUse hook existed. It says nothing about *when* the
         # subagent ran — agents are spawned in the background — so it declares
         # the lane and leaves the span to the spawn/stop pair.
-        subagent = _text(_sub(payload, "tool_input").get("subagent_type"))
+        subagent = _spawn_key(_sub(payload, "tool_input"), "subagent_type")
         if subagent:
             derived.agents.append(AgentWrite(name=subagent))
 
@@ -395,6 +403,50 @@ def turn_detail(prompt: str | None) -> str | None:
     return first[:TURN_DETAIL_CHARS] or None
 
 
+# An agent names its own run by echoing a marker, the way the factory-or-chat
+# router already announces its verdict: `echo` exists everywhere, and a shell
+# command is the one thing every hook payload carries verbatim. Anchored on the
+# `=` so the sentence that *describes* the marker — in a skill file, in a grep —
+# never becomes a title; the value stops at the quote that closes the echo.
+TITLE_MARKER = re.compile(r"masterwork:title=\s*([^\"'\n]+)")
+
+
+def marker_title(payload: dict[str, Any] | None) -> str | None:
+    """The title a tool call announced, if it announced one."""
+    command = _text(_sub(payload, "tool_input").get("command"))
+    if not command:
+        return None
+    match = TITLE_MARKER.search(command)
+    if not match:
+        return None
+    title = _text(match.group(1))
+    return title[:SUMMARY_CHARS] if title else None
+
+
+def _spawn_key(tool_input: dict[str, Any], key: str) -> str | None:
+    """A spawn key, recovered from a `_truncated` JSON prefix if need be.
+
+    Older forwarders collapsed a huge spawn call to a truncated string,
+    `subagent_type` included — the `SubagentStop` then landed on a lane nobody
+    had opened. The keys sit near the front of the JSON, so a complete
+    `"key": "value"` pair usually survives the cut; an incomplete one (no
+    closing quote) is left unrecovered rather than guessed at. Escaped quotes
+    inside a prompt can't false-match: `\\"` breaks the pattern's bare `"`.
+    """
+    if found := _text(tool_input.get(key)):
+        return found
+    text = tool_input.get("_truncated")
+    if not isinstance(text, str):
+        return None
+    match = re.search(rf'"{key}"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+    if match is None:
+        return None
+    try:
+        return _text(json.loads(f'"{match.group(1)}"'))
+    except ValueError:
+        return _text(match.group(1))
+
+
 def _from_spawn(tool_name: str | None, payload: dict[str, Any] | None) -> Derived:
     """A subagent's span opens where it was spawned.
 
@@ -405,8 +457,8 @@ def _from_spawn(tool_name: str | None, payload: dict[str, Any] | None) -> Derive
     if tool_name not in SPAWN_TOOLS:
         return Derived()
     tool_input = _sub(payload, "tool_input")
-    lane = _text(tool_input.get("subagent_type")) or UNKNOWN_AGENT
-    description = _text(tool_input.get("description"))
+    lane = _spawn_key(tool_input, "subagent_type") or UNKNOWN_AGENT
+    description = _spawn_key(tool_input, "description")
     return Derived(
         lane=lane,
         agents=[AgentWrite(name=lane)],

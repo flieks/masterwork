@@ -21,9 +21,9 @@ import {
   runTitleMeta,
   runWorkflow,
   sessionDetailPath,
-  sessionLabel,
 } from '../queries';
 import { CostChip } from './CostChip';
+import { ProjectBadge } from './ProjectBadge';
 import { DurationChip } from './DurationChip';
 import { LiveIndicator } from './LiveIndicator';
 import { RunStatusChip, StatChip } from './RunStatusChip';
@@ -35,6 +35,18 @@ export function SessionHeader({ session }: { session: CodingSession }) {
 
   return (
     <header className="flex flex-col gap-3">
+      {/* Which app this run touched, above its request: the same question the
+          grid answers by colour, answered first here too. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <ProjectBadge session={session} size="lg" />
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
+          title={session.cwd}
+        >
+          {session.cwd || 'unknown working directory'}
+        </span>
+      </div>
+
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <h1
           className={cn(
@@ -55,8 +67,6 @@ export function SessionHeader({ session }: { session: CodingSession }) {
         <span title={session.id}>{runIdLabel(session)}</span>
         <span aria-hidden="true">·</span>
         <span>{runWorkflow(session)}</span>
-        <span aria-hidden="true">·</span>
-        <span>{sessionLabel(session)}</span>
         {session.model ? (
           <>
             <span aria-hidden="true">·</span>
@@ -109,10 +119,6 @@ export function SessionHeader({ session }: { session: CodingSession }) {
           className="text-xs"
         />
       </div>
-
-      <p className="break-all font-mono text-[11px] text-muted-foreground" title={session.cwd}>
-        {session.cwd || 'unknown working directory'}
-      </p>
 
       <SessionStats stats={session.stats} />
     </header>

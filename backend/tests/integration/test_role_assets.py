@@ -85,9 +85,7 @@ async def test_role_json_is_a_read_only_asset(roles_client: AsyncClient, role_tr
     assert (await roles_client.get(_url("masterwork:agent:plan:role.json"))).status_code == 404
 
 
-async def test_conventions_are_a_writable_asset(
-    roles_client: AsyncClient, role_tree: Path
-) -> None:
+async def test_conventions_are_a_writable_asset(roles_client: AsyncClient, role_tree: Path) -> None:
     r = await roles_client.get(_url(CONVENTIONS))
     assert r.status_code == 200
     assert r.json()["read_only"] is False

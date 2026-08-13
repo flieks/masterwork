@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.assets.service import parse_asset_id
 from app.api.v1.coding import assets, derive, evidence, schemas, serializers
 from app.config import settings
-from app.core.exceptions import CodingSessionNotFoundError
+from app.core.exceptions import CodingMediaNotFoundError, CodingSessionNotFoundError
 from app.db.models.coding import (
     EVIDENCE_RECOVERED,
     EVIDENCE_REPORTED,
@@ -42,6 +42,7 @@ from app.db.models.coding import (
     TITLE_FACTORY,
     TITLE_PROMPT,
     TITLE_PROVENANCE,
+    TITLE_SUMMARY,
     CodingAgent,
     CodingAssetUse,
     CodingEvent,
@@ -73,16 +74,19 @@ MAX_SHA = 64
 MAX_ASSET_NAME = 200
 MAX_USE_SOURCE = 30
 
-# Title precedence. A factory stage child's prompt is generated boilerplate
-# ("You are the BUILD stage of…"), so the provenance name that puts it under its
-# parent has to beat it; the runner's own statement of the request beats both.
-# An equal-ranked title never replaces one already stored — the *first* prompt
-# is the request, the fifth is a follow-up.
+# Title precedence. A truncated prompt is the floor: the agent's own summary of
+# what it was asked says the same thing in a phrase a card can hold. A factory
+# stage child's prompt is generated boilerplate ("You are the BUILD stage of…"),
+# so the provenance name that puts it under its parent beats both; the runner's
+# own statement of the request beats everything. An equal-ranked title never
+# replaces one already stored — the *first* prompt is the request, the fifth is
+# a follow-up, and the same holds for a session that routes two tasks.
 _TITLE_RANK: dict[str | None, int] = {
     None: 0,
     TITLE_PROMPT: 1,
-    TITLE_PROVENANCE: 2,
-    TITLE_FACTORY: 3,
+    TITLE_SUMMARY: 2,
+    TITLE_PROVENANCE: 3,
+    TITLE_FACTORY: 4,
 }
 
 # `stats` stays the free-form overflow, but these keys have columns of their
@@ -523,7 +527,9 @@ async def _mark_end(
     moment it ended rather than a blank row — the honest shape of what is known.
     """
     phase = await _open_turn(db, session, derived, now)
-    phase.description = "start not recorded — spawn hook was not installed"
+    # Not always a missing hook: a resumed agent's second stop and a nested
+    # subagent's stop arrive spawn-less too, so the text names no culprit.
+    phase.description = "start not recorded — no spawn event for this agent"
     phase.status = PHASE_PASSED
     phase.duration_ms = 0
     _close_phase(phase, now)
@@ -1057,3 +1063,29 @@ async def list_events(
     await get_session_or_404(db, session_id)
     events = await coding_repo.list_events(db, session_id, after=after, limit=limit)
     return [serializers.coding_event_to_schema(e) for e in events]
+
+
+# Both halves of a media path arrive in a URL, so both are matched rather than
+# sanitised: the id is the session directory the forwarder wrote, and the name
+# is what it content-addressed the image to. Nothing that fails these patterns
+# gets as far as a filesystem call.
+_MEDIA_SESSION = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_MEDIA_NAME = re.compile(r"^[0-9a-f]{64}\.(jpg|png|gif|webp)$")
+MEDIA_TYPES = {
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+}
+
+
+def media_file(session_id: str, media_id: str) -> tuple[Path, str]:
+    """One extracted image on disk, with the type to serve it as."""
+    if not _MEDIA_SESSION.match(session_id) or not _MEDIA_NAME.match(media_id):
+        raise CodingMediaNotFoundError(f"no such image: {media_id}")
+    path = settings.masterwork_media_root / session_id / media_id
+    if not path.is_file():
+        # Expected, not exceptional: the hook writes these outside the database,
+        # so a cleaned media directory leaves events referring to what is gone.
+        raise CodingMediaNotFoundError(f"no such image: {media_id}")
+    return path, MEDIA_TYPES[media_id.rsplit(".", 1)[1]]

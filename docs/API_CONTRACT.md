@@ -2029,3 +2029,125 @@ changed** and no client regeneration is needed for this half.
   database, and the stage signal is written to columns that already exist
   (`coding_sessions.parent_session_id`, `.title`, `.title_source`,
   `.launch_mode`).
+
+---
+
+# API Contract v1.22 — Images in event payloads (FROZEN additions)
+
+Additive on top of v1.21. A screenshot tool — `mcp__Claude_Browser__computer`,
+the iOS simulator's `control`, `Read` on a PNG — answers with the image inline
+as base64. That answer is hundreds of KB, so the forwarder's `compact()` cut it
+to a 2 000-character prefix of a JPEG: undecodable, unreadable, and the only
+trace of the picture in the whole system. The bytes now leave the payload before
+any cap sees them, and the event carries a reference the UI can point an `<img>`
+at.
+
+## New payload shape
+
+Inside `CodingEvent.payload.tool_input` / `.tool_response`, at any depth, an
+inline image block is replaced by:
+
+```
+{ type: "image_ref", media_id: string, media_type: string, bytes: number }
+```
+
+`media_id` is `<sha256-of-the-bytes>.<jpg|png|gif|webp>`. When the image could
+not be written (undecodable base64, over 12 MB, an unwritable directory) the
+block becomes `{ type: "image_omitted", media_type: string }` — the fact
+survives, the bytes do not. An image the tool referenced *by URL* is left
+untouched: there are no bytes to extract, and the reference is already small.
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-sessions/{session_id}/media/{media_id}` | `getCodingSessionMedia` | — | the image bytes, `Content-Type: image/*` (404 unknown/ill-formed id) |
+
+## Behavior
+
+- **The extraction happens in the hook, not the backend.** Every cap downstream
+  — the forwarder's 4 000/2 000, ingest's 32 768, the UI's 4 000 — sits *after*
+  the point where a base64 screenshot has already blown the budget. The only
+  place that ever holds the whole image is the hook process, so that is where it
+  is written.
+- **Content-addressed.** The file name is the sha256 of the bytes, so the same
+  screenshot taken twice is one file, a replayed session costs nothing, and the
+  URL can be served `immutable` — what a hash names can never change.
+- **Never in the database.** Images are files under
+  `<masterwork home>/media/<session_id>/`, the only bytes in this app outside
+  Postgres. Two consequences, both deliberate: a cleaned media directory leaves
+  events pointing at images that are gone (the endpoint answers 404, the UI
+  shows a broken thumbnail rather than losing the row), and the directory grows
+  until someone deletes it.
+- **Both halves of the media path are matched, not sanitised.** `session_id`
+  must be `[A-Za-z0-9_-]{1,64}` and `media_id` must be a 64-hex name with a
+  known image extension. Anything else is a 404 before any filesystem call. The
+  forwarder applies the same rule when it *writes*, so a hostile session id
+  cannot climb out of the media root.
+- **Only PostToolUse carries images**, and only for the four raster types above.
+  `PreToolUse` fires for subagent spawns alone, whose input is text.
+- **The sidecar now names the media directory.** `connect()` writes
+  `{ingest_url, media_dir}` to `~/.masterwork/hooks/config.json`, so relocating
+  masterwork's home moves both destinations together. An older sidecar without
+  the key falls back to `~/.masterwork/media`; `MASTERWORK_MEDIA_DIR` overrides
+  both.
+- **Existing events are unaffected and unrecoverable.** Their images were
+  truncated at capture time; nothing in the database can be replayed into a
+  picture. The feature starts at the next `connect()`, which is also what
+  installs the new forwarder.
+- **DB**: unchanged. No migration.
+
+# API Contract v1.23 — A run's title is a summary, not its prompt (FROZEN additions)
+
+Additive on top of v1.22. A card titled with the first 300 characters of a
+prompt shows the opening of a message, not what the run was about — and a
+prompt that opens with context ("So I was looking at the sessions screen and…")
+buries the request under the throat-clearing. The agent that received the prompt
+already understood it, so it names the run itself; the prompt stays, one screen
+down, where it can be checked against the name.
+
+## Changed schemas
+
+```
+CodingSession.title_source            // now also "summary"
+```
+
+## The title marker (the frozen half of the agent contract)
+
+An agent names its run by echoing a marker, the same channel the factory-or-chat
+router already uses for its verdict:
+
+```bash
+echo "masterwork:title=Five to fifteen word summary of what I was asked"
+```
+
+Read off `payload.tool_input.command` of any tool event — `echo` exists on every
+machine, and a shell command is the one thing a hook payload carries verbatim.
+Matched on `masterwork:title=` with a non-empty value, so the sentence that
+*documents* the marker (in a skill file, in a `grep`) is not a title; the value
+ends at the first quote or newline and is stored at 120 characters.
+
+## Behavior
+
+- **`summary` outranks `prompt`, and nothing else.** The rank order is
+  `factory` > `provenance` > `summary` > `prompt`. A summary is a better name
+  for the same request the prompt states, so it replaces it — but a pipeline
+  stage child keeps the provenance name that puts it under its parent, because
+  a stage prompted with boilerplate would otherwise summarise the boilerplate.
+- **The first title wins.** Equal-ranked titles never replace (unchanged rule),
+  so a session that routes a second task keeps the name of the first — the same
+  way it keeps the first prompt rather than the fifth.
+- **Untitled runs are unaffected.** No marker means the prompt still titles the
+  run, and a prompt-less run still falls back to `cwd`. Nothing is required of
+  any producer, and no stored row changes.
+- **The prompt moved, it did not go away.** It is where it always was, in the
+  first `UserPromptSubmit` event's payload; the session detail reads it from
+  there (first three lines, expandable) rather than from `title`. Prompts that
+  are envelopes — `<task-notification>`, `<system-reminder>` — are skipped when
+  looking for the request, so a run resumed by a background task before its
+  human typed still shows the human's words.
+- **Images in a prompt are still not captured.** The `UserPromptSubmit` hook
+  sends `prompt` as a string; a pasted image is a placeholder in it, and the
+  bytes only exist in the transcript. The request block renders `image_ref`
+  nodes if it ever finds any, so this becomes a forwarder change alone.
+- **DB**: unchanged. No migration — `title_source` is already a free string.
