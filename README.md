@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/masterwork?color=cb3837&logo=npm)](https://www.npmjs.com/package/masterwork)
 [![CI](https://github.com/flieks/masterwork/actions/workflows/ci.yml/badge.svg)](https://github.com/flieks/masterwork/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Elastic-2.0](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
 
 A local workbench for the skills and subagents your AI coding agent uses — browse
 them, edit them, refine them with AI, and **prove they work** with scored
@@ -183,4 +183,6 @@ this way is not.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[Elastic License 2.0](LICENSE): free to use, self-host, and modify. You may not
+offer Masterwork (or a substantial part of it) to third parties as a hosted or
+managed service.
