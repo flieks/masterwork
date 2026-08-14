@@ -30,3 +30,6 @@ class SessionLaunch(Base):
     mode: Mapped[str] = mapped_column(String(20))
     launched_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Only interview launches carry one — the factory run id, server-generated
+    # at launch time so it is on the row before the child is even spawned.
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -8,9 +8,12 @@ import type {
   CodingEvent,
   CodingSession,
   CodingSessionDetail,
+  InterviewAnswersRequest,
+  InterviewResumeRead,
   LaunchRequest,
   LauncherProject,
   LauncherProjectCreateRequest,
+  SessionLaunchListItem,
   SessionLaunchRead,
 } from '~/api/generated';
 import { windowSince, type AssetWindow } from './runs';
@@ -78,6 +81,31 @@ export const updateSettingsMutationAtom = atomWithMutation((get) => ({
 export const launchSessionMutationAtom = atomWithMutation(() => ({
   mutationFn: (body: LaunchRequest): Promise<SessionLaunchRead> =>
     api.launcher.launchSession(body).then((r) => r.data),
+}));
+
+const SESSION_LAUNCHES_QUERY_KEY = ['sessionLaunches'];
+
+/** Recent launches with their interview state — slower than the run poll
+ * since each tick reads files (questions.json/run.json), not rows. */
+export const sessionLaunchesQueryAtom = atomWithQuery(() => ({
+  queryKey: SESSION_LAUNCHES_QUERY_KEY,
+  queryFn: async (): Promise<SessionLaunchListItem[]> =>
+    (await api.launcher.listSessionLaunches()).data,
+  refetchInterval: 5000,
+  refetchIntervalInBackground: true,
+}));
+
+export const submitInterviewAnswersMutationAtom = atomWithMutation((get) => ({
+  mutationFn: ({
+    launchId,
+    body,
+  }: {
+    launchId: number;
+    body: InterviewAnswersRequest;
+  }): Promise<InterviewResumeRead> =>
+    api.launcher.submitInterviewAnswers(launchId, body).then((r) => r.data),
+  onSuccess: () =>
+    get(queryClientAtom).invalidateQueries({ queryKey: SESSION_LAUNCHES_QUERY_KEY }),
 }));
 
 function sessionQueryKey(sessionId: string): [string, string] {

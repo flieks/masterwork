@@ -2319,9 +2319,9 @@ SessionLaunchRead {
   untrusted and is passed as a single argv element). Nothing waits on it; a
   `session_launches` row is written first (so a launch is on record even if
   the spawn fails) and stamped with the child's pid.
-- **`mode` is stored and shown, not yet acted on.** Both `"autonomous"` and
-  `"interview"` launch the identical unattended run this iteration — no mode
-  flag reaches `run.py`. Interview behaviour ships separately.
+- **`mode` selects the spawned argv.** `"autonomous"` is unchanged: no mode
+  flag, no run id. `"interview"` gets a server-generated run id passed as
+  `--run-id`, plus `--interview` — see v1.26 below for what that does.
 - **No extra attribution wiring.** A launched run's Claude sessions
   self-attribute to the Sessions screen the same way every other factory run
   does, via the `MASTERWORK_FACTORY_RUN_ID` env handshake
@@ -2342,3 +2342,113 @@ SessionLaunchRead {
   `request_text`, `mode`, `launched_at`, `pid` nullable). Not linked to
   `coding_sessions` by FK — attribution rides the env handshake, not this
   table. Alembic migration `0020_app_settings_and_launches`.
+
+---
+
+# API Contract v1.26 — real interview mode
+
+Additive on top of v1.25. An interview launch now really pauses: the factory
+run executes `plan` as always, then — instead of continuing to `build` — turns
+the plan envelope's `assumptions[]` into questions, writes them to
+`<run_dir>/questions.json`, marks `run.json` `state: "waiting_input"`, and
+exits 0. `--resume <run_id>` on such a run requires `<run_dir>/answers.json`;
+with it, each question+answer pair is folded into the build stage's prompt
+alongside the plan; without it, the resume refuses and exits 2. An autonomous
+launch, or any run started without `--interview`, is unaffected.
+
+## Factory CLI (`factory/run.py`)
+
+- `--interview` — after `plan`, pause and write `questions.json` instead of
+  continuing to build. Refused (exit 2) on a workflow with no `plan` stage.
+- `--run-id RUN_ID` — use this id for a fresh run instead of generating one.
+  Validated as a path segment before use: non-empty, ≤64 chars,
+  `[A-Za-z0-9._-]` only, not `.`/`..`, and refused if already in use under the
+  runs root. Mutually exclusive with `--resume` (a resume takes its id from
+  the record it is resuming).
+- `--resume <run_id>` of a run whose `run.json` state is `waiting_input` reads
+  `<run_dir>/answers.json`; missing or malformed answers refuse the resume
+  (exit 2) before any agent runs.
+
+## The on-disk file contract (owned by `factory/adw/interview.py`)
+
+```
+<run_dir>/questions.json   — written by the factory
+{
+  "run_id": "a1b2c3d4",
+  "stage": "plan",
+  "asked_at": "2026-08-14T10:00:00+00:00",
+  "questions": [{ "id": "q1", "question": "<assumption text, verbatim>" }]
+}
+
+<run_dir>/answers.json     — written by the backend, read by the factory
+{
+  "answered_at": "2026-08-14T10:05:00+00:00",
+  "answers": [{ "id": "q1", "question": "<verbatim>", "answer": "<user text>" }]
+}
+```
+
+`<run_dir>` is `<runs root>/<run_id>`; the runs root is a repo's own
+`factory.config.json` `"runs_dir"` when set, else
+`~/.masterwork/runs/<project dir name>`. The backend
+(`app/services/factory_runs.py`) mirrors this rule exactly rather than passing
+a `--runs-dir`, so an interview run's files land where every other run of that
+repo lands. Both files are written atomically (tmp + `os.replace`).
+
+## New schemas
+
+```
+SessionLaunchRead: + run_id: string | null        // set for interview launches only
+
+InterviewState = "not_interview" | "starting" | "running" | "waiting" | "answered" | "finished"
+InterviewQuestion { id: string, question: string }
+InterviewRead {
+  launch_id: number
+  run_id: string | null
+  state: InterviewState
+  run_state?: string | null    // run.json's raw state, for debugging
+  questions?: InterviewQuestion[]   // only populated when state == "waiting"
+}
+InterviewAnswer { id: string, answer: string }        // min length 1
+InterviewAnswersRequest { answers: InterviewAnswer[] }  // min length 1, one per question
+InterviewResumeRead { launch_id: number, run_id: string, resumed: boolean, pid: number | null }
+
+SessionLaunchListItem = SessionLaunchRead + { interview: InterviewRead | null }  // null for autonomous rows
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/launches` | `listSessionLaunches` | — | `SessionLaunchListItem[]` (newest first, up to 20) |
+| GET `/api/v1/launcher/launches/{launch_id}/interview` | `getLaunchInterview` | — | `InterviewRead` (404 unknown launch) |
+| POST `/api/v1/launcher/launches/{launch_id}/answers` | `submitInterviewAnswers` | `InterviewAnswersRequest` | `InterviewResumeRead` (404 unknown launch; 409 not currently `"waiting"`; 400 answer ids don't match the recorded questions one-for-one, or any answer is blank after `.strip()`) |
+
+## Behavior
+
+- **Interview launches get a server-generated run id.** `POST
+  /api/v1/launcher/launch` with `mode: "interview"` generates a run id
+  (`factory_runs.new_run_id()`, same shape as the factory's own), stores it on
+  the `session_launches` row, and passes `--run-id <id> --interview` to
+  `run.py`. An autonomous launch keeps `run_id: null` and its argv
+  byte-for-byte identical to v1.25.
+- **State is derived from the run's own files, not stored.** `starting` (no
+  `run.json` yet) → `waiting` (`questions.json` present, `run.json` state
+  `waiting_input`) → `answered` (`answers.json` written) → `finished`
+  (`run.json` state `finished`/`stopped`), or `running` otherwise. A launch
+  that isn't interview mode, or has no run id, reads `not_interview`.
+- **Submitting answers is the double-submit guard.** Once `answers.json`
+  exists the state is `answered`, not `waiting`, so a second POST 409s instead
+  of spawning a second resume. The answers file is written *before* the resume
+  is spawned — a resume that started before its answers existed would refuse
+  itself.
+- **The resume spawn mirrors the launch spawn.** Same detached, fire-and-forget
+  `Popen` pattern (`start_new_session=True`, argv list, never shell-interpreted):
+  `python3 <repo>/factory/run.py --repo <project> --resume <run_id>`, through
+  an injected `ResumeSpawner` dependency so no test forks a real process.
+- **Frontend**: the Sessions list page polls `listSessionLaunches` (5s) and
+  renders an `InterviewQuestions` card — one required text field per pending
+  question — for every launch currently `waiting`, mounted outside the Radix
+  tabs so it is never hidden behind whichever tab is open.
+- **DB**: one nullable column, `session_launches.run_id` (`String(64)`).
+  Alembic migration `0022_session_launch_run_id` on `0021_work_assignee_sprint`.
+  Additive, reversible, no backfill.

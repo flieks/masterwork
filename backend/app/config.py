@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     factory_python: str = "python3"
     # Default projects_root before any app_settings row overrides it.
     default_projects_root: Path = Path.home() / "Projects"
+    # Mirrors the factory's own runs-root default (factory/adw/config.py
+    # DEFAULT_RUNS_ROOT) so an interview run's questions/answers files land
+    # exactly where every other run of that repo lands.
+    factory_runs_root: Path = MASTERWORK_HOME / "runs"
 
     @property
     def ingest_url(self) -> str:

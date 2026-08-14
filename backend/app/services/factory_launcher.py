@@ -27,23 +27,55 @@ def spawn_factory_run(
     project_path: Path,
     request_text: str,
     log_path: Path,
+    run_id: str | None = None,
+    interview: bool = False,
 ) -> int:
     """Launch `python_bin factory/run.py --repo project_path request_text`,
     detached from this process and never awaited. Returns the child pid.
 
     argv is a list, never a shell string — request_text is untrusted and must
-    never be interpreted. No mode flag: both launch modes run the same
-    unattended pipeline this iteration (see plan.md).
+    never be interpreted. `--run-id`/`--interview` are appended only when set,
+    so an autonomous launch's argv is unchanged to the byte.
     """
-    _reap()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
     argv = [
         python_bin,
         str(repo_root / "factory" / "run.py"),
         "--repo",
         str(project_path),
-        request_text,
     ]
+    if run_id is not None:
+        argv += ["--run-id", run_id]
+    if interview:
+        argv.append("--interview")
+    argv.append(request_text)
+    return _spawn(argv, project_path, log_path)
+
+
+def spawn_factory_resume(
+    *,
+    repo_root: Path,
+    python_bin: str,
+    project_path: Path,
+    run_id: str,
+    log_path: Path,
+) -> int:
+    """Launch `python_bin factory/run.py --repo project_path --resume run_id`,
+    detached the same way spawn_factory_run is — the answers.json the caller
+    just wrote is what this resumed run reads its questions' answers from."""
+    argv = [
+        python_bin,
+        str(repo_root / "factory" / "run.py"),
+        "--repo",
+        str(project_path),
+        "--resume",
+        run_id,
+    ]
+    return _spawn(argv, project_path, log_path)
+
+
+def _spawn(argv: list[str], project_path: Path, log_path: Path) -> int:
+    _reap()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log:
         proc = subprocess.Popen(
             argv,

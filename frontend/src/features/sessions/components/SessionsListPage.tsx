@@ -19,6 +19,7 @@ import {
   statusFilterAtom,
 } from '../queries';
 import { AssetUsagePanel } from './AssetUsagePanel';
+import { InterviewQuestions } from './InterviewQuestions';
 import { LaunchSessionDialog } from './LaunchSessionDialog';
 import { LiveIndicator } from './LiveIndicator';
 import { RunCard } from './RunCard';
@@ -64,6 +65,8 @@ export function SessionsListPage() {
       <LaunchSessionDialog open={launchOpen} onOpenChange={setLaunchOpen} />
 
       <TrackingBanner />
+
+      <InterviewQuestions />
 
       <Tabs
         value={view}

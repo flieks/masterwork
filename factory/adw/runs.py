@@ -33,6 +33,9 @@ TELEMETRY_FILENAME = "telemetry.jsonl"
 RUNNING = "running"
 FINISHED = "finished"
 STOPPED = "stopped"
+# An --interview run that stopped after `plan` to ask its assumptions as
+# questions — neither finished nor a failure, just waiting on answers.json.
+WAITING_INPUT = "waiting_input"
 
 # What a factory process's command line always contains. Checked in addition to the
 # recorded command line, so a record written by an older version still cannot point
@@ -84,12 +87,16 @@ class RunRecord:
     attempt: int = 1
     accepted: bool | None = None
     reason: str = ""
+    # Whether this run is a --interview run — carried in the record so a
+    # resumed process (which reads no CLI flag) still knows to look for
+    # answers.json. Missing on an older run.json reads as False.
+    interview: bool = False
     run_dir: Path | None = None  # where it was read from; never serialized
 
     FIELDS = (
         "run_id", "repo", "request", "workflow", "workflow_name", "branch",
         "branch_origin", "base_sha", "pid", "cmdline", "state", "started",
-        "ended", "attempt", "accepted", "reason",
+        "ended", "attempt", "accepted", "reason", "interview",
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -149,6 +156,7 @@ def open_record(
     workflow: tuple[str, ...],
     workflow_name: str,
     attempt: int = 1,
+    interview: bool = False,
 ) -> RunRecord:
     """Claim the run dir for this process: the pid goes down before any agent runs,
     because the moment you need a hung run's pid is the moment it stops emitting."""
@@ -166,6 +174,7 @@ def open_record(
         state=RUNNING,
         started=previous.started if previous and previous.started else _now(),
         attempt=attempt,
+        interview=interview,
     )
     write(run_dir, record)
     return record
@@ -174,6 +183,12 @@ def open_record(
 def close_record(run_dir: Path, *, state: str, accepted: bool, reason: str) -> None:
     """The pid record is cleared here, so a finished run is never a ghost in --list-runs."""
     update(run_dir, pid=None, state=state, accepted=accepted, reason=reason, ended=_now())
+
+
+def pause_record(run_dir: Path, *, reason: str) -> None:
+    """A run stopping to ask questions: pid cleared like any other stop, but
+    `accepted` is left untouched — a paused run has not been judged, only deferred."""
+    update(run_dir, pid=None, state=WAITING_INPUT, reason=reason, ended=_now())
 
 
 # --- per-stage evidence -----------------------------------------------------

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -37,15 +38,37 @@ __all__ = [
     "DevOpsClientFactory",
     "get_launch_spawner",
     "LaunchSpawner",
+    "get_resume_spawner",
+    "ResumeSpawner",
 ]
 
 # Short alias — the full Callable[[WorkSource], AzureDevOpsClient] spelling is
 # repeated at every call site that injects this dependency.
 DevOpsClientFactory = Callable[[WorkSource], AzureDevOpsClient]
 
-# (project_path, request_text, log_path) -> pid. Tests override this so no
-# test ever forks a real subprocess.
-LaunchSpawner = Callable[[Path, str, Path], int]
+
+class LaunchSpawner(Protocol):
+    """Spawns a fresh factory run; -> pid. Keyword-only so `run_id`/`interview`
+    can be added without breaking every call site's positional order. Tests
+    override `get_launch_spawner` with a fake so no test ever forks a
+    real subprocess."""
+
+    def __call__(
+        self,
+        *,
+        project_path: Path,
+        request_text: str,
+        log_path: Path,
+        run_id: str | None = None,
+        interview: bool = False,
+    ) -> int: ...
+
+
+class ResumeSpawner(Protocol):
+    """Spawns the detached `--resume` subprocess once answers.json is written;
+    -> pid. Tests override `get_resume_spawner` the same way."""
+
+    def __call__(self, *, project_path: Path, run_id: str, log_path: Path) -> int: ...
 
 
 def get_providers() -> list[Provider]:
@@ -115,12 +138,36 @@ def get_launch_spawner() -> LaunchSpawner:
     """Binds the repo root and interpreter from settings; tests override this
     with a fake that records its args and returns a fake pid."""
 
-    def _spawn(project_path: Path, request_text: str, log_path: Path) -> int:
+    def _spawn(
+        *,
+        project_path: Path,
+        request_text: str,
+        log_path: Path,
+        run_id: str | None = None,
+        interview: bool = False,
+    ) -> int:
         return factory_launcher.spawn_factory_run(
             repo_root=settings.masterwork_repo_root,
             python_bin=settings.factory_python,
             project_path=project_path,
             request_text=request_text,
+            log_path=log_path,
+            run_id=run_id,
+            interview=interview,
+        )
+
+    return _spawn
+
+
+def get_resume_spawner() -> ResumeSpawner:
+    """Same binding as get_launch_spawner, for the detached `--resume` spawn."""
+
+    def _spawn(*, project_path: Path, run_id: str, log_path: Path) -> int:
+        return factory_launcher.spawn_factory_resume(
+            repo_root=settings.masterwork_repo_root,
+            python_bin=settings.factory_python,
+            project_path=project_path,
+            run_id=run_id,
             log_path=log_path,
         )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import shlex
 from dataclasses import dataclass, field
@@ -184,6 +185,27 @@ class FactoryConfig:
 
 def new_run_id() -> str:
     return secrets.token_hex(4)
+
+
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def validate_run_id(run_id: str, runs_root: Path) -> None:
+    """A caller-supplied run id becomes a path segment (`<runs_root>/<run_id>`),
+    so it is checked before it is ever joined to one: non-empty, <=64 chars,
+    `[A-Za-z0-9._-]` only, not `.`/`..`, and not already claimed."""
+    if (
+        not run_id
+        or len(run_id) > 64
+        or run_id in (".", "..")
+        or not _RUN_ID_RE.fullmatch(run_id)
+    ):
+        raise ConfigError(
+            f"--run-id {run_id!r} must be 1-64 characters of letters, digits, '.', "
+            "'_', '-' and not '.' or '..'"
+        )
+    if (runs_root / run_id / "run.json").exists():  # adw.runs.RECORD_FILENAME
+        raise ConfigError(f"--run-id {run_id!r} is already in use under {runs_root}")
 
 
 def detect_checks(repo: Path) -> list[str]:

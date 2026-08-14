@@ -1709,6 +1709,125 @@
                 }
             }
         },
+        "/api/v1/launcher/launches": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Session Launches",
+                "operationId": "listSessionLaunches",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/SessionLaunchListItem"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listsessionlaunches"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launches/{launch_id}/interview": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Get Launch Interview",
+                "operationId": "getLaunchInterview",
+                "parameters": [
+                    {
+                        "name": "launch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Launch Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InterviewRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launches/{launch_id}/answers": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Submit Interview Answers",
+                "operationId": "submitInterviewAnswers",
+                "parameters": [
+                    {
+                        "name": "launch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Launch Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InterviewAnswersRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InterviewResumeRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/observability/integrations": {
             "get": {
                 "tags": [
@@ -5731,6 +5850,155 @@
                 ],
                 "title": "InstructionsUpdateRequest"
             },
+            "InterviewAnswer": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "answer": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Answer"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "answer"
+                ],
+                "title": "InterviewAnswer"
+            },
+            "InterviewAnswersRequest": {
+                "properties": {
+                    "answers": {
+                        "items": {
+                            "$ref": "#/components/schemas/InterviewAnswer"
+                        },
+                        "type": "array",
+                        "minItems": 1,
+                        "title": "Answers"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "answers"
+                ],
+                "title": "InterviewAnswersRequest"
+            },
+            "InterviewQuestion": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "question": {
+                        "type": "string",
+                        "title": "Question"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "question"
+                ],
+                "title": "InterviewQuestion"
+            },
+            "InterviewRead": {
+                "properties": {
+                    "launch_id": {
+                        "type": "integer",
+                        "title": "Launch Id"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id"
+                    },
+                    "state": {
+                        "$ref": "#/components/schemas/InterviewState"
+                    },
+                    "run_state": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run State",
+                        "description": "run.json's raw state, for debugging."
+                    },
+                    "questions": {
+                        "items": {
+                            "$ref": "#/components/schemas/InterviewQuestion"
+                        },
+                        "type": "array",
+                        "title": "Questions"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "launch_id",
+                    "run_id",
+                    "state"
+                ],
+                "title": "InterviewRead"
+            },
+            "InterviewResumeRead": {
+                "properties": {
+                    "launch_id": {
+                        "type": "integer",
+                        "title": "Launch Id"
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "resumed": {
+                        "type": "boolean",
+                        "title": "Resumed"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "launch_id",
+                    "run_id",
+                    "resumed",
+                    "pid"
+                ],
+                "title": "InterviewResumeRead"
+            },
+            "InterviewState": {
+                "type": "string",
+                "enum": [
+                    "not_interview",
+                    "starting",
+                    "running",
+                    "waiting",
+                    "answered",
+                    "finished"
+                ],
+                "title": "InterviewState"
+            },
             "LaunchMode": {
                 "type": "string",
                 "enum": [
@@ -7198,6 +7466,18 @@
                         ],
                         "title": "Pid"
                     },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id",
+                        "description": "Set for interview launches only."
+                    },
                     "launched": {
                         "type": "boolean",
                         "title": "Launched",
@@ -7215,6 +7495,80 @@
                     "launched"
                 ],
                 "title": "SessionLaunchRead"
+            },
+            "SessionLaunchListItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path"
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "mode": {
+                        "$ref": "#/components/schemas/LaunchMode"
+                    },
+                    "launched_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Launched At"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id",
+                        "description": "Set for interview launches only."
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "True once the subprocess was spawned."
+                    },
+                    "interview": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/InterviewRead"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Only for interview-mode launches; null for autonomous ones."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "project_path",
+                    "request_text",
+                    "mode",
+                    "launched_at",
+                    "pid",
+                    "launched"
+                ],
+                "title": "SessionLaunchListItem"
             },
             "Simulation": {
                 "properties": {

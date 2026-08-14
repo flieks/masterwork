@@ -1,5 +1,6 @@
 """Session launcher business logic: project listing/creation under
-projects_root, and spawning a detached factory run.
+projects_root, spawning a detached factory run, and the interview state
+machine (read a launch's questions, submit answers, spawn its resume).
 
 Every path that reaches the filesystem goes through `resolve_within_roots`
 (app/providers/base.py) — the same helper the asset write path uses — so a
@@ -18,14 +19,19 @@ from app.api.v1.launcher import schemas
 from app.api.v1.settings.service import read_settings
 from app.config import settings as app_settings
 from app.core.exceptions import (
+    InterviewAnswerMismatchError,
+    InterviewNotWaitingError,
     InvalidProjectNameError,
     LaunchFailedError,
+    LaunchNotFoundError,
     ProjectCreationError,
     ProjectExistsError,
     ProjectPathOutsideRootError,
 )
+from app.db.models.launcher import MODE_INTERVIEW, SessionLaunch
 from app.providers.base import resolve_within_roots
 from app.repositories import launcher as launcher_repo
+from app.services import factory_runs
 
 _MAX_NAME_LEN = 100
 
@@ -95,10 +101,14 @@ async def create_project(db: AsyncSession, name: str) -> schemas.LauncherProject
     return schemas.LauncherProject(name=resolved.name, path=str(resolved), is_git_repo=True)
 
 
+def _log_path(launch_id: int) -> Path:
+    return app_settings.masterwork_home / "launches" / f"{launch_id}.log"
+
+
 async def launch(
     db: AsyncSession,
     body: schemas.LaunchRequest,
-    spawner: Callable[[Path, str, Path], int],
+    spawner: Callable[..., int],
 ) -> schemas.SessionLaunchRead:
     root = await _projects_root(db)
     resolved = resolve_within_roots(Path(body.project_path), [root])
@@ -111,12 +121,27 @@ async def launch(
         # nowhere to surface that — caught here, synchronously, instead.
         raise ProjectPathOutsideRootError(f"project_path is not a git repository: {resolved}")
 
+    # Only an interview launch gets a run id — an autonomous launch keeps
+    # run_id=None and its argv byte-for-byte identical to before.
+    is_interview = body.mode == schemas.LaunchMode.INTERVIEW
+    run_id = factory_runs.new_run_id() if is_interview else None
+
     launch_row = await launcher_repo.create_launch(
-        db, project_path=str(resolved), request_text=body.request_text, mode=body.mode.value
+        db,
+        project_path=str(resolved),
+        request_text=body.request_text,
+        mode=body.mode.value,
+        run_id=run_id,
     )
-    log_path = app_settings.masterwork_home / "launches" / f"{launch_row.id}.log"
+    log_path = _log_path(launch_row.id)
     try:
-        pid = spawner(resolved, body.request_text, log_path)
+        pid = spawner(
+            project_path=resolved,
+            request_text=body.request_text,
+            log_path=log_path,
+            run_id=run_id,
+            interview=is_interview,
+        )
     except OSError as exc:
         await db.rollback()
         raise LaunchFailedError(f"could not start the factory run: {exc}") from exc
@@ -130,5 +155,131 @@ async def launch(
         mode=schemas.LaunchMode(launch_row.mode),
         launched_at=launch_row.launched_at,
         pid=pid,
+        run_id=launch_row.run_id,
         launched=True,
+    )
+
+
+# --- interview state -----------------------------------------------------
+
+
+def _interview_read(launch: SessionLaunch) -> schemas.InterviewRead:
+    """Derives the interview state from the run's own files — nothing about
+    this is stored on the launch row beyond the run id."""
+    if launch.mode != MODE_INTERVIEW or not launch.run_id:
+        return schemas.InterviewRead(
+            launch_id=launch.id,
+            run_id=launch.run_id,
+            state=schemas.InterviewState.NOT_INTERVIEW,
+            run_state=None,
+        )
+
+    run_dir = factory_runs.run_dir_for(Path(launch.project_path), launch.run_id)
+    run_state = factory_runs.read_run_state(run_dir)
+    questions = factory_runs.read_questions(run_dir)
+
+    if run_state is None:
+        state = schemas.InterviewState.STARTING
+    elif factory_runs.answers_exist(run_dir):
+        state = schemas.InterviewState.ANSWERED
+    elif questions and run_state == "waiting_input":
+        state = schemas.InterviewState.WAITING
+    elif run_state in ("finished", "stopped"):
+        state = schemas.InterviewState.FINISHED
+    else:
+        state = schemas.InterviewState.RUNNING
+
+    return schemas.InterviewRead(
+        launch_id=launch.id,
+        run_id=launch.run_id,
+        state=state,
+        run_state=run_state,
+        questions=(
+            [schemas.InterviewQuestion(**q) for q in questions]
+            if state == schemas.InterviewState.WAITING
+            else []
+        ),
+    )
+
+
+async def list_launches(
+    db: AsyncSession, limit: int = launcher_repo.DEFAULT_LIST_LIMIT
+) -> list[schemas.SessionLaunchListItem]:
+    rows = await launcher_repo.list_launches(db, limit)
+    return [
+        schemas.SessionLaunchListItem(
+            id=row.id,
+            project_path=row.project_path,
+            request_text=row.request_text,
+            mode=schemas.LaunchMode(row.mode),
+            launched_at=row.launched_at,
+            pid=row.pid,
+            run_id=row.run_id,
+            launched=True,
+            interview=(
+                _interview_read(row) if row.mode == MODE_INTERVIEW and row.run_id else None
+            ),
+        )
+        for row in rows
+    ]
+
+
+async def read_interview(db: AsyncSession, launch_id: int) -> schemas.InterviewRead:
+    launch = await launcher_repo.get_launch(db, launch_id)
+    if launch is None:
+        raise LaunchNotFoundError(f"no launch with id {launch_id}")
+    return _interview_read(launch)
+
+
+async def submit_answers(
+    db: AsyncSession,
+    launch_id: int,
+    body: schemas.InterviewAnswersRequest,
+    resume_spawner: Callable[..., int],
+) -> schemas.InterviewResumeRead:
+    launch = await launcher_repo.get_launch(db, launch_id)
+    if launch is None:
+        raise LaunchNotFoundError(f"no launch with id {launch_id}")
+
+    interview = _interview_read(launch)
+    if interview.state != schemas.InterviewState.WAITING:
+        raise InterviewNotWaitingError(
+            f"launch {launch_id} is not waiting for answers (state: {interview.state.value})"
+        )
+
+    questions_by_id = {q.id: q.question for q in interview.questions}
+    submitted_ids = [a.id for a in body.answers]
+    no_duplicates = len(submitted_ids) == len(set(submitted_ids))
+    exact_match = set(submitted_ids) == set(questions_by_id)
+    if not (no_duplicates and exact_match):
+        raise InterviewAnswerMismatchError(
+            "answers must cover exactly the recorded questions, one each"
+        )
+    pairs: list[dict[str, str]] = []
+    for answer in body.answers:
+        text = answer.answer.strip()
+        if not text:
+            raise InterviewAnswerMismatchError(f'answer for "{answer.id}" must not be blank')
+        pairs.append({"id": answer.id, "question": questions_by_id[answer.id], "answer": text})
+
+    assert launch.run_id is not None  # guaranteed by state == WAITING
+    run_dir = factory_runs.run_dir_for(Path(launch.project_path), launch.run_id)
+    # Written before the spawn: a resume that started before its answers were
+    # on disk would refuse itself.
+    factory_runs.write_answers(run_dir, pairs)
+
+    try:
+        pid = resume_spawner(
+            project_path=Path(launch.project_path),
+            run_id=launch.run_id,
+            log_path=_log_path(launch.id),
+        )
+    except OSError as exc:
+        await db.rollback()
+        raise LaunchFailedError(f"could not resume the factory run: {exc}") from exc
+
+    await launcher_repo.set_pid(db, launch, pid)
+    await db.commit()
+    return schemas.InterviewResumeRead(
+        launch_id=launch.id, run_id=launch.run_id, resumed=True, pid=pid
     )

@@ -2019,7 +2019,144 @@ export interface InstructionsUpdateRequest {
     'content': string;
 }
 /**
- * 
+ *
+ * @export
+ * @interface InterviewAnswer
+ */
+export interface InterviewAnswer {
+    /**
+     *
+     * @type {string}
+     * @memberof InterviewAnswer
+     */
+    'id': string;
+    /**
+     *
+     * @type {string}
+     * @memberof InterviewAnswer
+     */
+    'answer': string;
+}
+/**
+ *
+ * @export
+ * @interface InterviewAnswersRequest
+ */
+export interface InterviewAnswersRequest {
+    /**
+     *
+     * @type {Array<InterviewAnswer>}
+     * @memberof InterviewAnswersRequest
+     */
+    'answers': Array<InterviewAnswer>;
+}
+/**
+ *
+ * @export
+ * @interface InterviewQuestion
+ */
+export interface InterviewQuestion {
+    /**
+     *
+     * @type {string}
+     * @memberof InterviewQuestion
+     */
+    'id': string;
+    /**
+     *
+     * @type {string}
+     * @memberof InterviewQuestion
+     */
+    'question': string;
+}
+/**
+ *
+ * @export
+ * @interface InterviewRead
+ */
+export interface InterviewRead {
+    /**
+     *
+     * @type {number}
+     * @memberof InterviewRead
+     */
+    'launch_id': number;
+    /**
+     *
+     * @type {string}
+     * @memberof InterviewRead
+     */
+    'run_id': string | null;
+    /**
+     *
+     * @type {InterviewState}
+     * @memberof InterviewRead
+     */
+    'state': InterviewState;
+    /**
+     * run.json\'s raw state, for debugging.
+     * @type {string}
+     * @memberof InterviewRead
+     */
+    'run_state'?: string | null;
+    /**
+     *
+     * @type {Array<InterviewQuestion>}
+     * @memberof InterviewRead
+     */
+    'questions'?: Array<InterviewQuestion>;
+}
+/**
+ *
+ * @export
+ * @interface InterviewResumeRead
+ */
+export interface InterviewResumeRead {
+    /**
+     *
+     * @type {number}
+     * @memberof InterviewResumeRead
+     */
+    'launch_id': number;
+    /**
+     *
+     * @type {string}
+     * @memberof InterviewResumeRead
+     */
+    'run_id': string;
+    /**
+     *
+     * @type {boolean}
+     * @memberof InterviewResumeRead
+     */
+    'resumed': boolean;
+    /**
+     *
+     * @type {number}
+     * @memberof InterviewResumeRead
+     */
+    'pid': number | null;
+}
+/**
+ *
+ * @export
+ * @enum {string}
+ */
+
+export const InterviewState = {
+    NotInterview: 'not_interview',
+    Starting: 'starting',
+    Running: 'running',
+    Waiting: 'waiting',
+    Answered: 'answered',
+    Finished: 'finished'
+} as const;
+
+export type InterviewState = typeof InterviewState[keyof typeof InterviewState];
+
+
+/**
+ *
  * @export
  * @enum {string}
  */
@@ -3151,11 +3288,78 @@ export interface SessionLaunchRead {
      */
     'pid': number | null;
     /**
+     * Set for interview launches only.
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'run_id'?: string | null;
+    /**
      * True once the subprocess was spawned.
      * @type {boolean}
      * @memberof SessionLaunchRead
      */
     'launched': boolean;
+}
+/**
+ *
+ * @export
+ * @interface SessionLaunchListItem
+ */
+export interface SessionLaunchListItem {
+    /**
+     *
+     * @type {number}
+     * @memberof SessionLaunchListItem
+     */
+    'id': number;
+    /**
+     *
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'project_path': string;
+    /**
+     *
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'request_text': string;
+    /**
+     *
+     * @type {LaunchMode}
+     * @memberof SessionLaunchListItem
+     */
+    'mode': LaunchMode;
+    /**
+     *
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'launched_at': string;
+    /**
+     *
+     * @type {number}
+     * @memberof SessionLaunchListItem
+     */
+    'pid': number | null;
+    /**
+     * Set for interview launches only.
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'run_id'?: string | null;
+    /**
+     * True once the subprocess was spawned.
+     * @type {boolean}
+     * @memberof SessionLaunchListItem
+     */
+    'launched': boolean;
+    /**
+     * Only for interview-mode launches; null for autonomous ones.
+     * @type {InterviewRead}
+     * @memberof SessionLaunchListItem
+     */
+    'interview'?: InterviewRead | null;
 }
 
 
@@ -6325,10 +6529,114 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-    
+
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary List Session Launches
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSessionLaunches: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/launches`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Get Launch Interview
+         * @param {number} launchId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getLaunchInterview: async (launchId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchId' is not null or undefined
+            assertParamExists('getLaunchInterview', 'launchId', launchId)
+            const localVarPath = `/api/v1/launcher/launches/{launch_id}/interview`
+                .replace(`{${"launch_id"}}`, encodeURIComponent(String(launchId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Submit Interview Answers
+         * @param {number} launchId
+         * @param {InterviewAnswersRequest} interviewAnswersRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitInterviewAnswers: async (launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchId' is not null or undefined
+            assertParamExists('submitInterviewAnswers', 'launchId', launchId)
+            // verify required parameter 'interviewAnswersRequest' is not null or undefined
+            assertParamExists('submitInterviewAnswers', 'interviewAnswersRequest', interviewAnswersRequest)
+            const localVarPath = `/api/v1/launcher/launches/{launch_id}/answers`
+                .replace(`{${"launch_id"}}`, encodeURIComponent(String(launchId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(interviewAnswersRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -6383,6 +6691,45 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['LauncherApi.listLauncherProjects']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         *
+         * @summary List Session Launches
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listSessionLaunches(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SessionLaunchListItem>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listSessionLaunches(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listSessionLaunches']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary Get Launch Interview
+         * @param {number} launchId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InterviewRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getLaunchInterview(launchId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getLaunchInterview']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary Submit Interview Answers
+         * @param {number} launchId
+         * @param {InterviewAnswersRequest} interviewAnswersRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async submitInterviewAnswers(launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InterviewResumeRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.submitInterviewAnswers(launchId, interviewAnswersRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.submitInterviewAnswers']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -6421,6 +6768,36 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
          */
         listLauncherProjects(options?: RawAxiosRequestConfig): AxiosPromise<Array<LauncherProject>> {
             return localVarFp.listLauncherProjects(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary List Session Launches
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSessionLaunches(options?: RawAxiosRequestConfig): AxiosPromise<Array<SessionLaunchListItem>> {
+            return localVarFp.listSessionLaunches(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Get Launch Interview
+         * @param {number} launchId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): AxiosPromise<InterviewRead> {
+            return localVarFp.getLaunchInterview(launchId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Submit Interview Answers
+         * @param {number} launchId
+         * @param {InterviewAnswersRequest} interviewAnswersRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitInterviewAnswers(launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options?: RawAxiosRequestConfig): AxiosPromise<InterviewResumeRead> {
+            return localVarFp.submitInterviewAnswers(launchId, interviewAnswersRequest, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -6465,6 +6842,42 @@ export class LauncherApi extends BaseAPI {
      */
     public listLauncherProjects(options?: RawAxiosRequestConfig) {
         return LauncherApiFp(this.configuration).listLauncherProjects(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary List Session Launches
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listSessionLaunches(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listSessionLaunches(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Get Launch Interview
+     * @param {number} launchId
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).getLaunchInterview(launchId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Submit Interview Answers
+     * @param {number} launchId
+     * @param {InterviewAnswersRequest} interviewAnswersRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public submitInterviewAnswers(launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).submitInterviewAnswers(launchId, interviewAnswersRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

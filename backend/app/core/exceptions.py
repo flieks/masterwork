@@ -199,3 +199,19 @@ class LaunchFailedError(DomainError):
     """The factory subprocess could not be spawned."""
 
     status_code = 502
+
+
+class LaunchNotFoundError(DomainError):
+    status_code = 404
+
+
+class InterviewNotWaitingError(DomainError):
+    """The launch isn't currently paused for answers — also the double-submit guard."""
+
+    status_code = 409
+
+
+class InterviewAnswerMismatchError(DomainError):
+    """The submitted answers don't match the recorded questions one-for-one, or one is blank."""
+
+    status_code = 400

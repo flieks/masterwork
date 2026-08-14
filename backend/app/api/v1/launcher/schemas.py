@@ -43,4 +43,49 @@ class SessionLaunchRead(BaseModel):
     mode: LaunchMode
     launched_at: datetime
     pid: int | None
+    run_id: str | None = Field(None, description="Set for interview launches only.")
     launched: bool = Field(..., description="True once the subprocess was spawned.")
+
+
+class InterviewState(StrEnum):
+    NOT_INTERVIEW = "not_interview"
+    STARTING = "starting"
+    RUNNING = "running"
+    WAITING = "waiting"
+    ANSWERED = "answered"
+    FINISHED = "finished"
+
+
+class InterviewQuestion(BaseModel):
+    id: str
+    question: str
+
+
+class InterviewRead(BaseModel):
+    launch_id: int
+    run_id: str | None
+    state: InterviewState
+    run_state: str | None = Field(None, description="run.json's raw state, for debugging.")
+    questions: list[InterviewQuestion] = Field(default_factory=list)
+
+
+class InterviewAnswer(BaseModel):
+    id: str
+    answer: str = Field(..., min_length=1)
+
+
+class InterviewAnswersRequest(BaseModel):
+    answers: list[InterviewAnswer] = Field(..., min_length=1)
+
+
+class InterviewResumeRead(BaseModel):
+    launch_id: int
+    run_id: str
+    resumed: bool
+    pid: int | None
+
+
+class SessionLaunchListItem(SessionLaunchRead):
+    interview: InterviewRead | None = Field(
+        None, description="Only for interview-mode launches; null for autonomous ones."
+    )

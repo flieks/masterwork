@@ -67,6 +67,64 @@ def test_argv_has_no_mode_flag_and_is_never_shell_interpreted(
     assert log_path.exists()
 
 
+def test_interview_argv_inserts_run_id_and_interview_before_the_request(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(factory_launcher.subprocess, "Popen", _FakePopen)
+    repo_root = tmp_path / "masterwork"
+    project_path = tmp_path / "projects" / "alpha"
+    project_path.mkdir(parents=True)
+
+    factory_launcher.spawn_factory_run(
+        repo_root=repo_root,
+        python_bin="python3",
+        project_path=project_path,
+        request_text="add a widget",
+        log_path=tmp_path / "launches" / "2.log",
+        run_id="a1b2c3d4",
+        interview=True,
+    )
+
+    assert _FakePopen.calls[0]["argv"] == [
+        "python3",
+        str(repo_root / "factory" / "run.py"),
+        "--repo",
+        str(project_path),
+        "--run-id",
+        "a1b2c3d4",
+        "--interview",
+        "add a widget",
+    ]
+
+
+def test_resume_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(factory_launcher.subprocess, "Popen", _FakePopen)
+    repo_root = tmp_path / "masterwork"
+    project_path = tmp_path / "projects" / "alpha"
+    project_path.mkdir(parents=True)
+
+    pid = factory_launcher.spawn_factory_resume(
+        repo_root=repo_root,
+        python_bin="python3",
+        project_path=project_path,
+        run_id="a1b2c3d4",
+        log_path=tmp_path / "launches" / "3.log",
+    )
+
+    assert pid == 4242
+    call = _FakePopen.calls[0]
+    assert call["argv"] == [
+        "python3",
+        str(repo_root / "factory" / "run.py"),
+        "--repo",
+        str(project_path),
+        "--resume",
+        "a1b2c3d4",
+    ]
+    assert call["cwd"] == str(project_path)
+    assert call["start_new_session"] is True
+
+
 def test_reaps_finished_children_before_spawning_the_next(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
