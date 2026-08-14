@@ -18,7 +18,7 @@ from markdownify import markdownify
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.work import WorkSource
-from app.providers.azuredevops import AzureDevOpsClient
+from app.providers.azuredevops import AzureDevOpsClient, AzureDevOpsError
 from app.repositories import work as work_repo
 
 DEFAULT_WIQL = (
@@ -38,6 +38,7 @@ FIELDS = (
     "System.Tags",
     "System.ChangedDate",
     "System.Parent",
+    "System.AssignedTo",
 )
 
 _FIELD_TITLE = "System.Title"
@@ -50,6 +51,7 @@ _FIELD_PRIORITY = "Microsoft.VSTS.Common.Priority"
 _FIELD_TAGS = "System.Tags"
 _FIELD_CHANGED = "System.ChangedDate"
 _FIELD_PARENT = "System.Parent"
+_FIELD_ASSIGNED = "System.AssignedTo"
 
 # Collapse markdownify's trailing-space-before-newline artifacts.
 _TRAILING_WHITESPACE = re.compile(r"[ \t]+\n")
@@ -76,6 +78,14 @@ def parse_tags(raw: str | None) -> list[str] | None:
         return None
     tags = [tag.strip() for tag in raw.split(";") if tag.strip()]
     return tags or None
+
+
+def parse_assigned_to(raw: Any) -> str | None:
+    """`System.AssignedTo` is an identity object; keep the display name only."""
+    if not isinstance(raw, dict):
+        return None
+    name = raw.get("displayName")
+    return name if isinstance(name, str) and name else None
 
 
 def _work_item_url(source: WorkSource, external_id: int) -> str:
@@ -120,6 +130,7 @@ async def _upsert_payload(
         acceptance_md=html_to_markdown(acceptance_html) if acceptance_html else None,
         state=str(fields.get(_FIELD_STATE) or ""),
         iteration=fields.get(_FIELD_ITERATION),
+        assigned_to=parse_assigned_to(fields.get(_FIELD_ASSIGNED)),
         priority=int(priority) if isinstance(priority, int | float) else None,
         tags=parse_tags(fields.get(_FIELD_TAGS)),
         raw=payload,
@@ -171,6 +182,11 @@ async def sync_source(
             inserted += 1
         else:
             updated += 1
+
+    try:
+        source.current_iteration = await client.get_current_iteration_path()
+    except AzureDevOpsError:
+        pass  # Sprint lookup is best-effort; keep the last known value.
 
     source.last_sync_at = now
     await db.flush()

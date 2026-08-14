@@ -73,6 +73,7 @@ async def upsert_item(
     acceptance_md: str | None,
     state: str,
     iteration: str | None,
+    assigned_to: str | None,
     priority: int | None,
     tags: list[str] | None,
     raw: dict[str, Any],
@@ -102,6 +103,7 @@ async def upsert_item(
                 acceptance_md=acceptance_md,
                 state=state,
                 iteration=iteration,
+                assigned_to=assigned_to,
                 priority=priority,
                 tags=tags,
                 raw=raw,
@@ -121,6 +123,7 @@ async def upsert_item(
     item.acceptance_md = acceptance_md
     item.state = state
     item.iteration = iteration
+    item.assigned_to = assigned_to
     item.priority = priority
     item.tags = tags
     item.raw = raw

@@ -55,6 +55,8 @@ class WorkSource(Base):
     secret_ref: Mapped[str] = mapped_column(
         String(200), default=DEFAULT_SECRET_REF, server_default=text(f"'{DEFAULT_SECRET_REF}'")
     )
+    # The team's current iteration path (DevOps $timeframe=current), refreshed on sync.
+    current_iteration: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_sync_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -87,6 +89,8 @@ class WorkItem(Base):
     acceptance_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     state: Mapped[str] = mapped_column(String(100))
     iteration: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # DevOps System.AssignedTo display name; null when unassigned.
+    assigned_to: Mapped[str | None] = mapped_column(String(300), nullable=True)
     priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(JSONColumn, nullable=True)
     # The whole DevOps payload, unchanged — untrusted external data: stored,

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAtom } from 'jotai';
+import { AlertTriangle } from 'lucide-react';
 import type { LaunchMode } from '~/api/generated';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
+import { Skeleton } from '~/components/ui/skeleton';
 import { Textarea } from '~/components/ui/textarea';
 import { toast } from '~/components/ui/sonner';
 import {
@@ -30,8 +32,22 @@ interface LaunchSessionDialogProps {
 /** Starts a factory run against a picked (or freshly created) project folder —
  * always through factory/run.py, never a bare `claude` invocation. */
 export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogProps) {
-  const [{ data: appSettings }] = useAtom(appSettingsQueryAtom);
-  const [{ data: projects }] = useAtom(launcherProjectsQueryAtom);
+  const [
+    {
+      data: appSettings,
+      isPending: isSettingsPending,
+      isError: isSettingsError,
+      refetch: refetchSettings,
+    },
+  ] = useAtom(appSettingsQueryAtom);
+  const [
+    {
+      data: projects,
+      isPending: isProjectsPending,
+      isError: isProjectsError,
+      refetch: refetchProjects,
+    },
+  ] = useAtom(launcherProjectsQueryAtom);
   const [{ mutateAsync: saveSettings, isPending: isSavingRoot }] =
     useAtom(updateSettingsMutationAtom);
   const [{ mutateAsync: createProject, isPending: isCreatingProject }] = useAtom(
@@ -126,44 +142,68 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
             <label htmlFor="launch-root" className="text-sm font-medium">
               Projects root
             </label>
-            <div className="flex gap-2">
-              <Input
-                id="launch-root"
-                value={rootDraft}
-                onChange={(e) => setRootDraft(e.target.value)}
-                placeholder="/Users/you/Projects"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void saveRoot()}
-                disabled={
-                  isSavingRoot || !rootDraft.trim() || rootDraft.trim() === appSettings?.projects_root
-                }
-              >
-                {isSavingRoot ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
+            {isSettingsPending ? (
+              <Skeleton className="h-9 w-full" />
+            ) : isSettingsError ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertTriangle className="size-4" /> Couldn't load the projects root.
+                <Button variant="outline" size="sm" onClick={() => void refetchSettings()}>
+                  Retry
+                </Button>
+              </p>
+            ) : (
+              <div className="flex gap-2">
+                <Input
+                  id="launch-root"
+                  value={rootDraft}
+                  onChange={(e) => setRootDraft(e.target.value)}
+                  placeholder="/Users/you/Projects"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void saveRoot()}
+                  disabled={
+                    isSavingRoot ||
+                    !rootDraft.trim() ||
+                    rootDraft.trim() === appSettings?.projects_root
+                  }
+                >
+                  {isSavingRoot ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
             <label htmlFor="launch-project" className="text-sm font-medium">
               Project
             </label>
-            <select
-              id="launch-project"
-              value={projectPath}
-              onChange={(e) => setProjectPath(e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-            >
-              <option value="">Select a project…</option>
-              {(projects ?? []).map((project) => (
-                <option key={project.path} value={project.path}>
-                  {project.name}
-                  {project.is_git_repo ? '' : ' (not a git repo)'}
-                </option>
-              ))}
-            </select>
+            {isProjectsPending ? (
+              <Skeleton className="h-9 w-full" />
+            ) : isProjectsError ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertTriangle className="size-4" /> Couldn't load projects.
+                <Button variant="outline" size="sm" onClick={() => void refetchProjects()}>
+                  Retry
+                </Button>
+              </p>
+            ) : (
+              <select
+                id="launch-project"
+                value={projectPath}
+                onChange={(e) => setProjectPath(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              >
+                <option value="">Select a project…</option>
+                {(projects ?? []).map((project) => (
+                  <option key={project.path} value={project.path}>
+                    {project.name}
+                    {project.is_git_repo ? '' : ' (not a git repo)'}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <div className="flex gap-2">
               <Input

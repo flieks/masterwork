@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.db.models.work import WorkSource
+from app.providers.azuredevops import AzureDevOpsError
 from app.services import work_sync
 
 
@@ -10,8 +11,10 @@ class _FakeDevOpsClient:
     """Records the WIQL it was asked, returns no ids — sync_source then makes
     no repository call at all, so this needs no real AsyncSession."""
 
-    def __init__(self) -> None:
+    def __init__(self, current_iteration: str | None = None, iteration_fails: bool = False) -> None:
         self.wiql: str | None = None
+        self._current_iteration = current_iteration
+        self._iteration_fails = iteration_fails
 
     async def query_work_item_ids(self, wiql: str) -> list[int]:
         self.wiql = wiql
@@ -19,6 +22,11 @@ class _FakeDevOpsClient:
 
     async def get_work_items_batch(self, ids: list[int], fields: list[str]) -> list[dict]:
         return []
+
+    async def get_current_iteration_path(self) -> str | None:
+        if self._iteration_fails:
+            raise AzureDevOpsError("boom")
+        return self._current_iteration
 
 
 class _FakeDB:
@@ -43,6 +51,31 @@ async def test_sync_uses_the_sources_own_wiql_verbatim_when_set() -> None:
     source = _source(query_wiql=custom)
     await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
     assert client.wiql == custom
+
+
+async def test_sync_stores_the_current_iteration_on_the_source() -> None:
+    source = _source()
+    client = _FakeDevOpsClient(current_iteration="widgets\\2026 Q3.2")
+    await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
+    assert source.current_iteration == "widgets\\2026 Q3.2"
+
+
+async def test_sync_keeps_the_last_known_iteration_when_the_lookup_fails() -> None:
+    source = _source(current_iteration="widgets\\2026 Q3.1")
+    client = _FakeDevOpsClient(iteration_fails=True)
+    await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
+    assert source.current_iteration == "widgets\\2026 Q3.1"
+
+
+def test_parse_assigned_to_keeps_the_display_name_only() -> None:
+    identity = {"displayName": "Felix De Lille", "uniqueName": "felix@example.com"}
+    assert work_sync.parse_assigned_to(identity) == "Felix De Lille"
+
+
+def test_parse_assigned_to_missing_or_malformed_is_none() -> None:
+    assert work_sync.parse_assigned_to(None) is None
+    assert work_sync.parse_assigned_to("Felix") is None
+    assert work_sync.parse_assigned_to({"displayName": ""}) is None
 
 
 def test_html_to_markdown_handles_headings_lists_bold_and_links() -> None:

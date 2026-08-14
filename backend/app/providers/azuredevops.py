@@ -84,6 +84,20 @@ class AzureDevOpsClient:
                 results.extend(v for v in values if isinstance(v, dict))
         return results
 
+    async def get_current_iteration_path(self) -> str | None:
+        """The team's current iteration path, or None when no sprint has dates
+        covering today. Uses the project's default team when none is set."""
+        team = f"/{self._team}" if self._team else ""
+        url = (
+            f"{self._org_url}/{self._project}{team}/_apis/work/teamsettings/iterations"
+            f"?$timeframe=current&api-version={API_VERSION}"
+        )
+        async with self._client() as client:
+            response = await client.get(url)
+        values = _read_values(response)
+        path = values[0].get("path") if values else None
+        return path if isinstance(path, str) and path else None
+
     async def list_active_prs(self) -> list[dict[str, Any]]:
         url = (
             f"{self._org_url}/{self._project}/_apis/git/pullrequests"

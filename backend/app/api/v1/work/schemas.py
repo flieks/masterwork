@@ -17,6 +17,9 @@ class WorkSource(BaseModel):
         ..., description="Overrides the default assigned-to-me WIQL when set."
     )
     secret_ref: str = Field(..., description="Env var naming the PAT — never the PAT itself.")
+    current_iteration: str | None = Field(
+        ..., description="The team's current sprint (iteration path), refreshed on sync."
+    )
     last_sync_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -43,6 +46,7 @@ class WorkItem(BaseModel):
     acceptance_md: str | None
     state: str
     iteration: str | None
+    assigned_to: str | None
     priority: int | None
     tags: list[str] | None
     external_changed_at: datetime

@@ -9,11 +9,11 @@ traversal name or an out-of-root `project_path` can never escape.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import LaunchSpawner
 from app.api.v1.launcher import schemas
 from app.api.v1.settings.service import read_settings
 from app.config import settings as app_settings
@@ -96,7 +96,9 @@ async def create_project(db: AsyncSession, name: str) -> schemas.LauncherProject
 
 
 async def launch(
-    db: AsyncSession, body: schemas.LaunchRequest, spawner: LaunchSpawner
+    db: AsyncSession,
+    body: schemas.LaunchRequest,
+    spawner: Callable[[Path, str, Path], int],
 ) -> schemas.SessionLaunchRead:
     root = await _projects_root(db)
     resolved = resolve_within_roots(Path(body.project_path), [root])

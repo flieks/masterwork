@@ -29,6 +29,7 @@ _ITEMS: dict[int, dict[str, object]] = {
         "Microsoft.VSTS.Common.Priority": 2,
         "System.Tags": "auth; urgent",
         "System.ChangedDate": "2026-08-01T10:00:00Z",
+        "System.AssignedTo": {"displayName": "Felix De Lille", "uniqueName": "felix@example.com"},
     },
     102: {
         "System.Title": "Add dark mode",
@@ -70,6 +71,8 @@ _ITEMS: dict[int, dict[str, object]] = {
 # What the fake WIQL query returns: everything assigned to @Me — not 104.
 _WIQL_IDS = (101, 102, 103)
 
+_CURRENT_ITERATION = "widgets\\Sprint 1"
+
 
 @pytest.fixture(autouse=True)
 def _pat(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,6 +94,8 @@ def _devops_handler(
                 if i in body["ids"]
             ]
             return httpx.Response(200, json={"value": value})
+        if request.url.path.endswith("/_apis/work/teamsettings/iterations"):
+            return httpx.Response(200, json={"value": [{"path": _CURRENT_ITERATION}]})
         raise AssertionError(f"unexpected request: {request.url}")
 
     return handler
@@ -167,12 +172,14 @@ async def test_sync_inserts_and_converts_html_to_markdown(client: AsyncClient) -
     assert "**log in**" in fixed_login["description_md"]
     assert "Login works on Safari" in fixed_login["acceptance_md"]
     assert fixed_login["tags"] == ["auth", "urgent"]
+    assert fixed_login["assigned_to"] == "Felix De Lille"
     assert fixed_login["parent_external_id"] == 102
     assert fixed_login["pulled_as_parent"] is False
 
     dark_mode = next(i for i in items if i["external_id"] == 102)
     assert dark_mode["acceptance_md"] is None
     assert dark_mode["parent_external_id"] is None
+    assert dark_mode["assigned_to"] is None
 
     # 103's parent story is not in the WIQL result — fetched as context.
     auth_story = next(i for i in items if i["external_id"] == 104)
@@ -210,6 +217,7 @@ async def test_second_sync_updates_changed_items_without_duplicating_rows(
 
     sources = (await client.get("/api/v1/work/sources")).json()
     assert sources[0]["last_sync_at"] is not None
+    assert sources[0]["current_iteration"] == _CURRENT_ITERATION
 
 
 # --- filters -------------------------------------------------------------
