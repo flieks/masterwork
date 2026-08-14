@@ -147,7 +147,7 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
             ) : isSettingsError ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <AlertTriangle className="size-4" /> Couldn't load the projects root.
-                <Button variant="outline" size="sm" onClick={() => void refetchSettings()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => void refetchSettings()}>
                   Retry
                 </Button>
               </p>
@@ -184,7 +184,7 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
             ) : isProjectsError ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <AlertTriangle className="size-4" /> Couldn't load projects.
-                <Button variant="outline" size="sm" onClick={() => void refetchProjects()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => void refetchProjects()}>
                   Retry
                 </Button>
               </p>
