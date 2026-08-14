@@ -8,7 +8,7 @@ traversal name or an out-of-root `project_path` can never escape.
 
 from __future__ import annotations
 
-import subprocess
+import asyncio
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,7 @@ from app.config import settings as app_settings
 from app.core.exceptions import (
     InvalidProjectNameError,
     LaunchFailedError,
+    ProjectCreationError,
     ProjectExistsError,
     ProjectPathOutsideRootError,
 )
@@ -61,6 +62,23 @@ async def list_projects(db: AsyncSession) -> list[schemas.LauncherProject]:
     ]
 
 
+async def _git_init(path: Path) -> bool:
+    """`git init -q` in `path`, async so it never blocks the event loop —
+    mirrors app/services/asset_history.py's git pattern. Returns success."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "init",
+            "-q",
+            cwd=str(path),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        return await proc.wait() == 0
+    except OSError:
+        return False
+
+
 async def create_project(db: AsyncSession, name: str) -> schemas.LauncherProject:
     validated_name = _validate_project_name(name)
     root = await _projects_root(db)
@@ -71,7 +89,9 @@ async def create_project(db: AsyncSession, name: str) -> schemas.LauncherProject
     if resolved.exists():
         raise ProjectExistsError(f"a project named '{validated_name}' already exists")
     resolved.mkdir(parents=False)
-    subprocess.run(["git", "init"], cwd=str(resolved), check=True, capture_output=True)
+    if not await _git_init(resolved):
+        resolved.rmdir()  # leave projects_root clean for a retry
+        raise ProjectCreationError(f"git init failed for {resolved}")
     return schemas.LauncherProject(name=resolved.name, path=str(resolved), is_git_repo=True)
 
 

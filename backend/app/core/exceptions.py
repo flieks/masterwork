@@ -188,6 +188,13 @@ class ProjectExistsError(DomainError):
     status_code = 409
 
 
+class ProjectCreationError(DomainError):
+    """`git init` failed for a just-created project folder; the folder is
+    removed before this is raised, so a retry sees a clean projects_root."""
+
+    status_code = 502
+
+
 class LaunchFailedError(DomainError):
     """The factory subprocess could not be spawned."""
 

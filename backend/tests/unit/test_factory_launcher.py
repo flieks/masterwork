@@ -1,0 +1,92 @@
+"""spawn_factory_run's subprocess contract — the injection guard plan.md names:
+argv is a list (never a shell string), no mode flag, detached."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from app.services import factory_launcher
+
+
+class _FakePopen:
+    """Records the exact call instead of forking; captured on the class so the
+    test can inspect it after spawn_factory_run returns."""
+
+    calls: list[dict[str, Any]] = []
+
+    def __init__(self, argv: list[str], **kwargs: Any) -> None:
+        self.pid = 4242
+        type(self).calls.append({"argv": argv, **kwargs})
+
+    def poll(self) -> int | None:
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _reset() -> None:
+    _FakePopen.calls = []
+    factory_launcher._children.clear()
+
+
+def test_argv_has_no_mode_flag_and_is_never_shell_interpreted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(factory_launcher.subprocess, "Popen", _FakePopen)
+    repo_root = tmp_path / "masterwork"
+    project_path = tmp_path / "projects" / "alpha"
+    project_path.mkdir(parents=True)
+    log_path = tmp_path / "launches" / "1.log"
+
+    # Untrusted request_text carrying shell metacharacters must land as one
+    # argv element, never be interpreted.
+    request_text = "add a widget; rm -rf / #"
+    pid = factory_launcher.spawn_factory_run(
+        repo_root=repo_root,
+        python_bin="python3",
+        project_path=project_path,
+        request_text=request_text,
+        log_path=log_path,
+    )
+
+    assert pid == 4242
+    assert len(_FakePopen.calls) == 1
+    call = _FakePopen.calls[0]
+    assert call["argv"] == [
+        "python3",
+        str(repo_root / "factory" / "run.py"),
+        "--repo",
+        str(project_path),
+        request_text,
+    ]
+    assert call["cwd"] == str(project_path)
+    assert call["start_new_session"] is True
+    assert "shell" not in call  # never shell=True
+    assert log_path.exists()
+
+
+def test_reaps_finished_children_before_spawning_the_next(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(factory_launcher.subprocess, "Popen", _FakePopen)
+    project_path = tmp_path / "projects" / "alpha"
+    project_path.mkdir(parents=True)
+
+    class _FinishedPopen(_FakePopen):
+        def poll(self) -> int | None:
+            return 0  # already exited
+
+    finished = _FinishedPopen(["noop"])
+    factory_launcher._children.append(finished)  # type: ignore[arg-type]
+
+    factory_launcher.spawn_factory_run(
+        repo_root=tmp_path,
+        python_bin="python3",
+        project_path=project_path,
+        request_text="x",
+        log_path=tmp_path / "launches" / "2.log",
+    )
+
+    assert finished not in factory_launcher._children

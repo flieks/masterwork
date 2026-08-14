@@ -94,7 +94,7 @@ test('the request is required before Launch is enabled, project options come fro
   const launch = page.getByRole('button', { name: 'Launch' });
   await expect(launch).toBeDisabled();
 
-  const select = page.getByLabel('Project');
+  const select = page.getByLabel('Project', { exact: true });
   await expect(select.getByRole('option')).toHaveCount(3); // placeholder + alpha + beta
   await select.selectOption(PROJECTS[0].path);
   await expect(launch).toBeDisabled(); // still no request text
@@ -124,7 +124,7 @@ test('the mode radio defaults to autonomous; picking interview changes what gets
   await expect(autonomous).toBeChecked();
   await expect(interview).not.toBeChecked();
 
-  await page.getByLabel('Project').selectOption(PROJECTS[0].path);
+  await page.getByLabel('Project', { exact: true }).selectOption(PROJECTS[0].path);
   await page.getByLabel('Request').fill('Add a subtract function');
   await interview.check();
 
@@ -147,7 +147,7 @@ test('the new-folder affordance creates a project and selects it', async ({ moun
 
   await expect.poll(() => createCalls.length).toBe(1);
   expect(createCalls[0]).toMatchObject({ name: 'gamma' });
-  await expect(page.getByLabel('Project')).toHaveValue(`${PROJECTS_ROOT}/gamma`);
+  await expect(page.getByLabel('Project', { exact: true })).toHaveValue(`${PROJECTS_ROOT}/gamma`);
 });
 
 test('Launch posts project_path and request_text, then reports the run started', async ({
@@ -164,7 +164,7 @@ test('Launch posts project_path and request_text, then reports the run started',
     </TestProviders>,
   );
 
-  await page.getByLabel('Project').selectOption(PROJECTS[1].path);
+  await page.getByLabel('Project', { exact: true }).selectOption(PROJECTS[1].path);
   await page.getByLabel('Request').fill('Wire up the billing webhook');
   await page.getByRole('button', { name: 'Launch' }).click();
 
