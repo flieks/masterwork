@@ -156,13 +156,15 @@ def test_resume_with_answers_folds_them_into_the_build_prompt(git_repo: Path, fa
 
     plan = runs.plan_resume(git_repo, run_dir, RUN_ID)
     answers = interview.read_answers(run_dir)
-    fake_cli.script([BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    # The fake's invocation counter survives re-scripting, so slot 0 stays the
+    # plan call the paused run already consumed.
+    fake_cli.script([PLAN_WITH_ASSUMPTIONS, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
     pipeline, telemetry = build_pipeline(git_repo, checks=[PASSING_CHECK], resume=plan, answers=answers)
     result = pipeline.run()
     telemetry.close()
 
     assert result.accepted, result.reason
-    build_prompt = fake_cli.calls[0]["prompt"]
+    build_prompt = fake_cli.calls[1]["prompt"]
     assert "Use Postgres instead" in build_prompt
     assert "Require a bearer token" in build_prompt
     assert ASSUMPTIONS[0] in build_prompt
@@ -191,6 +193,69 @@ def test_malformed_answers_json_is_refused(git_repo: Path, fake_cli: FakeCLI):
 
     exit_code = cli.main(cli_args(git_repo, git_repo.parent / "runs", "--resume", RUN_ID))
     assert exit_code == 2
+
+
+def write_answers(run_dir: Path) -> None:
+    (run_dir / interview.ANSWERS_FILENAME).write_text(
+        json.dumps(
+            {
+                "answered_at": "2026-08-14T10:05:00+00:00",
+                "answers": [
+                    {"id": "q1", "question": ASSUMPTIONS[0], "answer": "Use Postgres instead"},
+                    {"id": "q2", "question": ASSUMPTIONS[1], "answer": "Require a bearer token"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def configure_checks(repo: Path) -> None:
+    (repo / "factory.config.json").write_text(
+        json.dumps({"checks": [PASSING_CHECK], "runs_dir": str(repo.parent / "runs")}),
+        encoding="utf-8",
+    )
+
+
+def test_a_no_longer_waiting_run_with_answers_on_disk_still_folds_them_on_resume(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """Regression: a second resume (e.g. after a budget stop mid-build) must not
+    silently revert to the planner's guesses just because the state moved on."""
+    run(git_repo, fake_cli, [PLAN_WITH_ASSUMPTIONS], interview_flag=True)
+    run_dir = run_dir_of(git_repo)
+    write_answers(run_dir)
+    runs.close_record(run_dir, state=runs.STOPPED, accepted=False, reason="budget stop mid-build")
+
+    configure_checks(git_repo)
+    fake_cli.script([PLAN_WITH_ASSUMPTIONS, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    exit_code = cli.main(cli_args(git_repo, git_repo.parent / "runs", "--resume", RUN_ID))
+
+    assert exit_code == 0
+    saved_prompt = (run_dir / "prompts" / "build" / "1.user.md").read_text()
+    assert ASSUMPTIONS[0] in saved_prompt
+    assert ASSUMPTIONS[1] in saved_prompt
+    assert "Use Postgres instead" in saved_prompt
+    assert "Require a bearer token" in saved_prompt
+
+
+def test_a_no_longer_waiting_run_without_answers_resumes_without_refusing(
+    git_repo: Path, fake_cli: FakeCLI
+):
+    """Only waiting_input with no answers.json is a hard refusal — a stopped run
+    with no file proceeds to build (with the planner's guesses)."""
+    run(git_repo, fake_cli, [PLAN_WITH_ASSUMPTIONS], interview_flag=True)
+    run_dir = run_dir_of(git_repo)
+    runs.close_record(run_dir, state=runs.STOPPED, accepted=False, reason="stopped unanswered")
+
+    configure_checks(git_repo)
+    fake_cli.script([PLAN_WITH_ASSUMPTIONS, BUILD_OK, REVIEW_OK, DOCUMENT_OK])
+    exit_code = cli.main(cli_args(git_repo, git_repo.parent / "runs", "--resume", RUN_ID))
+
+    assert exit_code == 0
+    record = runs.read(run_dir)
+    assert record is not None and record.accepted is True
+    assert "Use Postgres instead" not in (run_dir / "prompts" / "build" / "1.user.md").read_text()
 
 
 # --- --run-id ------------------------------------------------------------------
