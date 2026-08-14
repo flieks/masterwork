@@ -64,6 +64,8 @@ async def upsert_item(
     *,
     source_id: uuid.UUID,
     external_id: int,
+    parent_external_id: int | None,
+    pulled_as_parent: bool,
     external_url: str,
     item_type: str,
     title: str,
@@ -91,6 +93,8 @@ async def upsert_item(
             WorkItem(
                 source_id=source_id,
                 external_id=external_id,
+                parent_external_id=parent_external_id,
+                pulled_as_parent=pulled_as_parent,
                 external_url=external_url,
                 item_type=item_type,
                 title=title,
@@ -108,6 +112,8 @@ async def upsert_item(
         await db.flush()
         return True
 
+    item.parent_external_id = parent_external_id
+    item.pulled_as_parent = pulled_as_parent
     item.external_url = external_url
     item.item_type = item_type
     item.title = title

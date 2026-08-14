@@ -19,6 +19,7 @@ from app.providers.azuredevops import AzureDevOpsClient
 
 _ITEMS: dict[int, dict[str, object]] = {
     101: {
+        "System.Parent": 102,
         "System.Title": "Fix login bug",
         "System.Description": "<p>Users cannot <b>log in</b> on Safari.</p>",
         "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>Login works on Safari</li></ul>",
@@ -50,8 +51,24 @@ _ITEMS: dict[int, dict[str, object]] = {
         "Microsoft.VSTS.Common.Priority": 1,
         "System.Tags": "auth",
         "System.ChangedDate": "2026-08-01T09:00:00Z",
+        "System.Parent": 104,
+    },
+    # Story owned by someone else: never in the WIQL result, only batch-fetchable.
+    104: {
+        "System.Title": "Auth overhaul",
+        "System.Description": "<p>Epic-level auth cleanup.</p>",
+        "Microsoft.VSTS.Common.AcceptanceCriteria": None,
+        "System.State": "Active",
+        "System.IterationPath": "Sprint 1",
+        "System.WorkItemType": "User Story",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "System.Tags": None,
+        "System.ChangedDate": "2026-08-01T08:00:00Z",
     },
 }
+
+# What the fake WIQL query returns: everything assigned to @Me — not 104.
+_WIQL_IDS = (101, 102, 103)
 
 
 @pytest.fixture(autouse=True)
@@ -64,7 +81,8 @@ def _devops_handler(
 ) -> Callable[[httpx.Request], httpx.Response]:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/_apis/wit/wiql"):
-            return httpx.Response(200, json={"workItems": [{"id": i} for i in items]})
+            wiql_ids = [i for i in items if i in _WIQL_IDS]
+            return httpx.Response(200, json={"workItems": [{"id": i} for i in wiql_ids]})
         if request.url.path.endswith("/_apis/wit/workitemsbatch"):
             body = json.loads(request.content)
             value = [
@@ -141,17 +159,25 @@ async def test_sync_inserts_and_converts_html_to_markdown(client: AsyncClient) -
 
     r = await client.post(f"/api/v1/work/sources/{source['id']}/sync")
     assert r.status_code == 200
-    assert r.json() == {"fetched": 3, "inserted": 3, "updated": 0}
+    assert r.json() == {"fetched": 4, "inserted": 4, "updated": 0}
 
     items = (await client.get("/api/v1/work/items")).json()
-    assert len(items) == 3
+    assert len(items) == 4
     fixed_login = next(i for i in items if i["external_id"] == 101)
     assert "**log in**" in fixed_login["description_md"]
     assert "Login works on Safari" in fixed_login["acceptance_md"]
     assert fixed_login["tags"] == ["auth", "urgent"]
+    assert fixed_login["parent_external_id"] == 102
+    assert fixed_login["pulled_as_parent"] is False
 
     dark_mode = next(i for i in items if i["external_id"] == 102)
     assert dark_mode["acceptance_md"] is None
+    assert dark_mode["parent_external_id"] is None
+
+    # 103's parent story is not in the WIQL result — fetched as context.
+    auth_story = next(i for i in items if i["external_id"] == 104)
+    assert auth_story["pulled_as_parent"] is True
+    assert auth_story["item_type"] == "User Story"
     assert dark_mode["tags"] is None
 
 
@@ -174,10 +200,10 @@ async def test_second_sync_updates_changed_items_without_duplicating_rows(
     r = await client.post(f"/api/v1/work/sources/{source['id']}/sync")
     assert r.status_code == 200
     body = r.json()
-    assert body == {"fetched": 3, "inserted": 0, "updated": 3}
+    assert body == {"fetched": 4, "inserted": 0, "updated": 4}
 
     all_items = (await client.get("/api/v1/work/items")).json()
-    assert len(all_items) == 3  # row count stays 3, nothing duplicated
+    assert len(all_items) == 4  # row count stays 4, nothing duplicated
     updated = next(i for i in all_items if i["external_id"] == 102)
     assert updated["title"] == "Add dark mode toggle"
     assert updated["state"] == "Active"
@@ -197,7 +223,7 @@ async def test_list_items_filters_by_state(client: AsyncClient) -> None:
     r = await client.get("/api/v1/work/items", params={"state": "Active"})
     assert r.status_code == 200
     ids = {i["external_id"] for i in r.json()}
-    assert ids == {101, 103}
+    assert ids == {101, 103, 104}
 
 
 async def test_list_items_filters_by_source_id(client: AsyncClient) -> None:
@@ -207,7 +233,7 @@ async def test_list_items_filters_by_source_id(client: AsyncClient) -> None:
     source_b = await _new_source(client, "gizmos")  # never synced
 
     r = await client.get("/api/v1/work/items", params={"source_id": source_a["id"]})
-    assert len(r.json()) == 3
+    assert len(r.json()) == 4
     r = await client.get("/api/v1/work/items", params={"source_id": source_b["id"]})
     assert r.json() == []
 

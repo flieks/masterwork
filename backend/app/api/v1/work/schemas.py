@@ -34,6 +34,8 @@ class WorkItem(BaseModel):
     id: int
     source_id: str
     external_id: int
+    parent_external_id: int | None
+    pulled_as_parent: bool
     external_url: str
     item_type: str
     title: str

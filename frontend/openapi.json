@@ -7465,6 +7465,21 @@
                         "type": "integer",
                         "title": "External Id"
                     },
+                    "parent_external_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent External Id"
+                    },
+                    "pulled_as_parent": {
+                        "type": "boolean",
+                        "title": "Pulled As Parent"
+                    },
                     "external_url": {
                         "type": "string",
                         "title": "External Url"
@@ -7548,6 +7563,8 @@
                     "id",
                     "source_id",
                     "external_id",
+                    "parent_external_id",
+                    "pulled_as_parent",
                     "external_url",
                     "item_type",
                     "title",

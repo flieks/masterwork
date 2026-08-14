@@ -31,6 +31,8 @@ def work_item_to_schema(item: WorkItem) -> schemas.WorkItem:
         id=item.id,
         source_id=str(item.source_id),
         external_id=item.external_id,
+        parent_external_id=item.parent_external_id,
+        pulled_as_parent=item.pulled_as_parent,
         external_url=item.external_url,
         item_type=item.item_type,
         title=item.title,

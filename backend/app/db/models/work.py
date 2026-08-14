@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     ForeignKey,
     Index,
     Integer,
@@ -71,6 +72,13 @@ class WorkItem(Base):
         Uuid, ForeignKey("work_sources.id", ondelete="CASCADE")
     )
     external_id: Mapped[int] = mapped_column(Integer)
+    # DevOps System.Parent — external id of the parent item (story of a task).
+    parent_external_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # True when the row was fetched only as a missing parent of a WIQL hit,
+    # not returned by the source's own query (a story someone else owns).
+    pulled_as_parent: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     external_url: Mapped[str] = mapped_column(String(1000))
     item_type: Mapped[str] = mapped_column(String(100))
     title: Mapped[str] = mapped_column(Text)

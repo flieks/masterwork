@@ -3463,6 +3463,18 @@ export interface WorkItem {
     'external_id': number;
     /**
      * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'parent_external_id': number | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkItem
+     */
+    'pulled_as_parent': boolean;
+    /**
+     * 
      * @type {string}
      * @memberof WorkItem
      */

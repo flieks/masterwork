@@ -37,6 +37,7 @@ FIELDS = (
     "Microsoft.VSTS.Common.Priority",
     "System.Tags",
     "System.ChangedDate",
+    "System.Parent",
 )
 
 _FIELD_TITLE = "System.Title"
@@ -48,6 +49,7 @@ _FIELD_TYPE = "System.WorkItemType"
 _FIELD_PRIORITY = "Microsoft.VSTS.Common.Priority"
 _FIELD_TAGS = "System.Tags"
 _FIELD_CHANGED = "System.ChangedDate"
+_FIELD_PARENT = "System.Parent"
 
 # Collapse markdownify's trailing-space-before-newline artifacts.
 _TRAILING_WHITESPACE = re.compile(r"[ \t]+\n")
@@ -89,11 +91,50 @@ def _parse_changed_date(value: Any, *, fallback: datetime) -> datetime:
         return fallback
 
 
+async def _upsert_payload(
+    db: AsyncSession,
+    source: WorkSource,
+    payload: dict[str, Any],
+    *,
+    now: datetime,
+    pulled_as_parent: bool,
+) -> bool | None:
+    """Upsert one batch payload; None when the payload has no usable id."""
+    external_id = payload.get("id")
+    if not isinstance(external_id, int):
+        return None
+    fields: dict[str, Any] = payload.get("fields") or {}
+    priority = fields.get(_FIELD_PRIORITY)
+    acceptance_html = fields.get(_FIELD_ACCEPTANCE)
+    parent = fields.get(_FIELD_PARENT)
+    return await work_repo.upsert_item(
+        db,
+        source_id=source.id,
+        external_id=external_id,
+        parent_external_id=parent if isinstance(parent, int) else None,
+        pulled_as_parent=pulled_as_parent,
+        external_url=_work_item_url(source, external_id),
+        item_type=str(fields.get(_FIELD_TYPE) or ""),
+        title=str(fields.get(_FIELD_TITLE) or ""),
+        description_md=html_to_markdown(fields.get(_FIELD_DESCRIPTION)),
+        acceptance_md=html_to_markdown(acceptance_html) if acceptance_html else None,
+        state=str(fields.get(_FIELD_STATE) or ""),
+        iteration=fields.get(_FIELD_ITERATION),
+        priority=int(priority) if isinstance(priority, int | float) else None,
+        tags=parse_tags(fields.get(_FIELD_TAGS)),
+        raw=payload,
+        external_changed_at=_parse_changed_date(fields.get(_FIELD_CHANGED), fallback=now),
+        synced_at=now,
+    )
+
+
 async def sync_source(
     db: AsyncSession, source: WorkSource, client: AzureDevOpsClient
 ) -> SyncCounts:
     """Run the source's WIQL (or the default), batch-fetch, and upsert every
-    returned item on (source_id, external_id)."""
+    returned item on (source_id, external_id). Parents referenced but not
+    returned by the WIQL (stories owned by others) are fetched in a second
+    pass and flagged `pulled_as_parent` so the UI can group under them."""
     now = datetime.now(tz=UTC)
     wiql = source.query_wiql or DEFAULT_WIQL
     ids = await client.query_work_item_ids(wiql)
@@ -102,29 +143,30 @@ async def sync_source(
     inserted = 0
     updated = 0
     for payload in payloads:
-        external_id = payload.get("id")
-        if not isinstance(external_id, int):
+        inserted_row = await _upsert_payload(db, source, payload, now=now, pulled_as_parent=False)
+        if inserted_row is None:
             continue
-        fields: dict[str, Any] = payload.get("fields") or {}
-        priority = fields.get(_FIELD_PRIORITY)
-        acceptance_html = fields.get(_FIELD_ACCEPTANCE)
-        inserted_row = await work_repo.upsert_item(
-            db,
-            source_id=source.id,
-            external_id=external_id,
-            external_url=_work_item_url(source, external_id),
-            item_type=str(fields.get(_FIELD_TYPE) or ""),
-            title=str(fields.get(_FIELD_TITLE) or ""),
-            description_md=html_to_markdown(fields.get(_FIELD_DESCRIPTION)),
-            acceptance_md=html_to_markdown(acceptance_html) if acceptance_html else None,
-            state=str(fields.get(_FIELD_STATE) or ""),
-            iteration=fields.get(_FIELD_ITERATION),
-            priority=int(priority) if isinstance(priority, int | float) else None,
-            tags=parse_tags(fields.get(_FIELD_TAGS)),
-            raw=payload,
-            external_changed_at=_parse_changed_date(fields.get(_FIELD_CHANGED), fallback=now),
-            synced_at=now,
-        )
+        if inserted_row:
+            inserted += 1
+        else:
+            updated += 1
+
+    fetched_ids = {p["id"] for p in payloads if isinstance(p.get("id"), int)}
+    parent_ids = sorted(
+        {
+            parent
+            for p in payloads
+            for parent in [(p.get("fields") or {}).get(_FIELD_PARENT)]
+            if isinstance(parent, int) and parent not in fetched_ids
+        }
+    )
+    parent_payloads = (
+        await client.get_work_items_batch(parent_ids, FIELDS) if parent_ids else []
+    )
+    for payload in parent_payloads:
+        inserted_row = await _upsert_payload(db, source, payload, now=now, pulled_as_parent=True)
+        if inserted_row is None:
+            continue
         if inserted_row:
             inserted += 1
         else:
@@ -132,4 +174,6 @@ async def sync_source(
 
     source.last_sync_at = now
     await db.flush()
-    return SyncCounts(fetched=len(payloads), inserted=inserted, updated=updated)
+    return SyncCounts(
+        fetched=len(payloads) + len(parent_payloads), inserted=inserted, updated=updated
+    )
