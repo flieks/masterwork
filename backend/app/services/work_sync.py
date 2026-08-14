@@ -9,6 +9,7 @@ The only WIQL sent to DevOps is `DEFAULT_WIQL` or the operator-entered
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -183,10 +184,9 @@ async def sync_source(
         else:
             updated += 1
 
-    try:
+    # Sprint lookup is best-effort; on failure keep the last known value.
+    with contextlib.suppress(AzureDevOpsError):
         source.current_iteration = await client.get_current_iteration_path()
-    except AzureDevOpsError:
-        pass  # Sprint lookup is best-effort; keep the last known value.
 
     source.last_sync_at = now
     await db.flush()

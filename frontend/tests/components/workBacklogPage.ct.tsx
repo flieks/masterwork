@@ -299,3 +299,55 @@ test('with no source registered the page offers the inline form', async ({ mount
     secret_ref: 'AZURE_DEVOPS_PAT',
   });
 });
+
+test('the active sprint is preselected and flagged in the dropdown', async ({ mount, page }) => {
+  await mockWork(page, { sources: [workSource({ current_iteration: SPRINT_33 })] });
+  await mountPage(mount);
+
+  const sprint = page.getByLabel('Sprint');
+  await expect(sprint).toHaveValue(SPRINT_33);
+  await expect(sprint.locator('option', { hasText: '2026 Q3.3 \u2713 active' })).toHaveAttribute(
+    'value',
+    SPRINT_33,
+  );
+
+  // The default really filters: only the active sprint's items are shown.
+  await expect(page.getByLabel('3 work items')).toBeVisible();
+  await expect(page.getByText(ORPHAN)).toHaveCount(0);
+
+  await sprint.selectOption('');
+  await expect(page.getByLabel('6 work items')).toBeVisible();
+});
+
+test('@Me drops the rows pulled only as context for someone else', async ({ mount, page }) => {
+  await mockWork(page, {
+    items: [
+      workItem(),
+      workItem({
+        id: 4,
+        external_id: 4900,
+        pulled_as_parent: true,
+        item_type: 'Feature',
+        title: CONTEXT_FEATURE,
+        assigned_to: 'Sam Owner',
+      }),
+    ],
+  });
+  await mountPage(mount);
+
+  await expect(page.getByLabel('2 work items')).toBeVisible();
+  await page.getByLabel('Assignee').selectOption('@Me');
+  await expect(page.getByText(CONTEXT_FEATURE)).toHaveCount(0);
+  await expect(page.getByText(STORY)).toBeVisible();
+  await expect(page.getByLabel('1 work items')).toBeVisible();
+});
+
+test('picking a name narrows to the items assigned to that person', async ({ mount, page }) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  await page.getByLabel('Assignee').selectOption('Sam Owner');
+  await expect(page.getByText(CONTEXT_FEATURE)).toBeVisible();
+  await expect(page.getByText(STORY)).toHaveCount(0);
+  await expect(page.getByLabel('1 work items')).toBeVisible();
+});

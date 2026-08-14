@@ -11,6 +11,8 @@ import type {
 // The item vocabulary lives in a client-free leaf (`tree.ts`) so it can be used
 // without pulling the API client in; re-exported here as the feature's surface.
 export {
+  ASSIGNEE_ME,
+  assigneeOptions,
   buildWorkItemTree,
   countNodes,
   filterWorkItemTree,

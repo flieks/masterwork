@@ -11,9 +11,18 @@ export interface WorkItemNode {
   children: WorkItemNode[];
 }
 
+/**
+ * Assignee filter sentinel: items the source's own query returned. The default
+ * WIQL is assigned-to-me, so this is "@Me" without needing identity matching —
+ * `pulled_as_parent` rows are exactly the ones owned by someone else.
+ */
+export const ASSIGNEE_ME = '@Me';
+
 export interface WorkItemFilters {
   /** The full iteration string, or null for every sprint. */
   iteration: string | null;
+  /** A display name, ASSIGNEE_ME, or null for everyone. */
+  assignee: string | null;
   /** Case-insensitive substring on the title; empty matches everything. */
   query: string;
 }
@@ -77,6 +86,7 @@ export function filterWorkItemTree(
       .filter((child): child is WorkItemNode => child !== null);
     const matches =
       (filters.iteration === null || node.item.iteration === filters.iteration) &&
+      matchesAssignee(node.item, filters.assignee) &&
       (query === '' || node.item.title.toLowerCase().includes(query));
     if (!matches && children.length === 0) return null;
     return { item: node.item, children };
@@ -85,8 +95,14 @@ export function filterWorkItemTree(
   return nodes.map(prune).filter((node): node is WorkItemNode => node !== null);
 }
 
+function matchesAssignee(item: WorkItem, assignee: string | null): boolean {
+  if (assignee === null) return true;
+  if (assignee === ASSIGNEE_ME) return !item.pulled_as_parent;
+  return item.assigned_to === assignee;
+}
+
 export function hasActiveFilters(filters: WorkItemFilters): boolean {
-  return filters.iteration !== null || filters.query.trim() !== '';
+  return filters.iteration !== null || filters.assignee !== null || filters.query.trim() !== '';
 }
 
 export function countNodes(nodes: WorkItemNode[]): number {
@@ -97,6 +113,13 @@ export function countNodes(nodes: WorkItemNode[]): number {
 export function sprintOptions(items: WorkItem[]): string[] {
   const seen = new Set<string>();
   for (const item of items) if (item.iteration) seen.add(item.iteration);
+  return [...seen].sort();
+}
+
+/** Every assignee the loaded items name, for the filter dropdown. */
+export function assigneeOptions(items: WorkItem[]): string[] {
+  const seen = new Set<string>();
+  for (const item of items) if (item.assigned_to) seen.add(item.assigned_to);
   return [...seen].sort();
 }
 

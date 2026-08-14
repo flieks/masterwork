@@ -607,11 +607,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include sessions that ended without running a tool \u2014 mostly the desktop app's discarded startup processes, hidden by default.",
+                            "description": "Include sessions that ended without running a tool — mostly the desktop app's discarded startup processes, hidden by default.",
                             "default": false,
                             "title": "Include Empty"
                         },
-                        "description": "Include sessions that ended without running a tool \u2014 mostly the desktop app's discarded startup processes, hidden by default."
+                        "description": "Include sessions that ended without running a tool — mostly the desktop app's discarded startup processes, hidden by default."
                     },
                     {
                         "name": "include_automated",
@@ -619,11 +619,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default.",
+                            "description": "Include sessions a `claude -p` one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.",
                             "default": false,
                             "title": "Include Automated"
                         },
-                        "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default."
+                        "description": "Include sessions a `claude -p` one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default."
                     },
                     {
                         "name": "workflow",
@@ -638,10 +638,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "status",
@@ -667,11 +667,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards.",
+                            "description": "Hide runs that another run launched — a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards.",
                             "default": false,
                             "title": "Roots Only"
                         },
-                        "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards."
+                        "description": "Hide runs that another run launched — a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards."
                     },
                     {
                         "name": "parent_session_id",
@@ -686,10 +686,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts.",
+                            "description": "Keep only the runs this one launched — the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts.",
                             "title": "Parent Session Id"
                         },
-                        "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts."
+                        "description": "Keep only the runs this one launched — the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts."
                     }
                 ],
                 "responses": {
@@ -742,10 +742,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Count only the calls made at or after this instant, from the per-call log \u2014 so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals.",
+                            "description": "Count only the calls made at or after this instant, from the per-call log — so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals.",
                             "title": "Since"
                         },
-                        "description": "Count only the calls made at or after this instant, from the per-call log \u2014 so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals."
+                        "description": "Count only the calls made at or after this instant, from the per-call log — so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals."
                     },
                     {
                         "name": "kind",
@@ -842,11 +842,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets.",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md — see the same flag on /coding-assets.",
                             "default": false,
                             "title": "Include Inspection"
                         },
-                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets."
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md — see the same flag on /coding-assets."
                     }
                 ],
                 "responses": {
@@ -883,7 +883,7 @@
                     "coding"
                 ],
                 "summary": "Which gates fail, how often, and on which role",
-                "description": "Reads the v1.19 evidence rows, so it sees only the runs that reported or\nreplayed them \u2014 `/coding-analytics/roles` covers the rest from the counters.",
+                "description": "Reads the v1.19 evidence rows, so it sees only the runs that reported or\nreplayed them — `/coding-analytics/roles` covers the rest from the counters.",
                 "operationId": "listGateStats",
                 "parameters": [
                     {
@@ -918,10 +918,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1016,10 +1016,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1079,7 +1079,7 @@
                 "tags": [
                     "coding"
                 ],
-                "summary": "Cost, tokens, duration and outcome per run \u2014 the trend line",
+                "summary": "Cost, tokens, duration and outcome per run — the trend line",
                 "description": "Oldest first, so a client plots them left to right without re-sorting.",
                 "operationId": "listRunStats",
                 "parameters": [
@@ -1115,10 +1115,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1227,10 +1227,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1312,7 +1312,7 @@
                     "coding"
                 ],
                 "summary": "Rebuild one session's derived rows from its stored events",
-                "description": "Replay the stored stream through the current derivation.\n\nStages, lanes and assets are derived, so a fix to how they are derived does\nnothing for a run already recorded until its events are replayed. Idempotent:\nthe derived rows are dropped and rebuilt, never updated. The event stream\nitself is never touched \u2014 it is the record this rebuilds from.",
+                "description": "Replay the stored stream through the current derivation.\n\nStages, lanes and assets are derived, so a fix to how they are derived does\nnothing for a run already recorded until its events are replayed. Idempotent:\nthe derived rows are dropped and rebuilt, never updated. The event stream\nitself is never touched — it is the record this rebuilds from.",
                 "operationId": "backfillCodingSession",
                 "parameters": [
                     {
@@ -1468,7 +1468,7 @@
                     "coding"
                 ],
                 "summary": "Get Coding Session Media",
-                "description": "An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON \u2014 the UI points an <img> at this.",
+                "description": "An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the UI points an <img> at this.",
                 "operationId": "getCodingSessionMedia",
                 "parameters": [
                     {
@@ -3207,7 +3207,7 @@
                             }
                         ],
                         "title": "Input",
-                        "description": "The call's arguments, truncated to 2 000 characters per key. Null when the signal carried none \u2014 a skill loaded by being read has no arguments."
+                        "description": "The call's arguments, truncated to 2 000 characters per key. Null when the signal carried none — a skill loaded by being read has no arguments."
                     }
                 },
                 "type": "object",
@@ -3278,7 +3278,7 @@
                             }
                         ],
                         "title": "Created At",
-                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) \u2014 an absent date rather than a wrong one."
+                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) — an absent date rather than a wrong one."
                     },
                     "updated_at": {
                         "type": "string",
@@ -3415,7 +3415,7 @@
                         },
                         "type": "array",
                         "title": "Calls",
-                        "description": "The individual calls, newest first. Capped across the whole response, so it can hold fewer entries than `uses` \u2014 and none at all for a run recorded before the log shipped, until it is backfilled."
+                        "description": "The individual calls, newest first. Capped across the whole response, so it can hold fewer entries than `uses` — and none at all for a run recorded before the log shipped, until it is backfilled."
                     }
                 },
                 "type": "object",
@@ -3492,7 +3492,7 @@
                             }
                         ],
                         "title": "Created At",
-                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) \u2014 an absent date rather than a wrong one."
+                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) — an absent date rather than a wrong one."
                     },
                     "updated_at": {
                         "type": "string",
@@ -3548,7 +3548,7 @@
                     "asset_id": {
                         "type": "string",
                         "title": "Asset Id",
-                        "description": "\"claude:skill:<name>\" / \"claude:agent:<name>\" \u2014 links to the asset page."
+                        "description": "\"claude:skill:<name>\" / \"claude:agent:<name>\" — links to the asset page."
                     },
                     "lane": {
                         "anyOf": [
@@ -3560,7 +3560,7 @@
                             }
                         ],
                         "title": "Lane",
-                        "description": "The lane that used it; null when it had none \u2014 and always null for a use rolled up from a run this one launched, whose lane is its own and not one of these."
+                        "description": "The lane that used it; null when it had none — and always null for a use rolled up from a run this one launched, whose lane is its own and not one of these."
                     },
                     "uses": {
                         "type": "integer",
@@ -3937,7 +3937,7 @@
                     "last_used_at"
                 ],
                 "title": "CodingAssetUsage",
-                "description": "One asset's usage across every run \u2014 the flywheel view."
+                "description": "One asset's usage across every run — the flywheel view."
             },
             "CodingEvent": {
                 "properties": {
@@ -4101,7 +4101,7 @@
                             }
                         ],
                         "title": "Duration Ms",
-                        "description": "Reported, or started_at \u2192 ended_at."
+                        "description": "Reported, or started_at → ended_at."
                     },
                     "id": {
                         "type": "integer",
@@ -4310,7 +4310,7 @@
                             }
                         ],
                         "title": "Parent Session Id",
-                        "description": "The run that launched this one \u2014 a pipeline stage's parent."
+                        "description": "The run that launched this one — a pipeline stage's parent."
                     },
                     "child_count": {
                         "type": "integer",
@@ -4332,7 +4332,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
+                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -4438,12 +4438,12 @@
                     "duration_seconds": {
                         "type": "number",
                         "title": "Duration Seconds",
-                        "description": "started_at \u2192 ended_at, or \u2192 last_event_at while still open."
+                        "description": "started_at → ended_at, or → last_event_at while still open."
                     },
                     "wall_ms": {
                         "type": "integer",
                         "title": "Wall Ms",
-                        "description": "duration_seconds in milliseconds \u2014 the clock on the wall."
+                        "description": "duration_seconds in milliseconds — the clock on the wall."
                     },
                     "active_ms": {
                         "type": "integer",
@@ -4595,7 +4595,7 @@
                             }
                         ],
                         "title": "Parent Session Id",
-                        "description": "The run that launched this one \u2014 a pipeline stage's parent."
+                        "description": "The run that launched this one — a pipeline stage's parent."
                     },
                     "child_count": {
                         "type": "integer",
@@ -4617,7 +4617,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
+                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -4723,12 +4723,12 @@
                     "duration_seconds": {
                         "type": "number",
                         "title": "Duration Seconds",
-                        "description": "started_at \u2192 ended_at, or \u2192 last_event_at while still open."
+                        "description": "started_at → ended_at, or → last_event_at while still open."
                     },
                     "wall_ms": {
                         "type": "integer",
                         "title": "Wall Ms",
-                        "description": "duration_seconds in milliseconds \u2014 the clock on the wall."
+                        "description": "duration_seconds in milliseconds — the clock on the wall."
                     },
                     "active_ms": {
                         "type": "integer",
@@ -4811,7 +4811,7 @@
                     "gate_checks"
                 ],
                 "title": "CodingSessionDetail",
-                "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence \u2014 kept as sibling arrays keyed by `phase_id`."
+                "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence — kept as sibling arrays keyed by `phase_id`."
             },
             "CrossChange": {
                 "properties": {
@@ -4918,7 +4918,7 @@
                             }
                         ],
                         "title": "Role",
-                        "description": "The role that produced it \u2014 plan, build, review, \u2026"
+                        "description": "The role that produced it — plan, build, review, …"
                     },
                     "attempt": {
                         "type": "integer",
@@ -4976,12 +4976,12 @@
                             }
                         ],
                         "title": "Raw Text",
-                        "description": "The reply it was read out of \u2014 often the only body a rejection has."
+                        "description": "The reply it was read out of — often the only body a rejection has."
                     },
                     "origin": {
                         "type": "string",
                         "title": "Origin",
-                        "description": "reported \u2014 the producer sent it, and only these can carry a body. recovered \u2014 a replay reconstructed the attempt from a gate line, so `body` is always null."
+                        "description": "reported — the producer sent it, and only these can carry a body. recovered — a replay reconstructed the attempt from a gate line, so `body` is always null."
                     },
                     "created_at": {
                         "type": "string",
@@ -5092,7 +5092,7 @@
                             }
                         ],
                         "title": "Raw Text",
-                        "description": "The reply the envelope was read out of \u2014 the only body a rejected attempt has. Truncated past 32 KB with a marker saying so."
+                        "description": "The reply the envelope was read out of — the only body a rejected attempt has. Truncated past 32 KB with a marker saying so."
                     }
                 },
                 "type": "object",
@@ -5111,7 +5111,7 @@
                             }
                         ],
                         "title": "Item",
-                        "description": "The thing checked \u2014 a path, a command."
+                        "description": "The thing checked — a path, a command."
                     },
                     "ok": {
                         "anyOf": [
@@ -5213,7 +5213,7 @@
                     "origin": {
                         "type": "string",
                         "title": "Origin",
-                        "description": "reported | recovered \u2014 see EnvelopeAttempt.origin."
+                        "description": "reported | recovered — see EnvelopeAttempt.origin."
                     },
                     "created_at": {
                         "type": "string",
@@ -5287,7 +5287,7 @@
                             }
                         ],
                         "title": "Name",
-                        "description": "The gate that ran \u2014 envelope, artifacts, changed_files, boundary, \u2026"
+                        "description": "The gate that ran — envelope, artifacts, changed_files, boundary, …"
                     },
                     "attempt": {
                         "anyOf": [
@@ -5355,7 +5355,7 @@
                 },
                 "type": "object",
                 "title": "GateIn",
-                "description": "One gate evaluation as the runner reports it.\n\nWith `checks`, one row per entry; without it, the block is itself the one\ncheck. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the\nminimal report is `{\"name\": \"changed_files\", \"note\": \"\u2026\"}` on the event a\nrunner already sends."
+                "description": "One gate evaluation as the runner reports it.\n\nWith `checks`, one row per entry; without it, the block is itself the one\ncheck. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the\nminimal report is `{\"name\": \"changed_files\", \"note\": \"…\"}` on the event a\nrunner already sends."
             },
             "GateRoleStat": {
                 "properties": {
@@ -5374,7 +5374,7 @@
                     "checks": {
                         "type": "integer",
                         "title": "Checks",
-                        "description": "Checks this pair ran \u2014 the rate's denominator."
+                        "description": "Checks this pair ran — the rate's denominator."
                     },
                     "failures": {
                         "type": "integer",
@@ -5414,7 +5414,7 @@
                     "gate": {
                         "type": "string",
                         "title": "Gate",
-                        "description": "envelope | artifacts | changed_files | boundary | \u2026"
+                        "description": "envelope | artifacts | changed_files | boundary | …"
                     },
                     "checks": {
                         "type": "integer",
@@ -5676,7 +5676,7 @@
                     "event_type"
                 ],
                 "title": "HookEventRequest",
-                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
+                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 — a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
             },
             "InstructionsDoc": {
                 "properties": {
@@ -5753,11 +5753,7 @@
                         "description": "What to build — handed to the factory as-is."
                     },
                     "mode": {
-                        "allOf": [
-                            {
-                                "$ref": "#/components/schemas/LaunchMode"
-                            }
-                        ],
+                        "$ref": "#/components/schemas/LaunchMode",
                         "description": "Both modes launch the same unattended run today.",
                         "default": "autonomous"
                     }
@@ -5806,7 +5802,7 @@
                     "name"
                 ],
                 "title": "LauncherProjectCreateRequest",
-                "description": "Named apart from the unrelated `ProjectCreateRequest` (features/projects) — this creates a plain folder under projects_root, not a masterwork Project."
+                "description": "Named apart from the unrelated `ProjectCreateRequest` (features/projects) —\nthis creates a plain folder under projects_root, not a masterwork Project."
             },
             "MessageRole": {
                 "type": "string",
@@ -5829,7 +5825,7 @@
                             }
                         ],
                         "title": "Model",
-                        "description": "The model the lanes reported. Null is a real row rather than a gap, but it is not a model: it is every lane that named none \u2014 the pipeline's own `git` and `checks` lanes, which run no model at all and appear in every run, plus every agent lane recorded before the runner started sending one. Do not read it as a competitor to the named rows; a run appears under it and under its model both."
+                        "description": "The model the lanes reported. Null is a real row rather than a gap, but it is not a model: it is every lane that named none — the pipeline's own `git` and `checks` lanes, which run no model at all and appear in every run, plus every agent lane recorded before the runner started sending one. Do not read it as a competitor to the named rows; a run appears under it and under its model both."
                     },
                     "lanes": {
                         "type": "integer",
@@ -5854,7 +5850,7 @@
                             }
                         ],
                         "title": "Acceptance Rate",
-                        "description": "accepted_runs / runs. Read `runs` before believing it \u2014 a rate over two runs is noise, and masterwork will not hide it behind a threshold."
+                        "description": "accepted_runs / runs. Read `runs` before believing it — a rate over two runs is noise, and masterwork will not hide it behind a threshold."
                     },
                     "stages": {
                         "type": "integer",
@@ -5984,7 +5980,7 @@
                             "unavailable"
                         ],
                         "title": "State",
-                        "description": "connected: recording. outdated: wired to an older hook set or a missing script \u2014 connect repairs it. disconnected: nothing installed. unavailable: cannot be connected on this machine; `detail` says why."
+                        "description": "connected: recording. outdated: wired to an older hook set or a missing script — connect repairs it. disconnected: nothing installed. unavailable: cannot be connected on this machine; `detail` says why."
                     },
                     "detail": {
                         "type": "string",
@@ -6065,7 +6061,7 @@
                             }
                         ],
                         "title": "Name",
-                        "description": "Stage name \u2014 plan, build, review, \u2026"
+                        "description": "Stage name — plan, build, review, …"
                     },
                     "seq": {
                         "anyOf": [
@@ -6241,7 +6237,7 @@
                             }
                         ],
                         "title": "Duration Ms",
-                        "description": "Reported, or started_at \u2192 ended_at."
+                        "description": "Reported, or started_at → ended_at."
                     }
                 },
                 "type": "object",
@@ -6791,7 +6787,7 @@
                             }
                         ],
                         "title": "Role",
-                        "description": "Lane name \u2014 plan | build | review | document | checks | git for a pipeline run, \"main\" for a chat turn. Null when a stage recorded no lane."
+                        "description": "Lane name — plan | build | review | document | checks | git for a pipeline run, \"main\" for a chat turn. Null when a stage recorded no lane."
                     },
                     "runs": {
                         "type": "integer",
@@ -6801,7 +6797,7 @@
                     "stages": {
                         "type": "integer",
                         "title": "Stages",
-                        "description": "Stage rows \u2014 the denominator of every per-stage average."
+                        "description": "Stage rows — the denominator of every per-stage average."
                     },
                     "corrections": {
                         "type": "integer",
@@ -6888,7 +6884,7 @@
                     "gate_checks": {
                         "type": "integer",
                         "title": "Gate Checks",
-                        "description": "gates_passed + gates_failed summed off the stage counters, which every run has \u2014 not the v1.19 evidence rows, which only a reported or replayed run has."
+                        "description": "gates_passed + gates_failed summed off the stage counters, which every run has — not the v1.19 evidence rows, which only a reported or replayed run has."
                     },
                     "gate_failures": {
                         "type": "integer",
@@ -7015,7 +7011,7 @@
                     "accepted": {
                         "type": "boolean",
                         "title": "Accepted",
-                        "description": "status == success. The acceptance signal the model comparison averages \u2014 `abandoned` is silence, not a verdict, and counts as not accepted."
+                        "description": "status == success. The acceptance signal the model comparison averages — `abandoned` is silence, not a verdict, and counts as not accepted."
                     },
                     "started_at": {
                         "type": "string",
@@ -7106,7 +7102,7 @@
                     "gate_checks": {
                         "type": "integer",
                         "title": "Gate Checks",
-                        "description": "v1.19 evidence rows \u2014 0 for a run that never reported or replayed any."
+                        "description": "v1.19 evidence rows — 0 for a run that never reported or replayed any."
                     },
                     "gate_failures": {
                         "type": "integer",
@@ -7478,7 +7474,7 @@
                     "asset_id"
                 ],
                 "title": "SimulationChange",
-                "description": "One change carried by a suggestion (same shape as ProposalChange).\n`link` adds an existing unlinked asset to the project \u2014 no file write."
+                "description": "One change carried by a suggestion (same shape as ProposalChange).\n`link` adds an existing unlinked asset to the project — no file write."
             },
             "SimulationChecklistItem": {
                 "properties": {
@@ -7847,6 +7843,17 @@
                         ],
                         "title": "Iteration"
                     },
+                    "assigned_to": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Assigned To"
+                    },
                     "priority": {
                         "anyOf": [
                             {
@@ -7897,6 +7904,7 @@
                     "acceptance_md",
                     "state",
                     "iteration",
+                    "assigned_to",
                     "priority",
                     "tags",
                     "external_changed_at",
@@ -7914,7 +7922,7 @@
                     "launched": {
                         "type": "boolean",
                         "title": "Launched",
-                        "description": "Always false today \u2014 no reusable session-launch path exists yet."
+                        "description": "Always false today — no reusable session-launch path exists yet."
                     },
                     "session_id": {
                         "anyOf": [
@@ -7989,7 +7997,19 @@
                     "secret_ref": {
                         "type": "string",
                         "title": "Secret Ref",
-                        "description": "Env var naming the PAT \u2014 never the PAT itself."
+                        "description": "Env var naming the PAT — never the PAT itself."
+                    },
+                    "current_iteration": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Current Iteration",
+                        "description": "The team's current sprint (iteration path), refreshed on sync."
                     },
                     "last_sync_at": {
                         "anyOf": [
@@ -8023,6 +8043,7 @@
                     "team",
                     "query_wiql",
                     "secret_ref",
+                    "current_iteration",
                     "last_sync_at",
                     "created_at",
                     "updated_at"

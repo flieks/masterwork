@@ -9,6 +9,7 @@ import { toast } from '~/components/ui/sonner';
 import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
 import {
+  assigneeOptions,
   buildWorkItemTree,
   countNodes,
   filterWorkItemTree,
@@ -26,7 +27,7 @@ import { WorkItemDetailDialog } from './WorkItemDetailDialog';
 import { WorkItemTable } from './WorkItemTable';
 import { WorkSourceBar } from './WorkSourceBar';
 
-const NO_FILTERS: WorkItemFilters = { iteration: null, query: '' };
+const NO_FILTERS: WorkItemFilters = { iteration: null, assignee: null, query: '' };
 
 export function WorkBacklogPage() {
   const [sources] = useAtom(workSourcesQueryAtom);
@@ -34,12 +35,22 @@ export function WorkBacklogPage() {
   const [{ mutateAsync: start, isPending: starting, variables: startingId }] =
     useAtom(startWorkItemMutationAtom);
 
-  const [filters, setFilters] = useState<WorkItemFilters>(NO_FILTERS);
+  const [chosenFilters, setFilters] = useState<WorkItemFilters | null>(null);
   const [started, setStarted] = useState<StartedItem | null>(null);
   const [detail, setDetail] = useState<WorkItem | null>(null);
 
   const loaded = useMemo(() => items.data ?? [], [items.data]);
   const sprints = useMemo(() => sprintOptions(loaded), [loaded]);
+  const assignees = useMemo(() => assigneeOptions(loaded), [loaded]);
+  // The team's current sprint, provided the loaded items mention it at all.
+  const activeSprint =
+    sources.data?.map((s) => s.current_iteration).find((ci) => ci && sprints.includes(ci)) ??
+    null;
+  // Until the user touches the filters, the view opens on the active sprint.
+  const filters = useMemo(
+    () => chosenFilters ?? { ...NO_FILTERS, iteration: activeSprint },
+    [chosenFilters, activeSprint],
+  );
   const tree = useMemo(() => buildWorkItemTree(loaded), [loaded]);
   const visible = useMemo(() => filterWorkItemTree(tree, filters), [tree, filters]);
   const filtered = hasActiveFilters(filters);
@@ -114,7 +125,13 @@ export function WorkBacklogPage() {
             />
           ) : (
             <>
-              <WorkFilters filters={filters} onChange={setFilters} sprints={sprints} />
+              <WorkFilters
+                filters={filters}
+                onChange={setFilters}
+                sprints={sprints}
+                activeSprint={activeSprint}
+                assignees={assignees}
+              />
               {visible.length === 0 ? (
                 <EmptyState
                   icon={<SearchX className="size-8" />}

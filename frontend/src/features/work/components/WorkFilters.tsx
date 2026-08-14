@@ -1,15 +1,28 @@
 import { Search } from 'lucide-react';
 import { Input } from '~/components/ui/input';
-import { sprintLabel, type WorkItemFilters } from '../queries';
+import { ASSIGNEE_ME, sprintLabel, type WorkItemFilters } from '../queries';
 
 interface WorkFiltersProps {
   filters: WorkItemFilters;
   onChange: (filters: WorkItemFilters) => void;
   /** Every sprint the loaded items mention, as full iteration paths. */
   sprints: string[];
+  /** The team's current sprint, when a synced source reports one. */
+  activeSprint: string | null;
+  /** Every assignee the loaded items name. */
+  assignees: string[];
 }
 
-export function WorkFilters({ filters, onChange, sprints }: WorkFiltersProps) {
+const SELECT_CLASS =
+  'h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background';
+
+export function WorkFilters({
+  filters,
+  onChange,
+  sprints,
+  activeSprint,
+  assignees,
+}: WorkFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
@@ -17,13 +30,30 @@ export function WorkFilters({ filters, onChange, sprints }: WorkFiltersProps) {
         value={filters.iteration ?? ''}
         title={filters.iteration ?? 'All sprints'}
         onChange={(e) => onChange({ ...filters, iteration: e.target.value || null })}
-        className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+        className={SELECT_CLASS}
       >
         <option value="">All sprints</option>
         {sprints.map((sprint) => (
           // Trimmed for reading; the value filtered on is the full path.
           <option key={sprint} value={sprint} title={sprint}>
-            {sprintLabel(sprint)}
+            {sprint === activeSprint ? `${sprintLabel(sprint)} ✓ active` : sprintLabel(sprint)}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Assignee"
+        value={filters.assignee ?? ''}
+        title={filters.assignee ?? 'Everyone'}
+        onChange={(e) => onChange({ ...filters, assignee: e.target.value || null })}
+        className={SELECT_CLASS}
+      >
+        <option value="">Everyone</option>
+        {/* Matches the rows the source's own (assigned-to-me) query returned. */}
+        <option value={ASSIGNEE_ME}>@Me</option>
+        {assignees.map((name) => (
+          <option key={name} value={name}>
+            {name}
           </option>
         ))}
       </select>

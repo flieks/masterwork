@@ -2175,6 +2175,7 @@ WorkSource {
   team: string | null
   query_wiql: string | null      // overrides the default assigned-to-me WIQL when set
   secret_ref: string             // env var naming the PAT — never the PAT itself
+  current_iteration: string | null // the team's current sprint path, refreshed on sync
   last_sync_at: string | null
   created_at: string
   updated_at: string
@@ -2197,6 +2198,7 @@ WorkItem {
   acceptance_md: string | null   // Microsoft.VSTS.Common.AcceptanceCriteria, converted; null if absent
   state: string
   iteration: string | null
+  assigned_to: string | null     // System.AssignedTo display name
   priority: number | null
   tags: string[] | null
   external_changed_at: string

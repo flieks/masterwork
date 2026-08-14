@@ -140,7 +140,7 @@ export interface AgentLane {
     'turns': number;
 }
 /**
- *
+ * 
  * @export
  * @interface AppSettings
  */
@@ -153,13 +153,13 @@ export interface AppSettings {
     'projects_root': string;
 }
 /**
- *
+ * 
  * @export
  * @interface AppSettingsUpdateRequest
  */
 export interface AppSettingsUpdateRequest {
     /**
-     * New projects root; omitted or null leaves it unchanged.
+     * 
      * @type {string}
      * @memberof AppSettingsUpdateRequest
      */
@@ -2019,7 +2019,7 @@ export interface InstructionsUpdateRequest {
     'content': string;
 }
 /**
- *
+ * 
  * @export
  * @enum {string}
  */
@@ -2033,7 +2033,7 @@ export type LaunchMode = typeof LaunchMode[keyof typeof LaunchMode];
 
 
 /**
- *
+ * 
  * @export
  * @interface LaunchRequest
  */
@@ -2057,14 +2057,16 @@ export interface LaunchRequest {
      */
     'mode'?: LaunchMode;
 }
+
+
 /**
- *
+ * 
  * @export
  * @interface LauncherProject
  */
 export interface LauncherProject {
     /**
-     *
+     * 
      * @type {string}
      * @memberof LauncherProject
      */
@@ -2076,7 +2078,7 @@ export interface LauncherProject {
      */
     'path': string;
     /**
-     *
+     * 
      * @type {boolean}
      * @memberof LauncherProject
      */
@@ -2096,7 +2098,7 @@ export interface LauncherProjectCreateRequest {
     'name': string;
 }
 /**
- *
+ * 
  * @export
  * @enum {string}
  */
@@ -3107,43 +3109,43 @@ export interface ScenarioGenerateResponse {
     'scenario': string;
 }
 /**
- *
+ * 
  * @export
  * @interface SessionLaunchRead
  */
 export interface SessionLaunchRead {
     /**
-     *
+     * 
      * @type {number}
      * @memberof SessionLaunchRead
      */
     'id': number;
     /**
-     *
+     * 
      * @type {string}
      * @memberof SessionLaunchRead
      */
     'project_path': string;
     /**
-     *
+     * 
      * @type {string}
      * @memberof SessionLaunchRead
      */
     'request_text': string;
     /**
-     *
+     * 
      * @type {LaunchMode}
      * @memberof SessionLaunchRead
      */
     'mode': LaunchMode;
     /**
-     *
+     * 
      * @type {string}
      * @memberof SessionLaunchRead
      */
     'launched_at': string;
     /**
-     *
+     * 
      * @type {number}
      * @memberof SessionLaunchRead
      */
@@ -3155,8 +3157,10 @@ export interface SessionLaunchRead {
      */
     'launched': boolean;
 }
+
+
 /**
- *
+ * 
  * @export
  * @interface Simulation
  */
@@ -3669,6 +3673,12 @@ export interface WorkItem {
     'iteration': string | null;
     /**
      * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'assigned_to': string | null;
+    /**
+     * 
      * @type {number}
      * @memberof WorkItem
      */
@@ -3771,6 +3781,12 @@ export interface WorkSource {
      * @memberof WorkSource
      */
     'secret_ref': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'current_iteration': string | null;
     /**
      * 
      * @type {string}
@@ -6218,9 +6234,9 @@ export class InstructionsApi extends BaseAPI {
 export const LauncherApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         *
+         * 
          * @summary Create Launcher Project
-         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6240,7 +6256,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             localVarHeaderParameter['Content-Type'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -6254,9 +6270,9 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         *
+         * 
          * @summary Launch Session
-         * @param {LaunchRequest} launchRequest
+         * @param {LaunchRequest} launchRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6276,7 +6292,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             localVarHeaderParameter['Content-Type'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -6290,7 +6306,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         *
+         * 
          * @summary List Launcher Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -6309,7 +6325,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -6330,9 +6346,9 @@ export const LauncherApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = LauncherApiAxiosParamCreator(configuration)
     return {
         /**
-         *
+         * 
          * @summary Create Launcher Project
-         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6343,9 +6359,9 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary Launch Session
-         * @param {LaunchRequest} launchRequest
+         * @param {LaunchRequest} launchRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6356,7 +6372,7 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary List Launcher Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -6378,9 +6394,9 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = LauncherApiFp(configuration)
     return {
         /**
-         *
+         * 
          * @summary Create Launcher Project
-         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6388,9 +6404,9 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary Launch Session
-         * @param {LaunchRequest} launchRequest
+         * @param {LaunchRequest} launchRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6398,7 +6414,7 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.launchSession(launchRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary List Launcher Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -6417,9 +6433,9 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
  */
 export class LauncherApi extends BaseAPI {
     /**
-     *
+     * 
      * @summary Create Launcher Project
-     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi
@@ -6429,9 +6445,9 @@ export class LauncherApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary Launch Session
-     * @param {LaunchRequest} launchRequest
+     * @param {LaunchRequest} launchRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi
@@ -6441,7 +6457,7 @@ export class LauncherApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary List Launcher Projects
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -7610,7 +7626,7 @@ export class ProposalsApi extends BaseAPI {
 export const SettingsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         *
+         * 
          * @summary Get Settings
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -7629,7 +7645,7 @@ export const SettingsApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -7640,9 +7656,9 @@ export const SettingsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         *
+         * 
          * @summary Update Settings
-         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7662,7 +7678,7 @@ export const SettingsApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             localVarHeaderParameter['Content-Type'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -7686,7 +7702,7 @@ export const SettingsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = SettingsApiAxiosParamCreator(configuration)
     return {
         /**
-         *
+         * 
          * @summary Get Settings
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -7698,9 +7714,9 @@ export const SettingsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary Update Settings
-         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7721,7 +7737,7 @@ export const SettingsApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = SettingsApiFp(configuration)
     return {
         /**
-         *
+         * 
          * @summary Get Settings
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -7730,9 +7746,9 @@ export const SettingsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.getSettings(options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary Update Settings
-         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7750,7 +7766,7 @@ export const SettingsApiFactory = function (configuration?: Configuration, baseP
  */
 export class SettingsApi extends BaseAPI {
     /**
-     *
+     * 
      * @summary Get Settings
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -7761,9 +7777,9 @@ export class SettingsApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary Update Settings
-     * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+     * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof SettingsApi
