@@ -2188,7 +2188,7 @@ export interface LaunchRequest {
      */
     'request_text': string;
     /**
-     * Both modes launch the same unattended run today.
+     * 'autonomous' never asks; 'interview' pauses after planning to ask about weak assumptions before building.
      * @type {LaunchMode}
      * @memberof LaunchRequest
      */

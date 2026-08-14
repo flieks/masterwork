@@ -447,10 +447,13 @@ def main(argv: list[str] | None = None) -> int:
         except (runs.RunError, gitwork.GitError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-        if resume.record.state == runs.WAITING_INPUT:
-            # Never starts an agent without them: a paused run means nothing was
-            # asked, and resuming past that on a guess defeats the whole point.
-            run_dir = resume.record.run_dir or (root / args.resume)
+        # answers.json outlives the first resume that read it: a *second*
+        # resume (e.g. a later budget stop mid-build) must still fold the
+        # same answers in, not silently fall back to the planner's guesses.
+        # Only a run still waiting_input with no file yet is a hard refusal.
+        run_dir = resume.record.run_dir or (root / args.resume)
+        has_answers = (run_dir / interview.ANSWERS_FILENAME).is_file()
+        if resume.record.state == runs.WAITING_INPUT or has_answers:
             try:
                 answers = interview.read_answers(run_dir)
             except interview.InterviewError as exc:

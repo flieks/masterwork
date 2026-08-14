@@ -32,7 +32,11 @@ class LaunchRequest(BaseModel):
         ..., min_length=1, description="What to build — handed to the factory as-is."
     )
     mode: LaunchMode = Field(
-        LaunchMode.AUTONOMOUS, description="Both modes launch the same unattended run today."
+        LaunchMode.AUTONOMOUS,
+        description=(
+            "'autonomous' never asks; 'interview' pauses after planning to ask "
+            "about weak assumptions before building."
+        ),
     )
 
 

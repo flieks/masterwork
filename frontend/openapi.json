@@ -6022,7 +6022,7 @@
                     },
                     "mode": {
                         "$ref": "#/components/schemas/LaunchMode",
-                        "description": "Both modes launch the same unattended run today.",
+                        "description": "'autonomous' never asks; 'interview' pauses after planning to ask about weak assumptions before building.",
                         "default": "autonomous"
                     }
                 },
