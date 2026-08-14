@@ -8,6 +8,19 @@ import type {
   WorkSyncResult,
 } from '~/api/generated';
 
+// The item vocabulary lives in a client-free leaf (`tree.ts`) so it can be used
+// without pulling the API client in; re-exported here as the feature's surface.
+export {
+  buildWorkItemTree,
+  countNodes,
+  filterWorkItemTree,
+  hasActiveFilters,
+  sprintLabel,
+  sprintOptions,
+  type WorkItemFilters,
+  type WorkItemNode,
+} from './tree';
+
 export const WORK_SOURCES_QUERY_KEY = ['workSources'];
 export const WORK_ITEMS_QUERY_KEY = ['workItems'];
 

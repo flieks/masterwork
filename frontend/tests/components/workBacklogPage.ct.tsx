@@ -2,7 +2,15 @@ import { test, expect, type Page } from '@playwright/experimental-ct-react';
 import type { WorkItem, WorkSource } from '~/api/generated';
 import { WorkBacklogPage } from '~/features/work/components/WorkBacklogPage';
 import { TestProviders } from './harness/TestProviders';
-import { SOURCE_ID, startResponse, workItem, workSource } from './harness/workFixtures';
+import {
+  SOURCE_ID,
+  SPRINT_33,
+  SPRINT_34,
+  startResponse,
+  workItem,
+  workItemTree,
+  workSource,
+} from './harness/workFixtures';
 
 // The generated client targets a cross-origin backend (localhost:8008), so every
 // fulfilled response needs CORS headers and OPTIONS preflights must be answered.
@@ -12,9 +20,14 @@ const CORS = {
   'Access-Control-Allow-Headers': '*',
 };
 
+const STORY = 'Operators can retry a failed ingest run';
+const CHILD_WIRE = 'Wire the retry button to the API';
+const CHILD_E2E = 'Cover retry in the run E2E';
+const CONTEXT_FEATURE = 'Ingest reliability';
+const CONTEXT_CHILD = 'Backfill the ingest audit log';
+const ORPHAN = 'Bump the ingest SDK';
+
 interface WorkRoutes {
-  sources: () => WorkSource[];
-  items: () => WorkItem[];
   /** Every non-preflight request, as "METHOD path". */
   calls: string[];
   bodies: string[];
@@ -25,7 +38,7 @@ async function mockWork(
   initial: { sources?: WorkSource[]; items?: WorkItem[] } = {},
 ): Promise<WorkRoutes> {
   let sources = initial.sources ?? [workSource()];
-  let items = initial.items ?? [];
+  let items = initial.items ?? workItemTree();
   const calls: string[] = [];
   const bodies: string[] = [];
 
@@ -64,49 +77,156 @@ async function mockWork(
     });
   });
 
-  return { sources: () => sources, items: () => items, calls, bodies };
+  return { calls, bodies };
 }
 
-test('a work item shows its type, state, iteration and priority', async ({ mount, page }) => {
-  await mockWork(page, {
-    items: [
-      workItem(),
-      workItem({
-        id: 2,
-        external_id: 4822,
-        item_type: 'Bug',
-        state: 'New',
-        title: 'Retry drops the run id',
-        iteration: null,
-        priority: null,
-      }),
-    ],
-  });
-
-  await mount(
+function mountPage(mount: Parameters<Parameters<typeof test>[1]>[0]['mount']) {
+  return mount(
     <TestProviders>
       <WorkBacklogPage />
     </TestProviders>,
   );
+}
+
+test('the backlog opens on its top-level rows, with children folded away', async ({
+  mount,
+  page,
+}) => {
+  await mockWork(page);
+  await mountPage(mount);
 
   await expect(page.getByRole('heading', { name: 'Work' })).toBeVisible();
-  await expect(page.getByLabel('2 work items')).toBeVisible();
+  await expect(page.getByLabel('6 work items')).toBeVisible();
   await expect(page.getByText('acme / widgets')).toBeVisible();
 
-  const story = page
-    .getByRole('row')
-    .filter({ hasText: 'Operators can retry a failed ingest run' });
+  // Header + story + context feature + orphan task. The three children are folded.
+  await expect(page.getByRole('row')).toHaveCount(4);
+  await expect(page.getByText(CHILD_WIRE)).toHaveCount(0);
+  await expect(page.getByText(CONTEXT_CHILD)).toHaveCount(0);
+
+  const story = page.getByRole('row').filter({ hasText: STORY });
   await expect(story).toContainText('User Story');
   await expect(story).toContainText('Active');
-  await expect(story).toContainText('widgets\\Sprint 14');
+  await expect(story).toContainText('2026 Q3.3');
   await expect(story).toContainText('#4821');
   await expect(story).toContainText('2');
 
-  // A bug with no iteration or priority says so rather than showing a blank cell.
-  const bug = page.getByRole('row').filter({ hasText: 'Retry drops the run id' });
-  await expect(bug).toContainText('Bug');
-  await expect(bug).toContainText('New');
-  await expect(bug.getByText('—')).toHaveCount(2);
+  // A task whose parent was never fetched still gets a row of its own.
+  await expect(page.getByRole('row').filter({ hasText: ORPHAN })).toBeVisible();
+
+  // The context Feature has no iteration and no priority — both say so.
+  const feature = page.getByRole('row').filter({ hasText: CONTEXT_FEATURE });
+  await expect(feature.getByText('—')).toHaveCount(2);
+});
+
+test('expanding a story reveals the tasks under it', async ({ mount, page }) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  const chevron = page.getByRole('button', { name: `Expand ${STORY}` });
+  await expect(chevron).toHaveAttribute('aria-expanded', 'false');
+  await chevron.click();
+
+  await expect(page.getByText(CHILD_WIRE)).toBeVisible();
+  await expect(page.getByText(CHILD_E2E)).toBeVisible();
+  await expect(page.getByRole('row')).toHaveCount(6);
+
+  // Only that story opened — the context Feature's child stays folded.
+  await expect(page.getByText(CONTEXT_CHILD)).toHaveCount(0);
+
+  await page.getByRole('button', { name: `Collapse ${STORY}` }).click();
+  await expect(page.getByText(CHILD_WIRE)).toHaveCount(0);
+});
+
+test('the sprint filter drops the items in other iterations', async ({ mount, page }) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  await page.getByLabel('Sprint').selectOption(SPRINT_33);
+
+  // A filtered view opens every group, so a matching child is never hidden.
+  await expect(page.getByText(STORY)).toBeVisible();
+  await expect(page.getByText(CHILD_WIRE)).toBeVisible();
+  await expect(page.getByText(CHILD_E2E)).toBeVisible();
+  await expect(page.getByLabel('3 work items')).toBeVisible();
+
+  await expect(page.getByText(CONTEXT_FEATURE)).toHaveCount(0);
+  await expect(page.getByText(CONTEXT_CHILD)).toHaveCount(0);
+  await expect(page.getByText(ORPHAN)).toHaveCount(0);
+
+  // The other sprint keeps the context Feature only as its child's group header.
+  await page.getByLabel('Sprint').selectOption(SPRINT_34);
+  await expect(page.getByText(CONTEXT_FEATURE)).toBeVisible();
+  await expect(page.getByText(CONTEXT_CHILD)).toBeVisible();
+  await expect(page.getByText(ORPHAN)).toBeVisible();
+  await expect(page.getByText(STORY)).toHaveCount(0);
+});
+
+test('searching a task title keeps its parent as the group header, expanded', async ({
+  mount,
+  page,
+}) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  await page.getByLabel('Search titles').fill('cover retry');
+
+  // The story does not match "cover retry" itself; it survives as the header.
+  await expect(page.getByText(STORY)).toBeVisible();
+  await expect(page.getByText(CHILD_E2E)).toBeVisible();
+  await expect(page.getByText(CHILD_WIRE)).toHaveCount(0);
+  await expect(page.getByText(ORPHAN)).toHaveCount(0);
+  // The chevron still answers while a filter holds the group open.
+  await page.getByRole('button', { name: `Collapse ${STORY}` }).click();
+  await expect(page.getByText(CHILD_E2E)).toHaveCount(0);
+  await page.getByRole('button', { name: `Expand ${STORY}` }).click();
+  await expect(page.getByText(CHILD_E2E)).toBeVisible();
+
+  await page.getByLabel('Search titles').fill('nothing matches this');
+  await expect(page.getByText('No work item matches these filters')).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(page.getByRole('row')).toHaveCount(4);
+});
+
+test('clicking a title opens the item, description and acceptance as plain text', async ({
+  mount,
+  page,
+}) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  await page.getByRole('button', { name: STORY, exact: true }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText(STORY);
+  await expect(dialog).toContainText('#4821');
+  await expect(dialog).toContainText('The retry button reruns the pipeline from the failed stage.');
+  await expect(dialog).toContainText('- Retry is disabled while a run is in flight');
+  await expect(dialog).toContainText('User Story');
+  await expect(dialog).toContainText(SPRINT_33);
+  await expect(dialog).toContainText('ingest');
+  await expect(dialog.getByRole('link', { name: /Open in Azure DevOps/ })).toHaveAttribute(
+    'href',
+    'https://dev.azure.com/acme/widgets/_workitems/edit/4821',
+  );
+});
+
+test('a context row is startable from nowhere — not the row, not its dialog', async ({
+  mount,
+  page,
+}) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  const feature = page.getByRole('row').filter({ hasText: CONTEXT_FEATURE });
+  await expect(feature.getByText('context')).toBeVisible();
+  await expect(feature.getByRole('button', { name: 'Start session' })).toHaveCount(0);
+
+  // The title still opens the item — it is context, not a forbidden row.
+  await page.getByRole('button', { name: CONTEXT_FEATURE, exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Umbrella for the 2026 Q3 ingest hardening work.');
+  await expect(dialog.getByRole('button', { name: 'Start session' })).toHaveCount(0);
 });
 
 test('starting an item shows the assembled prompt and says launch is deferred', async ({
@@ -114,16 +234,11 @@ test('starting an item shows the assembled prompt and says launch is deferred', 
   page,
 }) => {
   const routes = await mockWork(page, { items: [workItem()] });
-
-  await mount(
-    <TestProviders>
-      <WorkBacklogPage />
-    </TestProviders>,
-  );
+  await mountPage(mount);
 
   await page
     .getByRole('row')
-    .filter({ hasText: 'Operators can retry a failed ingest run' })
+    .filter({ hasText: STORY })
     .getByRole('button', { name: 'Start session' })
     .click();
 
@@ -135,14 +250,21 @@ test('starting an item shows the assembled prompt and says launch is deferred', 
   expect(routes.calls).toContain('POST /api/v1/work/items/1/start');
 });
 
+test('the detail dialog hands straight over to the prompt', async ({ mount, page }) => {
+  await mockWork(page, { items: [workItem()] });
+  await mountPage(mount);
+
+  await page.getByRole('button', { name: STORY, exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Start session' }).click();
+
+  // One modal at a time: the detail closes as the prompt opens.
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByRole('dialog')).toContainText('Session prompt for #4821');
+});
+
 test('Sync pulls the source and the item list is asked for again', async ({ mount, page }) => {
   const routes = await mockWork(page, { items: [workItem()] });
-
-  await mount(
-    <TestProviders>
-      <WorkBacklogPage />
-    </TestProviders>,
-  );
+  await mountPage(mount);
 
   await expect(page.getByRole('row')).toHaveCount(2); // header + one item
 
@@ -155,12 +277,7 @@ test('Sync pulls the source and the item list is asked for again', async ({ moun
 
 test('with no source registered the page offers the inline form', async ({ mount, page }) => {
   const routes = await mockWork(page, { sources: [] });
-
-  await mount(
-    <TestProviders>
-      <WorkBacklogPage />
-    </TestProviders>,
-  );
+  await mountPage(mount);
 
   await expect(page.getByText('No work source yet')).toBeVisible();
 
