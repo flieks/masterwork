@@ -1,430 +1,261 @@
-# Plan — Azure DevOps work-item integration v1 (read-only inbound)
+# Plan — in-app session launcher (factory-only)
 
 ## The change in one paragraph
 
-Masterwork gains a **Work** surface: a mirror of the Azure DevOps work items assigned to
-the user, pulled in over the DevOps REST API and never pushed back. Three new tables
-(`work_sources`, `work_items`, `work_item_sessions`) hold a registered DevOps
-org/project/team, the mirrored items, and the link between an item and a coding session
-started for it. A new async httpx client (`app/providers/azuredevops.py`) speaks only the
-four read endpoints it needs — WIQL query, work-item batch, active PRs, PR threads — and
-contains **no** PATCH/PUT/DELETE/POST-comment method at all; the PAT is never stored,
-only the *name* of the env var that holds it (`work_sources.secret_ref`). A sync service
-runs the source's WIQL (or the assigned-to-me default), batch-fetches the returned ids in
-chunks of 200, converts the HTML `Description` and `AcceptanceCriteria` fields to markdown
-with `markdownify`, and upserts one mirror row per `(source_id, external_id)`. Outbound
-stays a deliberate dead end: a dataclass describing a proposed action plus a guard that
-raises `NotImplementedError`, called by nothing. Five endpoints under `/api/v1/work` list
-sources, register a source, list items, sync a source, and assemble the session prompt for
-one item. The frontend adds a **Work** page listing the mirrored backlog with a Sync button
-per source and a Start-session button per item, backed by a regenerated OpenAPI client.
-
-**The one thing the request assumed that the repo does not have: there is no reusable
-session-launch path.** See "Session launch is deferred" below — the request's own fallback
-branch applies, and it shapes two design decisions.
-
----
-
-## Session launch is deferred — and why
-
-The request says to launch a coding session "the same way existing session-launch code
-does (find and reuse it; if no reusable launch path exists, return the assembled prompt in
-the response with launch deferred and note it in the run report)". I looked; there is no
-such path:
-
-- `backend/app/services/claude_runner.py` is the *only* thing in the backend that spawns
-  `claude`. It is deliberately read-only and sandboxed: `cwd=~/.claude`, `--allowedTools
-  Read Glob Grep`, and an explicit `--disallowedTools Bash Edit MultiEdit Write
-  NotebookEdit Task` with the comment "Read-only must be enforced by DENY". It cannot write
-  code, so it is not a coding-session launcher.
-- `backend/app/api/v1/coding/**` is pure *observability*: `coding_sessions` rows are created
-  by the hook ingest (`POST /api/v1/hooks/events`) when an externally-started session
-  reports its first event. Nothing in the backend creates a session row directly.
-- `factory/run.py` is a CLI the user (or Claude Code) invokes from a terminal. Nothing in
-  `backend/` shells out to it, and making an HTTP endpoint spawn a write-capable agent
-  pipeline is a materially larger, security-relevant change than this request asked for.
-
-So `POST /work/items/{id}/start` **assembles and returns the prompt with
-`launched: false`** and does not spawn anything. Two consequences, both carried into the
-schema below:
-
-1. `work_item_sessions.session_id` is **nullable**. The request also requires a test
-   covering "start endpoint prompt assembly **+ link row**", so the row must be written —
-   and with launch deferred there is no `coding_sessions.id` to point at yet. A row with a
-   null `session_id` means "a session was requested for this item, the prompt was handed
-   out, nothing is bound to it yet". The FK still cascades once it is filled in.
-2. The response carries the prompt so the UI can offer it for copy/paste.
-
----
+Add a launcher that starts a factory run from the Sessions screen. The backend
+grows two new feature packages under `backend/app/api/v1/`: `settings`, a
+one-row-per-key `app_settings` table exposed as `GET`/`PATCH /api/v1/settings`
+and holding `projects_root` (the absolute folder all code projects live under,
+defaulting to `~/Projects` expanded server-side); and `launcher`, which lists the
+immediate subdirectories of that root (`GET /api/v1/launcher/projects`), creates
+a new one from a validated name with `mkdir` + `git init`
+(`POST /api/v1/launcher/projects`), and spawns a detached, fire-and-forget
+`python3 <repo>/factory/run.py --repo <project_path> "<request_text>"`
+(`POST /api/v1/launcher/launch`), persisting a `session_launches` row and
+returning it with `launched: true`. Every path that reaches the filesystem is
+resolved and checked to live inside `projects_root` with the existing
+`resolve_within_roots` helper, so neither a traversal name nor a
+`project_path` outside the root can escape. The frontend adds a **New session**
+button on `SessionsListPage` opening a `LaunchSessionDialog` — project selector
+fed by the projects endpoint with an inline "new folder" affordance, a required
+request textarea, an autonomous/interview mode radio, and a small editable
+projects-root field backed by the settings endpoints — and on success closes,
+toasts, and lets the existing 2.5s poll surface the new session. Both modes
+launch the same unattended run this iteration: `mode` is validated, stored and
+displayed, and **no extra flag is passed to `run.py`**.
 
 ## Files to add or change
 
-### Backend — data
+### Backend — persistence
 
-**`backend/app/db/models/work.py`** (new)
-Three models, following `app/db/models/coding.py` (module docstring that explains *why* the
-shape is what it is; module-level constants for the string enums; `Mapped[...]` +
-`mapped_column`; portable `JSONColumn` / `UTCDateTime` from `app/db/types.py`).
-
-- `WorkSource` — `id: uuid.UUID` pk `default=uuid.uuid4` (`Uuid`, as `Project` does),
-  `provider: str` `String(50)` default `"azuredevops"` + `server_default`,
-  `org_url: str` `String(500)`, `project: str` `String(200)`,
-  `team: str | None` `String(200)`, `query_wiql: str | None` `Text`,
-  `secret_ref: str` `String(200)` default `"AZURE_DEVOPS_PAT"` + `server_default` —
-  with a comment stating it names an env var and that the PAT itself is never stored,
-  `last_sync_at`, `created_at`, `updated_at` (`UTCDateTime`, `server_default=func.now()`,
-  `onupdate=func.now()` on `updated_at`).
-- `WorkItem` — `id: int` pk autoincrement, `source_id: uuid.UUID` FK
-  `work_sources.id` ondelete CASCADE, `external_id: int`, `external_url: str` `String(1000)`,
-  `item_type: str` `String(100)`, `title: str` `Text`, `description_md: str` `Text`
-  default `""` + `server_default`, `acceptance_md: str | None` `Text`,
-  `state: str` `String(100)`, `iteration: str | None` `String(500)`,
-  `priority: int | None`, `tags: list[str] | None` `JSONColumn`, `raw: dict` `JSONColumn`,
-  `external_changed_at: UTCDateTime`, `synced_at: UTCDateTime`.
-  `__table_args__`: `UniqueConstraint("source_id", "external_id",
-  name="uq_work_items_source_external")` plus `Index("ix_work_items_source_state",
-  "source_id", "state")` — the list endpoint filters on exactly that pair.
-- `WorkItemSession` — `id: int` pk, `work_item_id: int` FK `work_items.id` CASCADE,
-  `session_id: str | None` `String(200)` FK `coding_sessions.id` CASCADE **nullable**
-  (see above), `kind: str` `String(20)` (`KIND_SPAWNED = "spawned"` /
-  `KIND_LINKED = "linked"`), `pushed_state: str | None` `String(100)`,
-  `last_comment_at: UTCDateTime | None`, `created_at: UTCDateTime`.
-  `pushed_state`/`last_comment_at` are outbound bookkeeping columns with nothing writing
-  them in v1 — the model comment must say so rather than leaving them looking forgotten.
-
-**`backend/app/db/base.py`** (edit) — add `from app.db.models import work as _work  # noqa`
-to the existing import block, so `Base.metadata.create_all` (used by `tests/conftest.py`)
-and Alembic autogenerate see the tables.
-
-**`backend/alembic/versions/0018_work_items.py`** (new) — `revision = "0018_work_items"`,
-`down_revision = "0017_coding_evidence"`. Hand-checked, in the style of
-`0017_coding_evidence.py`: `sa.Uuid()` for the source pk/FK, `JSONColumn` imported from
-`app.db.types`, `sa.DateTime(timezone=True)` with `server_default=sa.func.now()` for the
-stamped timestamps, explicit `sa.ForeignKeyConstraint(..., ondelete="CASCADE")`, the unique
-constraint and the index created by name, and a `downgrade()` that drops indexes then tables
-in reverse order. Both dialects must take it (CI runs the suite on SQLite *and* Postgres);
-this is a pure `create_table` revision so no batch mode is needed.
-
-### Backend — DevOps client
-
-**`backend/app/providers/azuredevops.py`** (new)
-The requested path is kept, but note that `app/providers/` currently means *asset*
-providers (the `Provider` Protocol in `providers/base.py`, registered explicitly in
-`providers/registry.py`). This module is an external-API client, not a `Provider`, and it
-is **not** added to `build_providers`. Its docstring must say that in one line so the next
-reader does not go hunting for a `scan()`.
-
-```
-class AzureDevOpsError(DomainError-free plain Exception)   # translated in the service layer
-class AzureDevOpsClient:
-    def __init__(self, *, org_url, project, secret_ref, team=None, transport=None) -> None
-    async def query_work_item_ids(self, wiql: str) -> list[int]
-    async def get_work_items_batch(self, ids: Sequence[int], fields: Sequence[str]) -> list[dict]
-    async def list_active_prs(self) -> list[dict]
-    async def list_pr_threads(self, repository_id: str, pr_id: int) -> list[dict]
-```
-
-- One `httpx.AsyncClient` per call scope (`async with`), `timeout=30`, Basic auth built as
-  `httpx.BasicAuth("", pat)` — DevOps takes an empty username and the PAT as password.
-- The PAT is read via a new `app.config.read_secret(name)` accessor (below) using
-  `secret_ref` as the variable name; a missing/empty value raises `AzureDevOpsError`
-  naming the variable, e.g. `"AZURE_DEVOPS_PAT is not set"`. Never logged, never stored,
-  never echoed into a response body.
-- URLs exactly as specified:
-  `POST {org_url}/{project}/_apis/wit/wiql?api-version=7.1`,
-  `POST {org_url}/_apis/wit/workitemsbatch?api-version=7.1`,
-  `GET {org_url}/{project}/_apis/git/pullrequests?searchCriteria.status=active&api-version=7.1`,
-  `GET {org_url}/{project}/_apis/git/repositories/{repository_id}/pullRequests/{pr_id}/threads?api-version=7.1`.
-- `get_work_items_batch` chunks at `BATCH_LIMIT = 200` ids and concatenates the results;
-  an empty id list makes zero requests.
-- **Hard rule, restated in the module docstring**: no method here issues PATCH, PUT,
-  DELETE, or a comment/work-item-update POST. The only two POSTs are the WIQL query and the
-  batch *read*, both of which are reads that happen to take a body. A reviewer should be
-  able to grep this file for `patch`/`put`/`delete` and find nothing.
-- `transport` is a plain constructor argument so tests pass `httpx.MockTransport` and no
-  test ever reaches the network. No new test dependency (`respx` is not needed).
-- Non-2xx → `AzureDevOpsError` with status and a truncated body; the response text is
-  scrubbed of nothing else, so the service layer must not put it in a 500 verbatim (it
-  wraps it in a `WorkSyncError` with a fixed prefix).
-
-**`backend/app/config.py`** (edit) — add a module-level
-`def read_secret(name: str) -> str | None` returning `os.environ.get(name) or None`, with a
-one-line docstring: config stays the only module that touches the environment (house rule),
-and `secret_ref` is a *dynamic* variable name so it cannot be a `Settings` field.
-
-### Backend — services
-
-**`backend/app/services/work_sync.py`** (new)
-
-- `DEFAULT_WIQL` constant, one string, single-quoted state literals (the doubled quotes in
-  the request are WIQL/SQL escaping in the requester's own quoting):
-  `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.State] NOT IN ('Closed','Removed','Done') ORDER BY [System.ChangedDate] DESC`
-- `FIELDS` constant: `System.Title`, `System.Description`,
-  `Microsoft.VSTS.Common.AcceptanceCriteria`, `System.State`, `System.IterationPath`,
-  `System.WorkItemType`, `Microsoft.VSTS.Common.Priority`, `System.Tags`,
-  `System.ChangedDate`.
-- `html_to_markdown(html: str | None) -> str` — `markdownify(html, heading_style="ATX")`,
-  whitespace-collapsed, `""` for None/empty. DevOps returns these two fields as HTML.
-- `parse_tags(raw: str | None) -> list[str] | None` — DevOps sends `System.Tags` as a
-  `"a; b; c"` string; split on `;`, strip, drop empties, `None` when absent.
-- `async def sync_source(db, source, client) -> SyncCounts` — a frozen dataclass
-  `SyncCounts(fetched, inserted, updated)`. Runs `source.query_wiql or DEFAULT_WIQL`,
-  batch-fetches, maps each payload to the mirror columns, delegates the upsert to
-  `repositories.work.upsert_item`, stamps `source.last_sync_at`, returns the counts.
-- The whole DevOps payload goes into `raw` unchanged, and the docstring states the security
-  posture in one line: **external content is untrusted data — stored, rendered as markdown,
-  never executed, never `eval`'d, never interpolated into a shell command or a WIQL string.**
-  The only WIQL that reaches the API is `DEFAULT_WIQL` or the operator-entered
-  `source.query_wiql`; no item field is ever concatenated into a query.
-
-**`backend/app/services/work_outbound.py`** (new) — stub only, ~30 lines.
-
-```
-OUTBOUND_REFUSAL = "outbound requires per-action user approval"
-
-@dataclass(frozen=True)
-class ProposedOutboundAction:
-    kind: str            # ACTION_STATE_CHANGE | ACTION_COMMENT | ACTION_PR_LINK
-    work_item_id: int
-    summary: str
-    payload: dict[str, Any]
-
-def perform(action: ProposedOutboundAction) -> NoReturn:
-    raise NotImplementedError(OUTBOUND_REFUSAL)
-```
-
-Module docstring: this exists to make the *shape* of a future outbound action reviewable
-while guaranteeing nothing writes to DevOps today. Nothing imports `perform` outside its
-own unit test.
-
-### Backend — repository
-
-**`backend/app/repositories/work.py`** (new) — module-level async functions taking
-`db: AsyncSession` first, matching `repositories/projects.py` and `repositories/coding.py`
-(no classes, no commits inside — the route/service commits, as `trigger_service.py` does).
-
-```
-create_source(db, *, org_url, project, team, query_wiql, secret_ref) -> WorkSource
-list_sources(db) -> list[WorkSource]
-get_source(db, source_id: uuid.UUID) -> WorkSource | None
-list_items(db, *, source_id: uuid.UUID | None, state: str | None) -> list[WorkItem]
-get_item(db, item_id: int) -> WorkItem | None
-upsert_item(db, *, source_id, external_id, **fields) -> bool   # True when inserted
-create_item_session(db, *, work_item_id, session_id, kind) -> WorkItemSession
-```
-
-`upsert_item` is a `select`-then-insert-or-update on `(source_id, external_id)` rather than
-a dialect-specific `ON CONFLICT` — the repo must run identically on SQLite and Postgres, and
-this is the pattern the coding repository already uses.
-
-### Backend — API
-
-**`backend/app/api/v1/work/{__init__,routes,schemas,service}.py`** (new)
-
-> **Documented deviation from the request's literal path.** The request says
-> `app/api/v1/work.py`. Every one of the eight existing v1 features is a *package*
-> (`assets/`, `chat/`, `coding/`, `instructions/`, `observability/`, `projects/`,
-> `proposals/`, `simulations/`) with `routes.py` + `schemas.py` + `service.py`, and the
-> `backend-dev` house skill §4 mandates that layout. House conventions say to match the
-> surrounding code, so the feature ships as a package. Everything else about the request's
-> API spec — paths, methods, query params, behaviour — is unchanged. Also: there is no
-> "v1 router" aggregator in this repo; `main.py` includes each feature router with
-> `API_PREFIX`, so that is where the wiring goes.
-
-`schemas.py` — Pydantic v2, `model_config = ConfigDict(from_attributes=True)` on the read
-models, `Field(..., description=...)` on anything the generated TS client benefits from:
-`WorkSource`, `WorkSourceCreateRequest`, `WorkItem`, `WorkSyncResult`
-(`fetched/inserted/updated`), `WorkItemStartResponse` (`prompt: str`,
-`launched: bool`, `session_id: str | None`, `link_id: int`).
-
-`routes.py` — `router = APIRouter(tags=["work"])`, every route with `response_model=` and an
-explicit `operation_id` (the TS method name):
-
-| Method & path | operation_id | Notes |
+| Path | Add/change | Why |
 |---|---|---|
-| `GET /work/sources` | `listWorkSources` | `WorkSource[]`, newest first |
-| `POST /work/sources` | `createWorkSource` | validates `org_url` matches `^https://dev\.azure\.com/[A-Za-z0-9._~-]+/?$`; 400 `InvalidWorkSourceError` otherwise |
-| `GET /work/items?source_id=&state=` | `listWorkItems` | both filters optional |
-| `POST /work/sources/{source_id}/sync` | `syncWorkSource` | `WorkSyncResult` |
-| `POST /work/items/{item_id}/start` | `startWorkItem` | `WorkItemStartResponse` |
+| `backend/app/db/models/app_settings.py` | add | `AppSetting` (key PK, value, updated_at) + `PROJECTS_ROOT_KEY = "projects_root"`. A key-value table, not a column-per-setting, so the next setting needs no migration. |
+| `backend/app/db/models/launcher.py` | add | `SessionLaunch` (id, project_path, request_text, mode, launched_at, pid) + `MODE_AUTONOMOUS`/`MODE_INTERVIEW` constants, mirroring how `db/models/coding.py` keeps its vocabulary next to the table. |
+| `backend/app/db/base.py` | change | Import both new modules alongside the existing six so `Base.metadata` (and therefore `create_all` in tests + Alembic autogenerate) sees them. |
+| `backend/alembic/versions/0020_app_settings_and_launches.py` | add | `revision = "0020_app_settings_and_launches"`, `down_revision = "0019_work_item_parent"`. Creates `app_settings` and `session_launches`; `downgrade` drops both. Hand-written in the style of `0018_work_items.py` (explicit `sa.Column`s, `sa.DateTime(timezone=True)`, `server_default=sa.func.now()`), portable across SQLite and Postgres — no dialect-specific types. Run `uv run alembic heads` first and confirm a single head before writing it. |
+| `backend/app/repositories/app_settings.py` | add | `get_value(db, key) -> str \| None` and `set_value(db, key, value) -> AppSetting` (select-then-insert-or-update, like `repositories/work.upsert_item`, so it runs identically on both dialects). No DB access outside a repository. |
+| `backend/app/repositories/launcher.py` | add | `create_launch(db, *, project_path, request_text, mode) -> SessionLaunch` and `set_pid(db, launch, pid)`. |
 
-`service.py` — the layer that turns repository rows into schemas, raises the domain errors,
-and owns the prompt assembly:
+### Backend — settings feature
 
+`backend/app/api/v1/settings/{__init__.py,schemas.py,service.py,routes.py}` (all
+new), following the `work` package layering exactly.
+
+- `schemas.py`: `AppSettings { projects_root: str }` and
+  `AppSettingsUpdateRequest { projects_root: str | None = None }` (None = leave
+  unchanged), both with `Field(..., description=...)` so the generated TS is
+  self-documenting.
+- `service.py`: `read_settings(db)` returns the stored `projects_root` or, when
+  unset, `str(settings.default_projects_root)` — the expansion happens here, so
+  the API always hands out an absolute path. `update_settings(db, body)`
+  expands `~`, requires the result to be absolute and an existing directory,
+  raises `InvalidSettingError` otherwise, then writes through the repository and
+  commits.
+- `routes.py`: `router = APIRouter(tags=["settings"])`;
+  `GET /settings` → `operation_id="getSettings"`,
+  `PATCH /settings` → `operation_id="updateSettings"`, both
+  `response_model=AppSettings`.
+
+### Backend — launcher feature
+
+`backend/app/api/v1/launcher/{__init__.py,schemas.py,service.py,routes.py}` (all new).
+
+- `schemas.py`:
+  - `class LaunchMode(StrEnum): AUTONOMOUS = "autonomous"; INTERVIEW = "interview"` —
+    a `StrEnum` so the client generates a proper TS union rather than `string`.
+  - `LauncherProject { name: str, path: str, is_git_repo: bool }`
+  - `ProjectCreateRequest { name: str }`
+  - `LaunchRequest { project_path: str, request_text: str, mode: LaunchMode = AUTONOMOUS }`
+  - `SessionLaunchRead { id, project_path, request_text, mode, launched_at, pid, launched: bool }`
+- `service.py` — all business logic, no FastAPI imports:
+  - `list_projects(db)`: read `projects_root` via the settings service, list
+    immediate subdirectories, skip non-directories and names starting with `.`,
+    sort by name, set `is_git_repo = (p / ".git").exists()`.
+  - `create_project(db, name)`: validate with `_validate_project_name` (below),
+    join onto the root, re-check containment with
+    `resolve_within_roots(candidate, [root])` (reused from
+    `app/providers/base.py` — it already handles not-yet-existing tails and
+    symlink escapes and is covered by `tests/unit/test_path_validation.py`),
+    409 if it already exists, then `mkdir(parents=False)` and
+    `git init` via `subprocess.run([...], cwd=path, check=True, capture_output=True)`.
+    Returns the same `LauncherProject` shape as the list.
+  - `_validate_project_name(name)`: reject empty/whitespace-only, anything
+    containing `/`, `\`, or a NUL byte, `.`/`..`, any name starting with `.`,
+    and anything over 100 chars → `InvalidProjectNameError`.
+  - `launch(db, body, spawner)`: resolve `project_path` against the root with
+    `resolve_within_roots`; reject with `ProjectPathOutsideRootError` when it is
+    outside, is not a directory, or has no `.git` (`factory/run.py` exits 2 on a
+    non-repo, and a detached process writing to `/dev/null` would fail
+    invisibly — so this is caught synchronously, with a message that says so).
+    Reject empty `request_text`. Insert the `session_launches` row and `flush()`
+    to get its id, spawn, stamp `pid`, commit, return with `launched=True`.
+    A spawn failure raises `LaunchFailedError` and the transaction is not
+    committed.
+
+- `routes.py`: `router = APIRouter(tags=["launcher"])` with
+  `GET /launcher/projects` (`listLauncherProjects`, `list[LauncherProject]`),
+  `POST /launcher/projects` (`createLauncherProject`, 201, `LauncherProject`),
+  `POST /launcher/launch` (`launchSession`, `SessionLaunchRead`). The launch
+  route injects the spawner via `Depends(get_launch_spawner)`.
+
+### Backend — the spawn itself
+
+`backend/app/services/factory_launcher.py` (new). One callable, injectable so
+tests never fork:
+
+```python
+def spawn_factory_run(*, repo_root, python_bin, project_path, request_text, log_path) -> int
 ```
-Title line:            "<item_type> #<external_id>: <title>"
-                       "<external_url>"
-"## Story"             description_md
-"## Acceptance criteria"  acceptance_md      # section omitted entirely when absent/empty
-```
 
-`start_work_item` assembles the prompt, writes a `WorkItemSession(kind="spawned",
-session_id=None)` row, and returns `launched=False` with the prompt (see "Session launch is
-deferred").
+- argv is exactly
+  `[python_bin, str(repo_root / "factory" / "run.py"), "--repo", str(project_path), request_text]`
+  — a list, never a shell string, so `request_text` is never interpreted.
+  **No mode flag**: interview behaviour ships separately.
+- `subprocess.Popen(..., cwd=str(project_path), stdin=DEVNULL,
+  stdout=log, stderr=STDOUT, start_new_session=True)`. `start_new_session=True`
+  is what detaches the run from the request cycle and from uvicorn's process
+  group, so reloading or Ctrl-C-ing the backend does not kill a live factory run.
+  Nothing ever `wait()`s it.
+- `log_path` is `settings.masterwork_home / "launches" / f"{launch_id}.log"`
+  (directory created on demand) — derivable from the row id, so no extra column,
+  and a run that dies at startup leaves a readable reason instead of nothing.
+- Finished children are reaped opportunistically: the module keeps the `Popen`
+  handles in a module-level list and `poll()`s them on each new launch, dropping
+  the ones that have exited. Without this, a long-lived uvicorn accumulates
+  zombies.
 
-**`backend/app/api/deps.py`** (edit) — `get_devops_client_factory()` returning a callable
-`(WorkSource) -> AzureDevOpsClient`, following the existing `get_claude_runner` /
-`get_light_runner` pattern so an integration test overrides it with a MockTransport-backed
-client and no test ever touches the network. Added to `__all__`.
+### Backend — wiring
 
-**`backend/app/core/exceptions.py`** (edit) — `WorkSourceNotFoundError` (404),
-`WorkItemNotFoundError` (404), `InvalidWorkSourceError` (400),
-`WorkSyncError` (502 — the DevOps call failed or the PAT env var is unset), each with the
-one-line docstring the neighbours have.
-
-**`backend/app/main.py`** (edit) — import `work.routes.router as work_router` and
-`app.include_router(work_router, prefix=API_PREFIX)`, keeping the alphabetical order of the
-existing block (after `simulations_router`).
-
-### Backend — dependencies
-
-**`backend/pyproject.toml` + `backend/uv.lock`** (edit, via `uv add`, never hand-edited)
-
-- `httpx>=0.28` **moves from the dev group into runtime `dependencies`** — it is currently
-  dev-only, and `app/providers/azuredevops.py` needs it at runtime. Keeping it in the dev
-  group as well is harmless and lets the tests' existing pin stand.
-- `markdownify>=0.13` added to runtime `dependencies` — required by the request, and the
-  job (HTML → markdown for arbitrary DevOps rich text) is genuinely beyond the stdlib.
-- CI runs `uv sync --frozen`, so `uv.lock` **must** be regenerated and committed in the same
-  change or every backend job fails.
-- mypy is `strict = true`: if `markdownify` ships no stubs, `ignore_missing_imports = true`
-  is already set globally, so no per-module override should be needed — verify rather than
-  assume.
+| Path | Change |
+|---|---|
+| `backend/app/config.py` | Add `masterwork_repo_root: Path = Path(__file__).resolve().parents[2]` (`backend/app/config.py` → repo root), `factory_python: str = "python3"` (same shape as the existing `claude_bin`), and `default_projects_root: Path = Path.home() / "Projects"`. `config.py` stays the only module reading the environment. |
+| `backend/app/core/exceptions.py` | Add `InvalidSettingError` (400), `InvalidProjectNameError` (400), `ProjectPathOutsideRootError` (400), `ProjectExistsError` (409), `LaunchFailedError` (502) — each a one-line `DomainError` subclass with a docstring, matching the existing file. |
+| `backend/app/api/deps.py` | Add `get_launch_spawner() -> LaunchSpawner` (a `Callable` alias next to the existing `DevOpsClientFactory`), returning `factory_launcher.spawn_factory_run` bound to `settings.masterwork_repo_root` / `settings.factory_python`. Tests override it. Add both to `__all__`. |
+| `backend/app/main.py` | Import and `include_router(launcher_router, prefix=API_PREFIX)` and `include_router(settings_router, prefix=API_PREFIX)`, keeping the alphabetical order of the existing block. |
 
 ### Frontend
 
-**`frontend/openapi.json`** + **`frontend/src/api/generated/**`** (regenerated, committed)
-Per `CONTRIBUTING.md` and the CI `contract` job, both the spec snapshot and the client are
-committed and CI fails if either is stale. The flow, with the backend running on 8008:
-
-```bash
-cd backend && uv run uvicorn app.main:app --port 8008 &
-curl -s localhost:8008/openapi.json | python3 -m json.tool > frontend/openapi.json
-cd frontend && npm run generate:api:local
-rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore
-```
-
-**`frontend/src/api/client.ts`** (edit) — import `WorkApi` from `./generated` and add
-`work: new WorkApi(configuration, '', http)` to the `api` facade, in alphabetical position.
-
-**`frontend/src/features/work/`** (new) — feature-folder layout like `features/sessions/`:
-
-- `queries.ts` — `atomWithQuery` / `atomWithMutation` from `jotai-tanstack-query`, calling
-  `api.work.*`, exactly as `features/observability/queries.ts` does.
-  `workSourcesQueryAtom`, `workItemsQueryAtom` (keyed on the two filter atoms),
-  `sourceFilterAtom` / `stateFilterAtom` (plain `atom`), `syncSourceMutationAtom` and
-  `startWorkItemMutationAtom`, both invalidating the item/source query keys on success.
-- `components/WorkPage.tsx` — the page shell copied in spirit from
-  `features/projects/components/ProjectsListPage.tsx`: `max-w-6xl` container, header with
-  title + count `Badge` + one-line description, explicit `isPending` skeleton /
-  `isError` + `apiErrorMessage(error)` / empty-state / content branches using
-  `~/components/EmptyState`, `~/components/ui/{button,badge,card,skeleton}`. The empty state
-  says how to register a source (there is no create-source dialog in v1 — see assumptions).
-- `components/WorkSourceBar.tsx` — one row per source: `org/project` (+ team),
-  `last_sync_at` via `~/lib/datetime`, and a **Sync** button firing the sync mutation with a
-  pending state and a `sonner` toast on success/failure.
-- `components/WorkItemRow.tsx` — type badge, state badge, title, iteration, priority, an
-  external link to `external_url` (`target="_blank" rel="noreferrer"`), and a **Start
-  session** button. Because launch is deferred, success shows the returned prompt in a
-  `Dialog` with a copy button and the plain sentence that the session is not started yet —
-  the UI must not claim a run began that did not.
-- `index.ts` — `export { WorkPage } from './components/WorkPage';`
-
-**`frontend/src/app/router.tsx`** (edit) — `{ path: 'work', element: <WorkPage /> }`.
-**`frontend/src/app/Layout.tsx`** (edit) — `{ to: '/work', label: 'Work', icon: ListTodo }`
-in `NAV` (lucide-react is already a dependency), placed after Sessions.
-
-### Docs
-
-**`docs/API_CONTRACT.md`** (edit) — the five endpoints and the new schemas appended in the
-existing table/schema style. The file is the repo's stated contract and already carries the
-later coding/observability additions, so leaving it out would be drift.
-
----
+| Path | Add/change | Why |
+|---|---|---|
+| `frontend/openapi.json`, `frontend/src/api/generated/**` | regenerate | `npm run generate:api:local` (per `docs/DEV_SETUP.md`) after refreshing `frontend/openapi.json` from a running backend at `:8008`. Both are committed in this repo. |
+| `frontend/src/api/client.ts` | change | Add `LauncherApi` and `SettingsApi` to the imports and to the `api` facade (`launcher:`, `settings:`), same `new XApi(configuration, '', http)` shape as the other nine. |
+| `frontend/src/features/sessions/queries.ts` | change | Add `launcherProjectsQueryAtom`, `appSettingsQueryAtom`, `createLauncherProjectMutationAtom`, `updateSettingsMutationAtom`, `launchSessionMutationAtom` — `atomWithQuery`/`atomWithMutation` over the generated client, with `onSuccess` invalidating `['launcherProjects']` / `['appSettings']` via `queryClientAtom`, exactly as `features/work/queries.ts` does. |
+| `frontend/src/features/sessions/components/LaunchSessionDialog.tsx` | add | The dialog. Modelled on `features/projects/components/NewProjectDialog.tsx`: `Dialog`/`DialogContent`/`DialogHeader`/`DialogFooter` from `~/components/ui/dialog`, `Input`, `Textarea`, `Button`, `toast` from `~/components/ui/sonner`, errors through `apiErrorMessage`. Contents: (1) a projects-root `Input` with a **Save** button calling the settings mutation; (2) a project selector — a native `<select>` labelled *Project* fed by `launcherProjectsQueryAtom`, plus an inline "New folder" row (name `Input` + **Create** button) that calls the create mutation and selects the returned path; (3) a required `Textarea` labelled *Request*; (4) a mode radio in a `<fieldset>` with `role="radiogroup"` and two native `<input type="radio">`s — *Fully autonomous: plan and build with best-guess assumptions, never ask me* (default, value `autonomous`) and *Interview me: pause on weak assumptions before building* (value `interview`); (5) footer with Cancel + **Launch**, disabled until a project is selected and the request is non-empty. On success: `onOpenChange(false)`, reset, `toast.success('Factory run started', { description: <project path> })`. Native radios/select rather than new Radix packages — the repo has no `@radix-ui/react-radio-group` or `-select`, and the house rule is not to add a dependency the standard library and existing ones can cover. |
+| `frontend/src/features/sessions/components/SessionsListPage.tsx` | change | A **New session** button in the page `<header>` row (right-aligned, `Plus` icon from `lucide-react`, which is already a dependency), holding `const [launchOpen, setLaunchOpen] = useState(false)` and rendering `<LaunchSessionDialog open={launchOpen} onOpenChange={setLaunchOpen} />`. In the header rather than inside the Runs tab so it is reachable from all three tabs. |
+| `docs/API_CONTRACT.md` | change | Append a `## Session launcher` section in the same layout as the `work` one: the schema block, a *New endpoints* table (method & path, operation_id, request, response, error codes), and a *Behavior* section stating that both modes launch the same unattended run today, that no mode flag reaches `run.py`, and that attribution rides the existing `MASTERWORK_FACTORY_RUN_ID` handshake. Also update the deferred-launch note at `docs/API_CONTRACT.md:2238` to point at the new endpoint, since a reusable launch path now exists. |
 
 ## Data / contract impact
 
-- **Additive only.** Three new tables, no column added to or removed from an existing table,
-  no data backfill, no destructive step. `0018_work_items` is `create_table` ×3 + one unique
-  constraint + one index; `downgrade()` drops exactly those.
-- **`coding_sessions` is referenced, never modified** — `work_item_sessions.session_id` is a
-  nullable FK with `ON DELETE CASCADE`, so deleting a run removes its link rows and nothing
-  else. SQLite needs `foreign_keys=ON` for that cascade, which `app/db/session.py` already
-  sets on every connection.
-- **OpenAPI grows by five operations and five schemas** under a new `work` tag. Nothing
-  existing changes shape, so the regenerated client is purely additive and no existing
-  frontend call site moves.
-- **No secret enters the database.** `work_sources.secret_ref` holds an env-var *name*; the
-  PAT is read from the environment at call time and never persisted, logged, or returned.
-- **Write direction: none.** After this change the repo contains no code path that mutates
-  anything in Azure DevOps. `work_outbound.perform` raises before doing anything, and the
-  client class has no write method to call.
-
----
+- **New tables.** `app_settings` (`key` `String(100)` PK, `value` `Text`,
+  `updated_at`) and `session_launches` (`id` int PK autoincrement,
+  `project_path` `Text`, `request_text` `Text`, `mode` `String(20)`,
+  `launched_at` `UTCDateTime` default now, `pid` `Integer` nullable). Both are
+  additive; migration `0020` on top of `0019_work_item_parent`. No existing
+  table, column or row is touched, so the migration is reversible and safe on a
+  populated database.
+- **New OpenAPI surface** — five operations under two new tags, so the
+  regenerated client gains `SettingsApi` and `LauncherApi`. `LaunchMode` is a
+  `StrEnum`, so `mode` lands in TS as `'autonomous' | 'interview'`.
+- **No change to the sessions contract.** The launched run attributes itself
+  through `MASTERWORK_FACTORY_RUN_ID` / `MASTERWORK_FACTORY_STAGE`
+  (`factory/adw/agent.py:18`, forwarded by
+  `backend/app/observability/forwarders/claude_code.py:31`), so the new session
+  arrives through the existing hook ingest and the existing 2.5s poll. Nothing
+  in `app/api/v1/coding/` changes.
+- **Filesystem.** New directory `~/.masterwork/launches/` for per-launch logs;
+  project folders are created under `projects_root` only.
 
 ## Test strategy
 
-Existing framework and layout only: `pytest` with `asyncio_mode = "auto"`, unit tests under
-`backend/tests/unit/`, integration tests under `backend/tests/integration/` against a real
-throwaway database via the `client` fixture in `tests/conftest.py`. Frontend tests are
-Playwright component tests under `frontend/tests/components/` using `TestProviders` and
-`page.route('**/api/v1/**', …)` with the CORS-header helper those specs already share.
+Existing frameworks only — pytest + httpx `ASGITransport` for the backend,
+Playwright component tests for the frontend.
 
-**Zero live DevOps calls, enforced structurally**: every test constructs
-`AzureDevOpsClient(transport=httpx.MockTransport(handler))`, and the integration tests
-override `get_devops_client_factory` in `app.dependency_overrides`. No new test dependency.
+**`backend/tests/unit/test_launcher_names.py`** (new) — `_validate_project_name`
+in isolation: accepts `my-app`, `Deploy_pipeline`, rejects `""`, `"   "`,
+`"../evil"`, `"a/b"`, `"a\\b"`, `"."`, `".."`, `".hidden"`, a 300-char name, and
+a name with a NUL byte.
 
-| File | Covers |
-|---|---|
-| `backend/tests/unit/test_azuredevops_client.py` (new) | **Chunking at 200**: 250 ids → exactly 2 POSTs to `workitemsbatch`, of 200 and 50, and the union is returned; 0 ids → 0 requests. WIQL POST hits `/{project}/_apis/wit/wiql?api-version=7.1` with the query in the body. Basic auth header is built from the env var named by `secret_ref`; a missing var raises `AzureDevOpsError` naming the variable and issues no request. Non-2xx → `AzureDevOpsError`. A guard test asserts the module source contains no `.patch(`/`.put(`/`.delete(` call — the hard rule, made mechanical. |
-| `backend/tests/unit/test_work_sync.py` (new) | **HTML→markdown** of `System.Description` and `Microsoft.VSTS.Common.AcceptanceCriteria` (headings, lists, bold, links, `<br>`), empty/None → `""`/`None`. Tag string `"api; backend"` → `["api", "backend"]`. `DEFAULT_WIQL` used when `query_wiql` is null, and the source's own WIQL used verbatim when set. |
-| `backend/tests/unit/test_work_outbound.py` (new) | `perform(...)` raises `NotImplementedError` with the exact message `outbound requires per-action user approval`, for each of the three action kinds. |
-| `backend/tests/integration/test_work.py` (new) | **Sync upsert, both paths**: first sync of a source whose MockTransport returns 3 ids → `inserted=3, updated=0` and three mirror rows with the markdown-converted body; a second sync with one item's `System.Title`/`System.State`/`System.ChangedDate` changed → `inserted=0, updated=3` (or `1` updated + 2 no-op, whichever the implementation reports — the assertion is that the **row count stays 3**, the changed row carries the new title/state, and `synced_at` advanced). `last_sync_at` is stamped. **Start endpoint**: `POST /work/items/{id}/start` returns a prompt containing the title line, the `external_url`, `## Story` with the description markdown, and `## Acceptance criteria` — and a second item with no acceptance criteria returns a prompt with **no** `## Acceptance criteria` heading at all; a `work_item_sessions` row exists with `kind == "spawned"`; `launched is False`. **Source validation**: `POST /work/sources` with `https://example.com/foo` → 400, with `https://dev.azure.com/acme` → 201/200. **Filters**: `GET /work/items?state=Active` narrows, `?source_id=` scopes to one source. 404s for unknown source/item ids. |
-| `frontend/tests/components/workPage.ct.tsx` (new) | Mount `<WorkPage />` inside `TestProviders` with `page.route` fulfilling `/work/sources` and `/work/items` from fixtures: the mocked items render with type badge, state, title, iteration and priority; clicking **Sync** issues `POST …/sync` (asserted on the recorded request URLs, the pattern `sessionsListPage.ct.tsx` uses); clicking **Start session** issues `POST …/start` and surfaces the returned prompt; the empty response renders the empty state, not a spinner. |
+**`backend/tests/integration/test_settings.py`** (new) — `GET /api/v1/settings`
+on an empty DB returns the expanded default; `PATCH` with `str(tmp_path)`
+persists and a follow-up `GET` reads it back; `PATCH` with `{}` leaves it
+unchanged; `PATCH` with a relative path and with a non-existent path both 400.
 
-**Gate to run before claiming done** (matches CI):
+**`backend/tests/integration/test_launcher.py`** (new) — a fixture that PATCHes
+`projects_root` to `tmp_path` (real endpoint, no new dependency to override) and
+seeds `tmp_path/alpha` (with `.git`), `tmp_path/beta` (without), `tmp_path/.hidden`
+and a plain file:
+- `GET /launcher/projects` returns `alpha` and `beta` only, sorted, with
+  `is_git_repo` true/false respectively.
+- `POST /launcher/projects {"name": "gamma"}` → 201, the directory exists,
+  `.git` exists (real `git init` in a temp dir — hermetic and fast), and the
+  response says `is_git_repo: true`.
+- `POST /launcher/projects` with `"../escape"` and with `"a/b"` → 400 and
+  nothing is created outside `tmp_path`.
+- `POST /launcher/projects {"name": "alpha"}` → 409.
+- `POST /launcher/launch` with `app.dependency_overrides[get_launch_spawner]`
+  set to a fake recording its kwargs and returning pid `4242`: asserts
+  `launched: true`, `pid == 4242`, `mode == "autonomous"`, a `session_launches`
+  row persisted, the argv is
+  `["python3", "<repo>/factory/run.py", "--repo", "<tmp>/alpha", "<request>"]`
+  and **carries no mode flag**, and cwd is the project path. **No real process
+  is ever spawned.**
+- `mode: "interview"` produces the identical argv and stores `interview`.
+- Launch with a `project_path` outside `projects_root` (e.g. `tmp_path.parent`),
+  with a `..` segment, with a file path, and with a non-git directory → 400, and
+  the fake spawner was never called.
+- `mode: "sideways"` → 422 from the enum.
 
-```bash
-cd backend && uv run alembic upgrade head && uv run ruff check . && uv run ruff format --check . \
-  && uv run mypy app && uv run pytest -q
-cd frontend && npm run typecheck && npm run lint && npm run build && npm run test:ct
-```
+**`frontend/tests/components/launchSessionDialog.ct.tsx`** (new) — mounts
+`<LaunchSessionDialog open onOpenChange={() => {}} />` inside `TestProviders`,
+routing `**/api/v1/**` with the CORS/OPTIONS helper copied from
+`sessionsListPage.ct.tsx` (the generated client is cross-origin):
+- the projects from the mocked list endpoint appear in the selector, and
+  **Launch** is disabled until a request is typed;
+- the mode radio defaults to *Fully autonomous* and selecting *Interview me*
+  puts `"interview"` in the POSTed body;
+- the new-folder affordance POSTs `/launcher/projects` and selects the returned
+  path;
+- **Launch** POSTs `/launcher/launch` with the selected `project_path` and the
+  typed `request_text`, and the dialog reports the run started.
 
----
+Gates the builder must clear: `uv run ruff check .`, `uv run ruff format --check .`,
+`uv run mypy app`, `uv run pytest` in `backend/`; `npm run typecheck`,
+`npm run lint`, `npm run test:ct` in `frontend/`.
 
 ## Risks
 
-1. **The OpenAPI regeneration needs a JDK.** `npm run generate:api:local` runs
-   `openapi-generator-cli`, which requires Java; the CI `contract` job installs Temurin 21
-   for exactly this. If Java is unavailable in the build environment, the build stage must
-   **say so and stop**, not hand-edit `src/api/generated/api.ts`. A hand-written client that
-   differs by a byte from generator output fails the `contract` job on the next push and is
-   worse than an honestly-reported gap. `frontend/openapi.json` itself needs no Java — it is
-   `curl | python3 -m json.tool` — so regenerate it either way.
-2. **`uv.lock` must be regenerated with `uv add`, not hand-edited.** CI runs
-   `uv sync --frozen`; a lock that does not match `pyproject.toml` fails every backend job
-   before a single test runs.
-3. **Two dialects, one migration.** The suite runs on SQLite *and* Postgres in CI. `sa.Uuid`,
-   `JSONColumn` and `UTCDateTime` absorb the differences, and the `upsert_item`
-   select-then-write avoids `ON CONFLICT`; a dialect-specific shortcut would pass locally and
-   fail half of CI.
-4. **`markdownify` on hostile HTML.** DevOps rich text is user-authored and can contain
-   `<script>`, `<img onerror=…>`, or a data-URI. `markdownify` strips tags rather than
-   sanitising semantics, and the frontend renders through `MarkdownView` (react-markdown,
-   which does not execute raw HTML by default). Keep it that way: do **not** enable
-   `rehype-raw` for these fields, and never pass `description_md` through `dangerouslySetInnerHTML`.
-5. **Prompt assembly ingests untrusted text.** The assembled prompt is built from a DevOps
-   title/description that anyone with write access to that project can edit — including text
-   that reads as instructions to an agent. v1 only *returns* the prompt to the operator, who
-   decides whether to run it, which is the mitigation; if a later version auto-launches, that
-   trust boundary needs its own review.
-6. **PAT scope and expiry.** A stored memory notes the org PAT for the user's DevOps tenant
-   has expired. Sync will 401 until a fresh PAT is exported as `AZURE_DEVOPS_PAT`; the
-   `WorkSyncError` message must name the env var so that failure diagnoses itself instead of
-   reading as a bug.
-7. **`work_item_sessions` is written but never resolved in v1** — no code fills in a null
-   `session_id`. That is the honest consequence of deferred launch, not an oversight, and the
-   model comment must say so.
-8. **`docs/API_CONTRACT.md` calls itself FROZEN.** It has been extended before (the coding and
-   observability endpoints are in it), so appending is the established practice — but the
-   additions must be appended, never a rewrite of the v1 sections.
+1. **A detached run that dies at startup is invisible.** `factory/run.py` exits
+   2 for a missing/non-git repo, an unresolvable config, or a run branch that
+   already exists, and the caller returns `launched: true` regardless. Mitigated
+   two ways: the launch endpoint pre-checks directory-ness and `.git`
+   synchronously, and stdout/stderr go to `~/.masterwork/launches/<id>.log`
+   rather than `/dev/null`. It stays possible for a run to fail after the 200 —
+   the sessions list is the source of truth, and the response never claims the
+   run succeeded, only that it was started.
+2. **Arbitrary-path write is the whole risk surface here.** Every path is
+   funnelled through `resolve_within_roots(candidate, [projects_root])`, which
+   already resists `..` and symlink escapes and is unit-tested. The name
+   validator is a second, independent gate on `create`. Both must be tested
+   negatively, not just positively.
+3. **`request_text` is untrusted input handed to a subprocess.** It is passed as
+   a single argv element to a `Popen` with no `shell=True` anywhere, so it is
+   never interpreted. A builder that reaches for a shell string reintroduces
+   command injection; the test asserting the argv list is the guard.
+4. **Zombie accumulation.** Nothing waits on the child. The `poll()`-on-next-launch
+   reaping keeps this bounded; without it a long-lived backend leaks a zombie
+   per launch.
+5. **`projects_root` is unauthenticated, like the rest of this backend.**
+   Masterwork binds to localhost and has no auth layer, so `PATCH /settings`
+   can repoint the root anywhere the backend user can read. This is consistent
+   with the existing `/api/v1/instructions` endpoint (which writes
+   `~/.claude/CLAUDE.md`) and is not widened here — but it does mean the
+   containment check protects against mistakes, not against an attacker who can
+   already call the API.
+6. **Divergent Alembic heads.** `0019_work_item_parent` looks like the only
+   head, but the builder must confirm with `alembic heads` before writing
+   `0020`; two heads make `upgrade head` fail for everyone.
+7. **Client regeneration needs a running backend.** `generate:api:local` reads
+   the committed `frontend/openapi.json`, which must be refreshed from
+   `http://localhost:8008/openapi.json` after the routes land, or the frontend
+   compiles against a stale contract.
