@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAtom } from 'jotai';
+import { useAtom, useSetAtom } from 'jotai';
 import { AlertTriangle } from 'lucide-react';
 import type { LaunchMode } from '~/api/generated';
 import { Button } from '~/components/ui/button';
@@ -16,9 +16,12 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import { apiErrorMessage } from '~/api/client';
+import { FolderPicker } from './FolderPicker';
 import {
   appSettingsQueryAtom,
+  browsePathAtom,
   createLauncherProjectMutationAtom,
+  folderBrowserOpenAtom,
   launchSessionMutationAtom,
   launcherProjectsQueryAtom,
   updateSettingsMutationAtom,
@@ -55,6 +58,8 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
   );
   const [{ mutateAsync: launchSession, isPending: isLaunching }] =
     useAtom(launchSessionMutationAtom);
+  const [folderBrowserOpen, setFolderBrowserOpen] = useAtom(folderBrowserOpenAtom);
+  const setBrowsePath = useSetAtom(browsePathAtom);
 
   const [rootDraft, setRootDraft] = useState('');
   const [projectPath, setProjectPath] = useState('');
@@ -72,6 +77,8 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
     setNewFolderName('');
     setRequestText('');
     setMode('autonomous');
+    setFolderBrowserOpen(false);
+    setBrowsePath(null); // a reopened dialog starts browsing from projects_root again
   }
 
   async function saveRoot() {
@@ -171,7 +178,23 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
                 >
                   {isSavingRoot ? 'Saving…' : 'Save'}
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setFolderBrowserOpen((prev) => !prev)}
+                >
+                  Browse
+                </Button>
               </div>
+            )}
+            {folderBrowserOpen && (
+              <FolderPicker
+                onPicked={(path) => {
+                  setFolderBrowserOpen(false);
+                  setBrowsePath(null);
+                  setRootDraft(path);
+                }}
+              />
             )}
           </div>
 

@@ -8,6 +8,7 @@ import type {
   CodingEvent,
   CodingSession,
   CodingSessionDetail,
+  DirectoryListing,
   InterviewAnswersRequest,
   InterviewResumeRead,
   LaunchRequest,
@@ -58,6 +59,21 @@ export const launcherProjectsQueryAtom = atomWithQuery(() => ({
 export const appSettingsQueryAtom = atomWithQuery(() => ({
   queryKey: APP_SETTINGS_QUERY_KEY,
   queryFn: async (): Promise<AppSettings> => (await api.settings.getSettings()).data,
+}));
+
+/** Whether the folder-browser panel is open — also gates browseDirectoriesQueryAtom. */
+export const folderBrowserOpenAtom = atom(false);
+
+/** The directory being browsed. Null means "let the server default to projects_root". */
+export const browsePathAtom = atom<string | null>(null);
+
+/** Each visited directory is cached under its own path, so revisiting one is instant.
+ * Disabled while the picker is closed — a closed dialog must never call `browse`. */
+export const browseDirectoriesQueryAtom = atomWithQuery((get) => ({
+  queryKey: ['browseDirectories', get(browsePathAtom)],
+  queryFn: async (): Promise<DirectoryListing> =>
+    (await api.launcher.browseDirectories(get(browsePathAtom) ?? undefined)).data,
+  enabled: get(folderBrowserOpenAtom),
 }));
 
 export const createLauncherProjectMutationAtom = atomWithMutation((get) => ({

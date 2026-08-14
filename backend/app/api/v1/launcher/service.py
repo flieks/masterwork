@@ -21,6 +21,7 @@ from app.config import settings as app_settings
 from app.core.exceptions import (
     InterviewAnswerMismatchError,
     InterviewNotWaitingError,
+    InvalidBrowsePathError,
     InvalidProjectNameError,
     LaunchFailedError,
     LaunchNotFoundError,
@@ -66,6 +67,46 @@ async def list_projects(db: AsyncSession) -> list[schemas.LauncherProject]:
         for child in sorted(root.iterdir(), key=lambda p: p.name)
         if child.is_dir() and not child.name.startswith(".")
     ]
+
+
+def _validate_browse_path(value: str) -> Path:
+    expanded = Path(value).expanduser()
+    if not expanded.is_absolute():
+        raise InvalidBrowsePathError(f"path must be absolute, got: {value}")
+    try:
+        resolved = expanded.resolve()
+    except OSError as exc:  # e.g. a symlink loop
+        raise InvalidBrowsePathError(f"path could not be resolved: {value}") from exc
+    if not resolved.exists():
+        raise InvalidBrowsePathError(f"path does not exist: {resolved}")
+    if not resolved.is_dir():
+        raise InvalidBrowsePathError(f"path is not a directory: {resolved}")
+    return resolved
+
+
+async def browse(db: AsyncSession, path: str | None) -> schemas.DirectoryListing:
+    """Lists a directory's non-hidden subdirectories. Deliberately not confined
+    to projects_root — this is how the picker leaves the current root, and
+    PATCH /api/v1/settings already accepts any absolute path."""
+    target = _validate_browse_path(path) if path is not None else await _projects_root(db)
+    parent = target.parent if target.parent != target else None
+
+    entries: list[schemas.DirectoryEntry] = []
+    if target.is_dir():  # false only via the default branch, a vanished projects_root
+        try:
+            children = sorted(target.iterdir(), key=lambda p: p.name)
+        except PermissionError as exc:
+            raise InvalidBrowsePathError(f"path is not readable: {target}") from exc
+        for child in children:
+            try:
+                if child.is_dir() and not child.name.startswith("."):
+                    entries.append(schemas.DirectoryEntry(name=child.name, path=str(child)))
+            except PermissionError:
+                continue  # unreadable entry — skip it, don't fail the whole listing
+
+    return schemas.DirectoryListing(
+        path=str(target), parent=str(parent) if parent is not None else None, entries=entries
+    )
 
 
 async def _git_init(path: Path) -> bool:

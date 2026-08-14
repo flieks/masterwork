@@ -1473,6 +1473,50 @@ export const CrossChangeSourceEnum = {
 export type CrossChangeSourceEnum = typeof CrossChangeSourceEnum[keyof typeof CrossChangeSourceEnum];
 
 /**
+ *
+ * @export
+ * @interface DirectoryEntry
+ */
+export interface DirectoryEntry {
+    /**
+     *
+     * @type {string}
+     * @memberof DirectoryEntry
+     */
+    'name': string;
+    /**
+     * Absolute path.
+     * @type {string}
+     * @memberof DirectoryEntry
+     */
+    'path': string;
+}
+/**
+ *
+ * @export
+ * @interface DirectoryListing
+ */
+export interface DirectoryListing {
+    /**
+     * The resolved directory this listing is for.
+     * @type {string}
+     * @memberof DirectoryListing
+     */
+    'path': string;
+    /**
+     * Absolute path of the parent, null at the filesystem root.
+     * @type {string}
+     * @memberof DirectoryListing
+     */
+    'parent'?: string | null;
+    /**
+     * Non-hidden subdirectories, sorted by name.
+     * @type {Array<DirectoryEntry>}
+     * @memberof DirectoryListing
+     */
+    'entries'?: Array<DirectoryEntry>;
+}
+/**
  * One envelope an agent returned, and whether the runner could read it.
  * @export
  * @interface EnvelopeAttempt
@@ -6438,7 +6482,40 @@ export class InstructionsApi extends BaseAPI {
 export const LauncherApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 
+         *
+         * @summary Browse Directories
+         * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        browseDirectories: async (path?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/browse`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (path !== undefined) {
+                localVarQueryParameter['path'] = path;
+            }
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
          * @summary Create Launcher Project
          * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
@@ -6654,7 +6731,20 @@ export const LauncherApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = LauncherApiAxiosParamCreator(configuration)
     return {
         /**
-         * 
+         *
+         * @summary Browse Directories
+         * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async browseDirectories(path?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<DirectoryListing>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.browseDirectories(path, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.browseDirectories']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
          * @summary Create Launcher Project
          * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
@@ -6741,7 +6831,17 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = LauncherApiFp(configuration)
     return {
         /**
-         * 
+         *
+         * @summary Browse Directories
+         * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        browseDirectories(path?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<DirectoryListing> {
+            return localVarFp.browseDirectories(path, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
          * @summary Create Launcher Project
          * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
@@ -6810,9 +6910,21 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
  */
 export class LauncherApi extends BaseAPI {
     /**
-     * 
+     *
+     * @summary Browse Directories
+     * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public browseDirectories(path?: string | null, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).browseDirectories(path, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
      * @summary Create Launcher Project
-     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
+     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi

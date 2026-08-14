@@ -1604,6 +1604,57 @@
                 }
             }
         },
+        "/api/v1/launcher/browse": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Browse Directories",
+                "operationId": "browseDirectories",
+                "parameters": [
+                    {
+                        "name": "path",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Absolute path to list; defaults to the stored projects_root.",
+                            "title": "Path"
+                        },
+                        "description": "Absolute path to list; defaults to the stored projects_root."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DirectoryListing"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/launcher/projects": {
             "get": {
                 "tags": [
@@ -4996,6 +5047,59 @@
                 ],
                 "title": "CrossChange",
                 "description": "A modification another project made to an asset this project links."
+            },
+            "DirectoryEntry": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "path"
+                ],
+                "title": "DirectoryEntry"
+            },
+            "DirectoryListing": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "The resolved directory this listing is for."
+                    },
+                    "parent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent",
+                        "description": "Absolute path of the parent, null at the filesystem root."
+                    },
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/DirectoryEntry"
+                        },
+                        "type": "array",
+                        "title": "Entries",
+                        "description": "Non-hidden subdirectories, sorted by name."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path"
+                ],
+                "title": "DirectoryListing"
             },
             "EnvelopeAttempt": {
                 "properties": {

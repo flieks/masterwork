@@ -2452,3 +2452,53 @@ SessionLaunchListItem = SessionLaunchRead + { interview: InterviewRead | null } 
 - **DB**: one nullable column, `session_launches.run_id` (`String(64)`).
   Alembic migration `0022_session_launch_run_id` on `0021_work_assignee_sprint`.
   Additive, reversible, no backfill.
+
+# API Contract v1.27 — server-side folder picker
+
+Additive on top of v1.26. The projects root can now be set by browsing the
+filesystem instead of typing a path: a new read-only endpoint lists a
+directory's subfolders, and the launch dialog's **Browse** panel walks it and
+saves the chosen folder through the existing settings PATCH.
+
+## New schemas
+
+```
+DirectoryEntry { name: string, path: string }   // path is absolute
+DirectoryListing {
+  path: string                  // the resolved directory this listing is for
+  parent?: string | null        // absolute path of the parent; null at the filesystem root
+  entries?: DirectoryEntry[]    // non-hidden subdirectories, sorted by name
+}
+```
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/browse` | `browseDirectories` | `path` query param, optional absolute path | `DirectoryListing` (400 relative/nonexistent/not-a-directory/unreadable `path`) |
+
+## Behavior
+
+- **Browsing is deliberately unrestricted.** Unlike `project_path` on
+  `POST /api/v1/launcher/launch`, `browse` does not confine `path` to
+  `projects_root` via `resolve_within_roots` — the picker exists to let the
+  user *leave* the current root, and `PATCH /api/v1/settings` already accepts
+  any absolute path. This is a local single-user app; no file contents are
+  ever returned, only directory names.
+- **Defaults to the stored `projects_root`.** Omitting `path` browses the same
+  directory `GET /api/v1/launcher/projects` lists from. If that root has since
+  vanished, the response is an empty `entries` list rather than a 400 — the
+  same posture `list_projects` already takes — since the request wasn't
+  parameterized by the caller.
+- **Directories only, hidden entries excluded.** Files are never returned;
+  entries whose name starts with `.` are skipped, matching `list_projects`.
+- **Two-layer permission handling.** A `path` this process cannot list at all
+  (`PermissionError` from `iterdir`) 400s — there's nothing to show. An
+  individual entry that raises `PermissionError` when stat'd is silently
+  skipped so one unreadable subfolder doesn't fail the whole listing.
+- **`parent` is `null` only at the filesystem root** (`path.parent == path`).
+- **Nothing is written by this endpoint.** The only write in the picker flow
+  is the existing `PATCH /api/v1/settings`, which already invalidates both the
+  settings and launcher-projects queries on success.
+- **DB**: none. **Migrations**: none — the alembic head stays
+  `0022_session_launch_run_id`.

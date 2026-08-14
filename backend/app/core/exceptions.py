@@ -215,3 +215,9 @@ class InterviewAnswerMismatchError(DomainError):
     """The submitted answers don't match the recorded questions one-for-one, or one is blank."""
 
     status_code = 400
+
+
+class InvalidBrowsePathError(DomainError):
+    """A browse path was relative, nonexistent, not a directory, or unreadable."""
+
+    status_code = 400

@@ -4,7 +4,7 @@ pending questions, submitting answers to resume it)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -17,6 +17,20 @@ from app.api.deps import (
 from app.api.v1.launcher import schemas, service
 
 router = APIRouter(tags=["launcher"])
+
+
+@router.get(
+    "/launcher/browse",
+    response_model=schemas.DirectoryListing,
+    operation_id="browseDirectories",
+)
+async def browse_directories(
+    path: str | None = Query(
+        None, description="Absolute path to list; defaults to the stored projects_root."
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> schemas.DirectoryListing:
+    return await service.browse(db, path)
 
 
 @router.get(

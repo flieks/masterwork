@@ -4,6 +4,7 @@ a fake dependency override — no test here ever forks a real process."""
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -165,6 +166,83 @@ async def test_create_project_rejects_traversal_and_separators(
 async def test_create_project_conflict_409(client: AsyncClient, seeded_projects: Path) -> None:
     r = await client.post("/api/v1/launcher/projects", json={"name": "alpha"})
     assert r.status_code == 409
+
+
+# --- browse --------------------------------------------------------------
+
+
+async def test_browse_explicit_path_lists_dirs_only_sorted(
+    client: AsyncClient, seeded_projects: Path
+) -> None:
+    r = await client.get("/api/v1/launcher/browse", params={"path": str(seeded_projects)})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["path"] == str(seeded_projects)
+    assert body["parent"] == str(seeded_projects.parent)
+    assert [e["name"] for e in body["entries"]] == ["alpha", "beta"]
+    assert body["entries"][0]["path"] == str(seeded_projects / "alpha")
+
+
+async def test_browse_defaults_to_projects_root(
+    client: AsyncClient, seeded_projects: Path
+) -> None:
+    explicit = await client.get("/api/v1/launcher/browse", params={"path": str(seeded_projects)})
+    default = await client.get("/api/v1/launcher/browse")
+    assert default.status_code == 200
+    assert default.json() == explicit.json()
+
+
+async def test_browse_descends_into_a_subdirectory(
+    client: AsyncClient, seeded_projects: Path
+) -> None:
+    (seeded_projects / "alpha" / "nested").mkdir()
+    r = await client.get(
+        "/api/v1/launcher/browse", params={"path": str(seeded_projects / "alpha")}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert [e["name"] for e in body["entries"]] == ["nested"]
+    assert body["parent"] == str(seeded_projects)
+
+
+async def test_browse_filesystem_root_has_no_parent(client: AsyncClient) -> None:
+    r = await client.get("/api/v1/launcher/browse", params={"path": "/"})
+    assert r.status_code == 200
+    assert r.json()["parent"] is None
+
+
+@pytest.mark.parametrize(
+    "bad_path",
+    ["relative/path", "/definitely/does/not/exist/anywhere"],
+)
+async def test_browse_rejects_relative_and_nonexistent_paths(
+    client: AsyncClient, bad_path: str
+) -> None:
+    r = await client.get("/api/v1/launcher/browse", params={"path": bad_path})
+    assert r.status_code == 400
+
+
+async def test_browse_rejects_a_file_path(client: AsyncClient, seeded_projects: Path) -> None:
+    r = await client.get(
+        "/api/v1/launcher/browse", params={"path": str(seeded_projects / "not-a-dir.txt")}
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permission bits")
+async def test_browse_unreadable_target_directory_is_400(
+    client: AsyncClient, seeded_projects: Path
+) -> None:
+    """A target this process cannot even list — distinct from a per-entry skip,
+    covered at the unit level in test_launcher_browse.py."""
+    locked = seeded_projects / "locked"
+    locked.mkdir()
+    locked.chmod(0o000)
+    try:
+        r = await client.get("/api/v1/launcher/browse", params={"path": str(locked)})
+        assert r.status_code == 400
+    finally:
+        locked.chmod(0o755)
 
 
 # --- launch ----------------------------------------------------------------

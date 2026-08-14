@@ -93,3 +93,18 @@ class SessionLaunchListItem(SessionLaunchRead):
     interview: InterviewRead | None = Field(
         None, description="Only for interview-mode launches; null for autonomous ones."
     )
+
+
+class DirectoryEntry(BaseModel):
+    name: str
+    path: str = Field(..., description="Absolute path.")
+
+
+class DirectoryListing(BaseModel):
+    path: str = Field(..., description="The resolved directory this listing is for.")
+    parent: str | None = Field(
+        None, description="Absolute path of the parent, null at the filesystem root."
+    )
+    entries: list[DirectoryEntry] = Field(
+        default_factory=list, description="Non-hidden subdirectories, sorted by name."
+    )
