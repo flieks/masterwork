@@ -1,396 +1,284 @@
-# Plan — real interview mode for the in-app launcher
+# Plan — server-side folder picker for the session launcher
 
-## The change, in one paragraph
+## The change in one paragraph
 
-`--interview` becomes a real mode of a factory run. A run started with it executes
-the `plan` stage exactly as today, then — instead of continuing to `build` — turns
-the plan envelope's `assumptions[]` into a list of questions, writes them to
-`<run_dir>/questions.json`, marks `run.json` as `state: "waiting_input"`, and exits
-0 without calling the builder. Resuming such a run (`--resume <run_id>`) requires
-`<run_dir>/answers.json`: with it, each question+answer pair is folded into the
-build stage's first user prompt alongside the plan, so the builder honours the
-user's answers instead of the planner's guesses; without it, the resume refuses
-with a message naming the file it wants and exits 2. The backend passes
-`--interview` (and a server-generated `--run-id`) when `mode == "interview"`,
-gains three endpoints — list the recent launches, read one launch's interview
-state, submit its answers — and the answer endpoint writes `answers.json` and
-spawns the same detached fire-and-forget resume subprocess through an injected
-spawner. The Sessions screen polls the launches list and, for a run that is
-waiting, renders one required text field per question with an "Answer and
-continue" submit that posts the answers and confirms the run resumed. An
-autonomous launch is untouched: same argv, same code path, no run id, no files.
+Today the projects root can only be set by typing an absolute path into a text
+field in the launch dialog (`LaunchSessionDialog.tsx`), and the only validation
+feedback is a 400 toast from `PATCH /api/v1/settings`. This change adds a
+read-only directory-browsing endpoint — `GET /api/v1/launcher/browse` with
+`operation_id: browseDirectories` — that takes an optional absolute `path` query
+param (defaulting to the current `projects_root` from settings) and returns the
+resolved directory, its parent (`null` at the filesystem root), and its
+non-hidden subdirectories as `{name, path}` sorted by name. It never returns
+files and silently skips entries that raise `PermissionError`. Invalid input —
+relative, nonexistent, or not a directory — raises a new `DomainError` subclass
+that the existing `app.main` handler turns into a 400, exactly like
+`_validate_projects_root` does for settings. On the frontend, a **Browse**
+button beside the projects-root control opens a nested panel inside the dialog
+that shows a clickable breadcrumb of the current directory, an up-one-level
+button, the subdirectory list (clicking a row descends into it), and a **Use
+this folder** button that saves the shown directory as `projects_root` through
+the existing `updateSettingsMutationAtom` — whose `onSuccess` already
+invalidates both `appSettingsQueryAtom` and `launcherProjectsQueryAtom`, so the
+project dropdown repopulates from the new root. The panel gets the same
+`Skeleton` / inline-error-with-Retry treatment the dialog already uses for its
+two queries. The checked-in `frontend/openapi.json` and the generated
+typescript-axios client are extended by hand (no shell in this run, same as the
+v1.26 build), and `docs/API_CONTRACT.md` gains a v1.27 section.
 
-## Run-id handling — the choice, and why
-
-The task offers two ways for the backend to learn a launched run's id. **This plan
-generates the run id server-side and passes it to `run.py` via a new `--run-id`
-flag.** The factory already threads a caller-supplied run id all the way through
-(`load_config(run_id=...)` in `factory/adw/config.py:416`, which is exactly how
-`--resume` re-uses the recorded id), so the flag is a five-line addition to an
-existing seam. The alternative — parsing the run id back out of the launch log
-(`factory run <id> → <path>`, `run.py:505`) — is a race (the backend would have to
-poll a log that may not exist yet) against a line that is presentation, not
-contract. `--run-id` is deterministic: the launch row holds the id before the
-child is even spawned.
-
-Only interview launches get a run id. An autonomous launch keeps `run_id = NULL`
-and its argv byte-for-byte identical to today's, which is the stated done-criterion.
-
-## The on-disk contract (new, cross-process)
-
-Owned by a new module, `factory/adw/interview.py`, and mirrored — read-only for
-questions, write-only for answers — by `backend/app/services/factory_runs.py`.
-
-`<run_dir>/questions.json`, written by the factory:
-
-```json
-{
-  "run_id": "a1b2c3d4",
-  "stage": "plan",
-  "asked_at": "2026-08-14T10:00:00+00:00",
-  "questions": [{ "id": "q1", "question": "<assumption text, verbatim>" }]
-}
-```
-
-`<run_dir>/answers.json`, written by the backend, read by the factory:
-
-```json
-{
-  "answered_at": "2026-08-14T10:05:00+00:00",
-  "answers": [{ "id": "q1", "question": "<verbatim>", "answer": "<user text>" }]
-}
-```
-
-Ids are `q1..qN` by position. Both files are written atomically (tmp + `os.replace`),
-the way `runs.write` already writes `run.json`.
-
-`<run_dir>` is `<runs root>/<run_id>`, and the runs root is
-`~/.masterwork/runs/<project dir name>` unless the target repo's
-`factory.config.json` sets `"runs_dir"` (`factory/adw/config.py:259-274`). The
-backend mirrors that rule rather than passing `--runs-dir`, so an interview run's
-logs land exactly where every other run of that repo lands.
+Browsing any absolute directory is deliberately allowed: this is a local
+single-user app and `PATCH /api/v1/settings` already accepts any absolute path,
+so `resolve_within_roots` is **not** used here — that would make the picker
+unable to leave the root it exists to change.
 
 ---
 
 ## Files to add or change
 
-### Factory
-
-**`factory/adw/interview.py` (new)** — the whole file contract in one module:
-`QUESTIONS_FILENAME`/`ANSWERS_FILENAME`; frozen `Question(id, question)` and
-`Answer(id, question, answer)`; `questions_from_assumptions(assumptions)` (drops
-blank entries, numbers the rest `q1..qN`); `write_questions(run_dir, run_id, questions)`;
-`read_questions(run_dir)`; `read_answers(run_dir)`, which raises `InterviewError`
-when the file is missing, malformed, or does not answer exactly the recorded ids;
-and `prompt_block(answers)` — the text folded into the build prompt. Module
-docstring states both JSON shapes, because the backend writes one of them.
-
-**`factory/adw/runs.py`** — a paused run has to survive the process that paused it:
-add `WAITING_INPUT = "waiting_input"` beside `RUNNING`/`FINISHED`/`STOPPED`; add
-`interview: bool = False` to `RunRecord` and to `RunRecord.FIELDS` (`from_dict`
-already ignores unknown keys and defaults missing ones, so an older `run.json`
-still reads); accept `interview` in `open_record`; add `pause_record(run_dir, *, reason)`
-which clears the pid and sets `state=WAITING_INPUT` without touching `accepted`
-(`close_record` forces an `accepted` verdict, and a paused run has none).
-`live_state` already passes non-`running` states through untouched, and
-`plan_resume` already allows a record that is neither running nor
-finished-and-accepted — so resume works with no change there.
-
-**`factory/adw/pipeline.py`** — `Pipeline.__init__` gains `interview: bool = False`
-and `answers: list[interview.Answer] | None = None`. In `_run()`, after the `plan`
-stage passes and commits (so the plan is in git before we stop), if `self.interview`
-and no answers were supplied: build the questions from `outcome.envelope.assumptions`;
-if the list is empty, emit a telemetry note and continue to build (nothing to ask —
-see Assumptions); otherwise write `questions.json` and `return self._finish(reason, paused=True)`.
-`_finish` gains `paused: bool = False`: it calls `runs.pause_record` instead of
-`runs.close_record`, leaves `accepted` False, and emits `run_end` with
-`result="ok"` (a pause is not a failure, and masterwork's Sessions screen reads
-that field). `RunResult` gains `paused`, `questions`, `questions_path`, and
-`exit_code` returns 0 when `paused`. `_agent_stage` appends
-`interview.prompt_block(self.answers)` to the compiled **user** prompt when the
-stage is `build` and answers are present — folding it into the prompt rather than
-into a role template is deliberate: role files live in the user's seeded
-`~/.masterwork/agents` library and a new `{{...}}` variable would never appear in
-an already-seeded copy. `format_summary` gains an `interview_report(result)` block
-naming the questions, the `answers.json` path to write, and the exact resume command.
-
-**`factory/run.py`** —
-* `--interview` (store_true) and `--run-id RUN_ID`.
-* `--run-id` is validated as a path segment before it is ever joined to a path:
-  non-empty, ≤64 chars, `[A-Za-z0-9._-]` only, not `.`/`..`; and refused if
-  `<runs root>/<run_id>/run.json` already exists. Exit 2 with a stated reason.
-* `resume_conflicts()` grows two entries: `--run-id` (a resume takes its id from
-  the record) and `--interview` (interview-ness is read from the record).
-* `--interview` on a workflow with no `plan` stage is refused at startup, exit 2.
-* On `--resume`, when the record's state is `waiting_input`: read
-  `<run_dir>/answers.json` through `interview.read_answers`; on `InterviewError`
-  print it and exit 2 (naming the path and the outstanding question ids), never
-  starting an agent. Otherwise pass the answers into the `Pipeline`.
-* `interview=` for the pipeline is `args.interview` for a fresh run and
-  `resume.record.interview` for a resumed one.
-
-**`factory/tests/test_interview.py` (new)**, on the existing fake-CLI harness
-(`factory/tests/conftest.py`, the style of `test_lifecycle.py`).
-
 ### Backend
 
-**`backend/app/db/models/launcher.py`** — `run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)`,
-with a one-line comment that only interview launches carry one.
+| Path | Change | Why |
+|---|---|---|
+| `backend/app/core/exceptions.py` | Add `InvalidBrowsePathError(DomainError)` with `status_code = 400`, placed next to `InvalidSettingError` / `ProjectPathOutsideRootError`. | The service layer stays HTTP-agnostic; `app/main.py`'s `_domain_error_handler` already maps `DomainError` → `{"detail": ...}` at `exc.status_code`. A distinct class (rather than reusing `InvalidSettingError`) because a browse path is not a setting and the detail messages differ. |
+| `backend/app/api/v1/launcher/schemas.py` | Add `DirectoryEntry {name: str, path: str}` and `DirectoryListing {path: str, parent: str \| None, entries: list[DirectoryEntry]}`, both with `Field(..., description=...)` on the non-obvious fields. | These become `DirectoryEntry` / `DirectoryListing` in the TS client; the frontend needs `parent` to drive the up-one-level button and `path` to seed the breadcrumb. |
+| `backend/app/api/v1/launcher/service.py` | Add `_validate_browse_path(value: str) -> Path` and `async def browse(db, path: str \| None) -> schemas.DirectoryListing`. Reuses the existing `_projects_root(db)` helper for the default. | Layering rule: routes parse, service holds the logic. `_validate_browse_path` mirrors `settings.service._validate_projects_root` (expanduser → absolute check → is-dir check) so both raise the same shape of 400. |
+| `backend/app/api/v1/launcher/routes.py` | Add `@router.get("/launcher/browse", response_model=schemas.DirectoryListing, operation_id="browseDirectories")` taking `path: str \| None = Query(None, description=...)` and `db: AsyncSession = Depends(get_db)`, delegating to `service.browse`. | Same router, same `tags=["launcher"]`, so the TS method lands on the existing `LauncherApi` the frontend facade already exposes as `api.launcher`. |
 
-**`backend/alembic/versions/0022_session_launch_run_id.py` (new)** — `down_revision = "0021_work_assignee_sprint"`
-(the current single head; verified against `0021_work_assignee_and_current_sprint.py:16-17`).
-`add_column`/`drop_column` only — additive and reversible.
+Service logic, concretely:
 
-**`backend/app/config.py`** — `factory_runs_root: Path = MASTERWORK_HOME / "runs"`,
-so the run-dir root is configuration rather than a literal and tests can point it
-at `tmp_path`.
-
-**`backend/app/services/factory_runs.py` (new)** — the backend half of the file
-contract, no FastAPI in it: `new_run_id()` (`secrets.token_hex(4)`, the same shape
-`factory/adw/config.new_run_id` produces), `runs_root_for(project_path)` (mirrors
-the factory's rule: `factory.config.json` `"runs_dir"` when present — expanded,
-relative resolved against the project — else `settings.factory_runs_root / project.name`),
-`run_dir_for(project_path, run_id)`, `read_questions(run_dir)`,
-`answers_exist(run_dir)`, `read_run_state(run_dir)` (the `state` field of
-`run.json`, `None` when absent or unreadable), and `write_answers(run_dir, pairs)`
-(atomic tmp + `os.replace`, refusing to create the run dir — a run dir that does
-not exist means the run never started, and inventing one would strand the answers).
-
-**`backend/app/services/factory_launcher.py`** — `spawn_factory_run` gains
-`run_id: str | None = None` and `interview: bool = False`; argv appends
-`--run-id <id>` and `--interview` **only** when they are set, so the autonomous
-argv is unchanged to the byte. New `spawn_factory_resume(*, repo_root, python_bin,
-project_path, run_id, log_path)` → `[python, <repo>/factory/run.py, --repo,
-<project>, --resume, <run_id>]`. Both go through one private `_spawn(argv, project_path, log_path)`
-holding the existing `Popen` options (`start_new_session=True`, `stdin=DEVNULL`,
-log appended, argv list never a shell string) and the `_reap()` bookkeeping.
-
-**`backend/app/api/deps.py`** — `LaunchSpawner` becomes a keyword-only `Protocol`
-(`Protocol` is already the repo's idiom — `app/providers/base.py:74`,
-`app/observability/base.py:49`) with `__call__(*, project_path, request_text,
-log_path, run_id, interview) -> int`; new `ResumeSpawner` Protocol
-(`__call__(*, project_path, run_id, log_path) -> int`) and `get_resume_spawner`,
-bound to `settings.masterwork_repo_root` / `settings.factory_python` the same way
-`get_launch_spawner` already is. Both stay overridable so no test ever forks.
-
-**`backend/app/repositories/launcher.py`** — `create_launch(..., run_id: str | None = None)`;
-new `get_launch(db, launch_id)` and `list_launches(db, limit=20)` (newest first by
-`launched_at`, `id` as tiebreak). Routes never touch the session directly.
-
-**`backend/app/api/v1/launcher/schemas.py`** —
-```
-InterviewState = "not_interview" | "starting" | "running" | "waiting" | "answered" | "finished"   (StrEnum)
-InterviewQuestion { id: str, question: str }
-InterviewRead { launch_id: int, run_id: str | null, state: InterviewState,
-                run_state: str | null, questions: InterviewQuestion[] }
-InterviewAnswer { id: str, answer: str (min_length 1) }
-InterviewAnswersRequest { answers: InterviewAnswer[] (min_length 1) }
-InterviewResumeRead { launch_id: int, run_id: str, resumed: bool, pid: int | null }
-SessionLaunchRead: + run_id: str | null
-SessionLaunchListItem: SessionLaunchRead + interview: InterviewRead | null
+```python
+async def browse(db: AsyncSession, path: str | None) -> schemas.DirectoryListing:
+    target = _validate_browse_path(path) if path is not None else await _projects_root(db)
+    ...
 ```
 
-**`backend/app/api/v1/launcher/service.py`** —
-* `launch()`: for `mode == interview`, `run_id = factory_runs.new_run_id()`, stored
-  on the row and passed to the spawner along with `interview=True`; autonomous
-  passes `run_id=None, interview=False`.
-* `read_interview(launch)`: derives the state — not an interview launch or no run
-  id → `not_interview`; no run dir / no `run.json` → `starting`; `answers.json`
-  present → `answered`; `questions.json` present and `run.json` state is
-  `waiting_input` → `waiting` (questions returned); `run.json` state `finished`/`stopped`
-  → `finished`; otherwise `running`.
-* `list_launches(db, limit)`: the rows, each with `interview` computed for
-  interview-mode rows and `null` otherwise.
-* `submit_answers(db, launch_id, body, resume_spawner)`: 404 when the launch is
-  unknown; 409 when its state is not `waiting` (this is also the double-submit
-  guard — a second POST cannot spawn a second resume); 400 when the answer ids are
-  not exactly the question ids, one each, or any answer is blank after strip;
-  otherwise write `answers.json`, spawn the resume, store the new pid on the row,
-  commit, and return `resumed: true`. The spawn happens after the file exists —
-  a resume that starts before its answers are on disk would refuse itself.
-
-**`backend/app/api/v1/launcher/routes.py`** — three routes, parsing and shaping only:
-`GET /launcher/launches` (`listSessionLaunches`), `GET /launcher/launches/{launch_id}/interview`
-(`getLaunchInterview`), `POST /launcher/launches/{launch_id}/answers`
-(`submitInterviewAnswers`, injecting `ResumeSpawner`).
-
-**`backend/app/core/exceptions.py`** — `LaunchNotFoundError` (404),
-`InterviewNotWaitingError` (409), `InterviewAnswerMismatchError` (400). One-line
-docstrings, the existing style; the single `DomainError` handler in `app/main.py:66`
-maps them with no extra wiring.
+- `_validate_browse_path`: `expanded = Path(value).expanduser()`; raise
+  `InvalidBrowsePathError` if not `expanded.is_absolute()`; `resolved =
+  expanded.resolve()`; raise if not `resolved.is_dir()`. The nonexistent and
+  not-a-directory cases both fall out of the single `is_dir()` check but get
+  distinct messages via an `exists()` probe, matching the two separate messages
+  `_validate_projects_root` produces.
+- The default branch does **not** re-validate: `read_settings` already
+  guarantees an absolute, expanded path, and `list_projects` already tolerates a
+  root that has since vanished. If the stored root is no longer a directory,
+  `browse` returns an empty `entries` list with that path — same posture as
+  `list_projects` returning `[]` — rather than 400ing on a request the user did
+  not parameterize.
+- Listing: iterate `sorted(target.iterdir(), key=lambda p: p.name)`, keep
+  `child.is_dir() and not child.name.startswith(".")`, wrapping the per-entry
+  `is_dir()` in `try/except PermissionError: continue` so one unreadable entry
+  cannot fail the whole listing. A `PermissionError` from `iterdir()` itself —
+  the whole directory is unreadable — raises `InvalidBrowsePathError` (400),
+  because there is nothing to show and silently returning an empty list would
+  read as "this folder is empty".
+- `parent`: `None` when `target.parent == target` (filesystem root), else
+  `str(target.parent)`.
+- Filesystem I/O stays synchronous, matching `list_projects` directly above it.
 
 ### Frontend
 
-**`frontend/openapi.json`** and **`frontend/src/api/generated/api.ts`** — the new
-models, the three `LauncherApi` methods and the `run_id` field on
-`SessionLaunchRead`, matching what FastAPI emits for these signatures.
-`npm run generate:api:local` reproduces the client from the checked-in schema
-where a shell is available; without one, edit both by hand exactly as the previous
-round of this feature did, mirroring the existing launcher entries.
+| Path | Change | Why |
+|---|---|---|
+| `frontend/src/features/sessions/queries.ts` | Add `folderBrowserOpenAtom` (`atom(false)`), `browsePathAtom` (`atom<string \| null>(null)` — `null` means "let the server default to `projects_root`"), and `browseDirectoriesQueryAtom` = `atomWithQuery` with `queryKey: ['browseDirectories', get(browsePathAtom)]`, `queryFn: () => api.launcher.browseDirectories(get(browsePathAtom) ?? undefined).then(r => r.data)`, and `enabled: get(folderBrowserOpenAtom)`. | The feature's atoms live here (house layout + the file's own precedent). `enabled` keeps the closed dialog from making a browse call, which matters because the existing `launchSessionDialog.ct.tsx` mock throws on any unexpected request. The path is part of the query key so each visited directory is cached and a re-visit is instant. |
+| `frontend/src/features/sessions/components/FolderPicker.tsx` (new) | The panel: breadcrumb, up-one-level, subdirectory list, **Use this folder**, plus `Skeleton` and inline-error-with-Retry states copied from the dialog's existing two blocks. Props: `onPicked(path: string) => void` so the dialog owns what happens after a save. | Keeps `LaunchSessionDialog.tsx` from growing a second concern; the dialog file is already ~275 lines. Feature-local component folder, matching every sibling. |
+| `frontend/src/features/sessions/components/LaunchSessionDialog.tsx` | Add a `Browse` button beside `Save` in the projects-root row (`type="button"`, like the sibling buttons); render `<FolderPicker />` under that row when `folderBrowserOpenAtom` is true; on `onPicked`, close the panel and let the existing `useEffect([open, appSettings])` re-seed `rootDraft` from the refetched settings. Reset both browser atoms in `reset()` so a reopened dialog starts from `projects_root` again. | The request puts the affordance beside the projects-root control. Reusing `updateSettingsMutationAtom` means the save path, its error toast, and the `launcherProjectsQueryAtom` invalidation are all already correct. |
 
-**`frontend/src/features/sessions/queries.ts`** — `sessionLaunchesQueryAtom`
-(`api.launcher.listSessionLaunches`, `refetchInterval` 5000 with
-`refetchIntervalInBackground: true`; slower than the 2500ms run poll because each
-tick reads files, not rows) and `submitInterviewAnswersMutationAtom`, invalidating
-the launches key on success.
+Panel behavior detail:
 
-**`frontend/src/features/sessions/components/InterviewQuestions.tsx` (new)** —
-renders `null` while pending, on error, or when no launch is `waiting`. For each
-waiting launch: a `Card` with the launch's request text, a `<form>` holding one
-labelled required `Input` per question (label text = the question, so
-`getByLabel` finds it), and an "Answer and continue" submit disabled while any
-answer is blank or the mutation is pending. Success → `toast.success('Run resumed')`
-with the project path as description; failure → `toast.error` with
-`apiErrorMessage(err)`, matching `LaunchSessionDialog`.
+- Breadcrumb is derived from the response's `path` (not from local state), split
+  on `/`: each segment is a `<button type="button">` that sets `browsePathAtom`
+  to the joined prefix; the leading `/` is its own clickable root crumb. Driving
+  it from the server's resolved path means a symlinked or `..`-containing path
+  displays canonically.
+- Up-one-level is a button labelled `Up one level` (with a `lucide-react`
+  `ChevronUp`/`CornerLeftUp` icon, consistent with the dialog's `AlertTriangle`
+  usage), disabled when `parent` is `null`.
+- Each subdirectory row is a `<button type="button">` — inside a `<form>`,
+  omitting `type` would submit the launch form (the exact bug fixed in commit
+  `430182e`).
+- **Use this folder** calls `saveSettings({ projects_root: data.path })`, shows
+  the existing `toast.success('Projects root updated')` / error toast pair, then
+  `onPicked(data.path)`. No extra refetch call is added: the mutation's
+  `onSuccess` already invalidates `APP_SETTINGS_QUERY_KEY` **and**
+  `LAUNCHER_PROJECTS_QUERY_KEY`.
 
-**`frontend/src/features/sessions/components/SessionsListPage.tsx`** — mount
-`<InterviewQuestions />` between `<TrackingBanner />` and `<Tabs>`, deliberately
-outside the tabs: Radix unmounts the inactive tab, and a run waiting on the user
-must not be hidden behind whichever tab they happen to be on.
+### Generated client + schema (hand-extended)
 
-**`frontend/src/features/sessions/index.ts`** — re-export the new component only
-if the barrel already re-exports components of this kind; do not widen the
-feature's public surface otherwise.
+| Path | Change |
+|---|---|
+| `frontend/openapi.json` | Add `"/api/v1/launcher/browse"` with the `get` operation (tag `launcher`, `operationId: browseDirectories`, one optional `path` query param with an `anyOf [string, null]` schema, 200 → `#/components/schemas/DirectoryListing`, 422 → `HTTPValidationError`), inserted next to the other `/api/v1/launcher/*` paths (~line 1607). Add `DirectoryEntry` and `DirectoryListing` to `components.schemas` in their alphabetical position. |
+| `frontend/src/api/generated/api.ts` | Add `export interface DirectoryEntry` and `export interface DirectoryListing` in the alphabetical model block, and `browseDirectories` in **all four** `LauncherApi` blocks — `LauncherApiAxiosParamCreator` (~6438), `LauncherApiFp` (~6653), `LauncherApiFactory` (~6740), `class LauncherApi` (~6811) — first in each block, which is where the generator's alphabetical ordering puts it. The param creator follows the `listCodingAssetUsage` pattern (`if (path !== undefined) localVarQueryParameter['path'] = path;` before `setSearchParams`). |
+| `frontend/src/api/generated/index.ts` | No change — it is `export * from "./api"`. |
+| `frontend/src/api/client.ts` | No change — `browseDirectories` lands on the already-registered `LauncherApi`. |
+
+Hand-extension is what v1.26 did (commit `09b2e3c`: "hand-regenerated
+typescript-axios client (no shell was available to run the generator)"). The
+edits must be byte-shaped like generator output so the next real
+`pnpm generate:api:local` produces no diff.
 
 ### Docs
 
-**`docs/API_CONTRACT.md`** — a new "API Contract v1.26 — interview mode" section:
-the schemas above, the three endpoints with their status codes, the
-`questions.json`/`answers.json` file contract, the `--interview`/`--run-id` argv,
-and the run-dir resolution rule. It must also correct the v1.25 line
-"**`mode` is stored and shown, not yet acted on**" (`docs/API_CONTRACT.md:2322-2324`)
-— leaving it would make the contract contradict itself.
+| Path | Change |
+|---|---|
+| `docs/API_CONTRACT.md` | Append `# API Contract v1.27 — server-side folder picker`, after the v1.26 section (file currently ends at line 2455). Sections: **New schemas** (`DirectoryEntry`, `DirectoryListing`), **New endpoint** (the table row for `GET /api/v1/launcher/browse`), **Behavior** — that browsing is deliberately unrestricted and why, that hidden entries and files are excluded, that per-entry `PermissionError` is skipped while an unreadable target 400s, that `parent` is `null` only at the filesystem root, that the default is the stored `projects_root`, and that nothing is written by this endpoint. |
 
 ---
 
 ## Data / contract impact
 
-* **DB**: one nullable column, `session_launches.run_id` (`String(64)`), Alembic
-  `0022_session_launch_run_id` on the current single head `0021_work_assignee_sprint`.
-  Additive, reversible, no backfill — existing rows are autonomous launches that
-  never had a run id.
-* **HTTP**: three new endpoints, all additive; one new optional field on the
-  existing `SessionLaunchRead`. No existing response shape loses a field, so the
-  regenerated client is backward-compatible for current callers.
-* **Filesystem**: a new two-file contract inside the run dir, written by two
-  different processes. This is the one genuinely new coupling in the change; it is
-  owned by `factory/adw/interview.py` and tested from both sides.
-* **Run record**: `run.json` gains `state: "waiting_input"` and an `interview`
-  boolean. Readers of the record (`--list-runs`, `--kill`, `--resume`) already
-  treat any non-`running` state as terminal-for-this-process, so nothing else
-  changes; older records missing `interview` read as `false`.
-* **Backwards compatibility**: no `--interview`, no `--run-id` → the pipeline is
-  the code path it is today, questions/answers files are never written or read,
-  and the spawned argv is unchanged.
+- **No database change.** No new table, no new column, no Alembic revision. The
+  head stays `0022_session_launch_run_id`.
+- **No settings change.** The picker writes through the existing
+  `PATCH /api/v1/settings`; `AppSettings` / `AppSettingsUpdateRequest` are
+  untouched.
+- **OpenAPI**: two new schemas (`DirectoryEntry`, `DirectoryListing`), one new
+  path, one new `operation_id`. Purely additive — no existing operation, schema,
+  or field changes shape, so the existing generated client keeps compiling and
+  no frontend caller needs a signature update.
+- **New failure mode on the wire**: `browseDirectories` can 400 with a
+  `{"detail": "..."}` body. `apiErrorMessage` (`frontend/src/api/client.ts`)
+  already unwraps exactly that shape.
+- **Nothing is written server-side by the browse endpoint.** It is read-only;
+  the only write in the whole flow is the existing settings PATCH.
+
+---
 
 ## Test strategy
 
-**Factory (`factory/tests/test_interview.py`, existing pytest + fake-CLI harness):**
-1. A `--interview` run pauses after `plan`: only the plan agent was invoked,
-   `questions.json` holds one question per plan assumption in order, `run.json`
-   state is `waiting_input` with the pid cleared, the plan commit is on the run
-   branch, exit code is 0.
-2. A plan with no assumptions does not pause — the run goes on to build and
-   finishes accepted, and no `questions.json` is written.
-3. `--resume` of a waiting run with no `answers.json` exits 2, names the path, and
-   invokes no agent at all.
-4. `--resume` with a valid `answers.json`: the saved build prompt
-   (`<run_dir>/prompts/build/1.user.md`) contains every question and every answer,
-   and the run completes accepted.
-5. `answers.json` that answers the wrong ids / misses one / is malformed exits 2.
-6. `--run-id x` puts the run in `<root>/x`; a reused id, a traversal id, and
-   `--run-id` together with `--resume` are all refused with exit 2.
-7. Regression: the same script without `--interview` writes no interview files and
-   ends exactly as it does today.
+Existing frameworks only — pytest for the backend, Playwright CT for the
+frontend. No new test dependency, no new config.
 
-**Backend:**
-* `backend/tests/unit/test_factory_launcher.py` (extend): the autonomous argv
-  assertion stays exactly as it is — that test *is* the byte-for-byte guarantee —
-  plus one asserting the interview argv is that argv with `--run-id <id> --interview`
-  inserted before the request text, and one for the resume argv.
-* `backend/tests/unit/test_factory_runs.py` (new): the runs-root rule with and
-  without a `factory.config.json` `"runs_dir"` (absolute and relative);
-  `write_answers` is atomic and refuses a missing run dir; `read_questions` /
-  `read_run_state` degrade to empty/`None` on missing or malformed files.
-* `backend/tests/integration/test_launcher.py` (extend): the fake spawner records
-  kwargs (it grows `run_id`/`interview`) and a second fake stands in for the resume
-  spawner; `factory_runs_root` is monkeypatched onto `settings` pointing at
-  `tmp_path`. Cases: an interview launch stores a run id and passes
-  `interview=True`; an autonomous launch stores no run id and passes
-  `interview=False`; the interview state endpoint reports `starting` → `waiting`
-  (after a hand-written `questions.json` + `run.json`) → `answered`; POST answers
-  writes `answers.json` with exactly the submitted pairs and calls the resume
-  spawner once with the recorded run id; POST with a missing, extra, unknown-id or
-  blank answer is 400 with the spawner never called; POST when not waiting is 409;
-  POST for an unknown launch is 404; the list endpoint embeds the interview block
-  for interview rows and `null` for autonomous ones.
+**Backend unit — `backend/tests/unit/test_launcher_browse.py` (new)**, in the
+style of `test_launcher_names.py` (no DB, no FastAPI):
 
-**Frontend (`frontend/tests/components/interviewQuestions.ct.tsx`, new, Playwright CT):**
-routes `**/api/v1/**` with the same CORS/preflight helper
-`launchSessionDialog.ct.tsx` uses. Scenarios: two questions render two required
-fields and the submit is disabled until both are filled; submitting posts
-`{answers: [{id, answer}, …]}` in question order and shows "Run resumed"; a launch
-that is not waiting renders nothing; a 409 surfaces the error toast and leaves the
-form in place.
+- `_validate_browse_path` accepts an absolute existing `tmp_path` and returns it
+  resolved.
+- Parametrized rejections, each asserting `InvalidBrowsePathError`: a relative
+  path (`"relative/path"`), a nonexistent absolute path
+  (`tmp_path / "nope"`), and a path that is a file, not a directory
+  (`tmp_path / "f.txt"` after `write_text`).
+- `~` expansion: `"~"` is accepted (expands to an absolute existing dir).
 
-Everything runs under the repo's existing commands — `uv run pytest -q` /
-`uv run ruff check .` in `backend/`, `pytest` in `factory/`, and the CT config in
-`frontend/`.
+**Backend integration — `backend/tests/integration/test_launcher.py` (extend)**,
+using the existing `client` fixture and `tmp_path`, with `PATCH
+/api/v1/settings` used to point `projects_root` at a `tmp_path` fixture tree
+(`alpha/`, `beta/`, `.hidden/`, `file.txt`, and `alpha/nested/`):
+
+- Happy path: `GET /api/v1/launcher/browse?path=<tmp>` → 200, `path` equals the
+  resolved tmp dir, `parent` is its parent, `entries` is exactly
+  `[{alpha}, {beta}]` in name order.
+- Default: `GET /api/v1/launcher/browse` with no param returns the same listing
+  as passing the stored `projects_root` explicitly.
+- Hidden exclusion and files-never-returned: `.hidden` and `file.txt` are absent
+  from `entries` (asserted by name set, so one assertion covers both).
+- Descend: `?path=<tmp>/alpha` lists `nested` and reports `parent == <tmp>`.
+- Filesystem root: `?path=/` returns `parent: null`.
+- Rejections, each asserting 400: relative path, nonexistent path, a path that
+  is a regular file.
+- Permission skip: `chmod 0o000` on a subdirectory of the browsed dir, assert
+  200 and that the listing still contains the readable siblings.
+  `pytest.mark.skipif(os.geteuid() == 0)` because root ignores the mode bits,
+  and the mode is restored in a `finally` so the tmp tree can be cleaned up.
+
+**Frontend CT — `frontend/tests/components/folderPicker.ct.tsx` (new)**,
+modelled on `launchSessionDialog.ct.tsx` (same `CORS` headers, same `json()`
+helper, same `page.route('**/api/v1/**')` router that throws on an unexpected
+request). A small in-memory tree keyed by path serves `browse` responses, and
+the mock records every `PATCH /settings` body:
+
+- Navigate-and-select: open the dialog → click **Browse** → assert the
+  breadcrumb shows the projects root and the two child rows are listed → click a
+  child row → assert the breadcrumb and rows updated to the child and that the
+  browse request carried `path=<child>` → click **Use this folder** → assert one
+  `PATCH /api/v1/settings` with `{projects_root: <child>}`, that the panel
+  closed, and that the projects-root input now shows the new path.
+- Up-one-level returns to the parent, and is disabled when the response's
+  `parent` is `null`.
+- Error state: a browse route that 500s renders the inline error with a
+  **Retry** button, and clicking Retry re-issues the request (asserted by call
+  count).
+
+Distinct directory paths per test keep the module-level `QueryClient` in
+`TestProviders` from serving one test's cached listing to another.
+
+**Regression gates (must stay green, unchanged):** `backend/tests` (including
+`tests/integration/test_launcher.py`'s existing launch/interview walks and
+`test_settings.py`), `factory/tests` (untouched by this change), and
+`pnpm typecheck` in `frontend/`. `frontend/tests/components/launchSessionDialog.ct.tsx`
+must keep passing **unmodified** — its mock throws on unexpected requests, which
+is the live check that the closed picker issues no browse call.
+
+---
 
 ## Risks
 
-1. **Run-dir resolution is duplicated across the language boundary.** The backend
-   mirrors `factory/adw/config.runs_root`. If the factory's rule ever changes, the
-   backend silently looks in the wrong place and every interview run reads as
-   `starting` forever. Mitigated by keeping the mirror in one small documented
-   module with its own unit test, and by the state machine degrading to "no
-   questions yet" rather than to an error.
-2. **A run that dies between plan and pause leaves no questions.** The UI then
-   shows nothing for that launch and the user has only the launch log. The state
-   enum makes this visible (`finished` with no questions) but nothing recovers it
-   automatically.
-3. **The answers are user text handed to an agent.** They are written as JSON data
-   and folded into a prompt, never into argv or a shell string, so the injection
-   surface is the same one `request_text` already has — but a hostile answer can
-   still steer the builder. Out of scope to defend beyond not making it worse.
-4. **Double resume.** Two POSTs racing could spawn two resumes on one run dir. The
-   409-unless-`waiting` guard plus `answers.json` existing before the spawn closes
-   the common case; a true simultaneous race would still need a lock, which this
-   change does not add. The factory's own `plan_resume` refuses a run whose pid is
-   still alive, which catches most of the rest.
-5. **`assumptions[]` is only as good as the planner.** Interview mode surfaces
-   exactly what the plan role chose to declare; a plan that declares none simply
-   does not pause. That is the honest behaviour, but it will read as "interview
-   mode did nothing" to a user who expected to be asked something.
-6. **Widening `LaunchSpawner` touches existing tests.** The Protocol is
-   keyword-only, so every current call site and the existing fake must be updated
-   in the same commit; a missed one fails at runtime, not at import.
-7. **The launches endpoint does synchronous file IO in an async route.** It is a
-   handful of small reads per interview launch, bounded by the list limit, and it
-   matches what `list_projects` already does — but it is on the event loop, polled
-   every 5 seconds per open tab.
-8. **The client is regenerated by hand if no shell is available.** A hand-written
-   `api.ts` that drifts from what the generator would emit is the failure mode the
-   previous round already risked; the checked-in `frontend/openapi.json` must be
-   updated in the same edit so `generate:api:local` reproduces it exactly.
-9. **New run state in an old reader.** Anything that treats `run.json` states as a
-   closed set of three now sees a fourth. Inside this repo only `--list-runs` and
-   `--kill` read it and both handle it correctly, but an external script would not.
+1. **The existing `launchSessionDialog.ct.tsx` mock throws on unexpected
+   requests.** If `browseDirectoriesQueryAtom` fetches while the picker is
+   closed, four existing tests fail. Mitigated by the `enabled:
+   get(folderBrowserOpenAtom)` gate — and that failure is loud, not silent.
+2. **Un-generated client drift.** The hand-written `browseDirectories` must
+   match what `openapi-generator` would emit; a mismatch is invisible until
+   someone regenerates and gets a surprise diff. Mitigated by copying the
+   `listCodingAssetUsage` (optional query param) and `listLauncherProjects`
+   (no-arg GET) shapes literally, and by keeping `frontend/openapi.json` the
+   source of truth for the next regeneration.
+3. **`openapi.json` is large and hand-edited.** A malformed insert breaks
+   `generate:api:local` for everyone. Mitigated by inserting whole,
+   well-formed objects next to the sibling launcher paths and keeping the
+   2-space/4-space indentation the file already uses.
+4. **Browsing is unrestricted by design.** `GET /api/v1/launcher/browse?path=/`
+   enumerates directory *names* anywhere the backend user can read. Accepted
+   per the request (local single-user app; `PATCH /api/v1/settings` already
+   accepts any absolute path) and stated explicitly in the v1.27 doc section.
+   No file contents are ever returned.
+5. **Synchronous filesystem I/O in an async route.** A directory with tens of
+   thousands of entries, or one on a stalled network mount, blocks the event
+   loop. Accepted to match `list_projects` two functions above it; noted rather
+   than fixed, since fixing it here would leave two different I/O idioms in one
+   file.
+6. **Permission handling has two layers** — per-entry skip vs. whole-directory
+   400 — and getting them backwards means either a spurious 400 or a listing
+   that lies about being empty. Both are covered by tests.
+7. **Symlink loops / very deep trees.** `.resolve()` on a symlink cycle raises
+   `OSError` (`ELOOP`), which is not a `PermissionError` and would 500. Mitigate
+   by catching `OSError` in `_validate_browse_path` and re-raising as
+   `InvalidBrowsePathError`.
+8. **Windows path handling.** The breadcrumb splits on `/`. This is a macOS/
+   POSIX-only tool (`~/.masterwork`, `python3`, `git init`), so this is
+   consistent with the rest of the codebase but would need work if that ever
+   changed.
+9. **Shared `QueryClient` across CT tests in one file** can serve a stale browse
+   listing to a later test. Mitigated by using distinct paths per test.
+10. **`reset()` must clear the browser atoms**, or reopening the dialog shows
+    the last-browsed directory instead of the (possibly just-changed) projects
+    root. Covered by the navigate-and-select test's final assertions.
+
+---
 
 ## Assumptions
 
-* A plan whose envelope declares no assumptions does **not** pause: there is
-  nothing to ask, so the run continues to build. The alternative (always pause,
-  possibly with an empty question list) would strand a run nobody can answer.
-* Questions are exactly the plan envelope's `assumptions[]`, verbatim, one
-  question each — no LLM rewriting into question form. It keeps the pause
-  deterministic and free.
-* Only interview launches get a server-generated run id; autonomous launches keep
-  `run_id = NULL`, because giving them one would change their argv and the stated
-  done-criterion forbids that.
-* "The session/run surface that shows launched runs" is read as the Sessions list
-  page: no endpoint listing launches exists yet, so `GET /launcher/launches` is
-  added as part of this change — without it the UI has no way to discover a
-  waiting run.
-* All answers are required (the request says so), so the submit stays disabled
-  until every field is non-blank; there is no "skip this question" path.
+Recorded because this run is unattended; each is the reading a careful
+colleague would take, and each is cheap to reverse.
+
+1. **Nested panel, not a Popover.** `@radix-ui/react-popover` is not in
+   `frontend/package.json` and this run has no shell to install it; the request
+   explicitly allowed "a shadcn Popover **or nested panel**".
+2. **New `InvalidBrowsePathError` rather than reusing `InvalidSettingError`** —
+   same 400 pattern, distinct name, since a browse path is not a setting.
+3. **A wholly unreadable target directory 400s**; only *entries* that raise
+   `PermissionError` are silently skipped. The request specified the per-entry
+   rule and was silent on the target itself.
+4. **`~` is expanded before the absolute check**, matching
+   `_validate_projects_root`.
+5. **Symlinked subdirectories are listed** (`Path.is_dir()` follows symlinks),
+   matching `list_projects`.
+6. **The client and `openapi.json` are hand-extended**, as v1.26 did, because no
+   shell is available to run `openapi-generator-cli`.
+7. **The contract section is numbered v1.27**, the next number after v1.26.
+8. **No second refetch is wired for `launcherProjectsQueryAtom`** — the existing
+   `updateSettingsMutationAtom.onSuccess` already invalidates that key, so the
+   request's "then refetches launcherProjectsQueryAtom" is satisfied by the code
+   that is already there.
+9. **The browse endpoint does not offer the `is_git_repo` flag** that
+   `LauncherProject` carries; it is a folder picker for the *root*, not a
+   project picker.
