@@ -168,3 +168,27 @@ class WorkSyncError(DomainError):
     """The DevOps call failed, or the PAT env var named by secret_ref is unset."""
 
     status_code = 502
+
+
+class InvalidSettingError(DomainError):
+    status_code = 400
+
+
+class InvalidProjectNameError(DomainError):
+    status_code = 400
+
+
+class ProjectPathOutsideRootError(DomainError):
+    status_code = 400
+
+
+class ProjectExistsError(DomainError):
+    """A project folder with this name already exists under projects_root."""
+
+    status_code = 409
+
+
+class LaunchFailedError(DomainError):
+    """The factory subprocess could not be spawned."""
+
+    status_code = 502

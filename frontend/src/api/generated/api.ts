@@ -140,6 +140,32 @@ export interface AgentLane {
     'turns': number;
 }
 /**
+ *
+ * @export
+ * @interface AppSettings
+ */
+export interface AppSettings {
+    /**
+     * Absolute folder all code projects live under.
+     * @type {string}
+     * @memberof AppSettings
+     */
+    'projects_root': string;
+}
+/**
+ *
+ * @export
+ * @interface AppSettingsUpdateRequest
+ */
+export interface AppSettingsUpdateRequest {
+    /**
+     * New projects root; omitted or null leaves it unchanged.
+     * @type {string}
+     * @memberof AppSettingsUpdateRequest
+     */
+    'projects_root'?: string | null;
+}
+/**
  * One recorded call of an asset, and what the caller handed it.
  * @export
  * @interface AssetCall
@@ -1993,7 +2019,84 @@ export interface InstructionsUpdateRequest {
     'content': string;
 }
 /**
- * 
+ *
+ * @export
+ * @enum {string}
+ */
+
+export const LaunchMode = {
+    Autonomous: 'autonomous',
+    Interview: 'interview'
+} as const;
+
+export type LaunchMode = typeof LaunchMode[keyof typeof LaunchMode];
+
+
+/**
+ *
+ * @export
+ * @interface LaunchRequest
+ */
+export interface LaunchRequest {
+    /**
+     * Absolute path; must resolve under projects_root.
+     * @type {string}
+     * @memberof LaunchRequest
+     */
+    'project_path': string;
+    /**
+     * What to build — handed to the factory as-is.
+     * @type {string}
+     * @memberof LaunchRequest
+     */
+    'request_text': string;
+    /**
+     * Both modes launch the same unattended run today.
+     * @type {LaunchMode}
+     * @memberof LaunchRequest
+     */
+    'mode'?: LaunchMode;
+}
+/**
+ *
+ * @export
+ * @interface LauncherProject
+ */
+export interface LauncherProject {
+    /**
+     *
+     * @type {string}
+     * @memberof LauncherProject
+     */
+    'name': string;
+    /**
+     * Absolute path under projects_root.
+     * @type {string}
+     * @memberof LauncherProject
+     */
+    'path': string;
+    /**
+     *
+     * @type {boolean}
+     * @memberof LauncherProject
+     */
+    'is_git_repo': boolean;
+}
+/**
+ * Named apart from the unrelated `ProjectCreateRequest` (features/projects) — this creates a plain folder under projects_root, not a masterwork Project.
+ * @export
+ * @interface LauncherProjectCreateRequest
+ */
+export interface LauncherProjectCreateRequest {
+    /**
+     * Folder name — no path separators or traversal.
+     * @type {string}
+     * @memberof LauncherProjectCreateRequest
+     */
+    'name': string;
+}
+/**
+ *
  * @export
  * @enum {string}
  */
@@ -3004,7 +3107,56 @@ export interface ScenarioGenerateResponse {
     'scenario': string;
 }
 /**
- * 
+ *
+ * @export
+ * @interface SessionLaunchRead
+ */
+export interface SessionLaunchRead {
+    /**
+     *
+     * @type {number}
+     * @memberof SessionLaunchRead
+     */
+    'id': number;
+    /**
+     *
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'project_path': string;
+    /**
+     *
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'request_text': string;
+    /**
+     *
+     * @type {LaunchMode}
+     * @memberof SessionLaunchRead
+     */
+    'mode': LaunchMode;
+    /**
+     *
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'launched_at': string;
+    /**
+     *
+     * @type {number}
+     * @memberof SessionLaunchRead
+     */
+    'pid': number | null;
+    /**
+     * True once the subprocess was spawned.
+     * @type {boolean}
+     * @memberof SessionLaunchRead
+     */
+    'launched': boolean;
+}
+/**
+ *
  * @export
  * @interface Simulation
  */
@@ -6060,6 +6212,249 @@ export class InstructionsApi extends BaseAPI {
 
 
 /**
+ * LauncherApi - axios parameter creator
+ * @export
+ */
+export const LauncherApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         *
+         * @summary Create Launcher Project
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createLauncherProject: async (launcherProjectCreateRequest: LauncherProjectCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launcherProjectCreateRequest' is not null or undefined
+            assertParamExists('createLauncherProject', 'launcherProjectCreateRequest', launcherProjectCreateRequest)
+            const localVarPath = `/api/v1/launcher/projects`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(launcherProjectCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Launch Session
+         * @param {LaunchRequest} launchRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        launchSession: async (launchRequest: LaunchRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchRequest' is not null or undefined
+            assertParamExists('launchSession', 'launchRequest', launchRequest)
+            const localVarPath = `/api/v1/launcher/launch`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(launchRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary List Launcher Projects
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listLauncherProjects: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/projects`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * LauncherApi - functional programming interface
+ * @export
+ */
+export const LauncherApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = LauncherApiAxiosParamCreator(configuration)
+    return {
+        /**
+         *
+         * @summary Create Launcher Project
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<LauncherProject>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createLauncherProject(launcherProjectCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.createLauncherProject']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary Launch Session
+         * @param {LaunchRequest} launchRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async launchSession(launchRequest: LaunchRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SessionLaunchRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.launchSession(launchRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.launchSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary List Launcher Projects
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listLauncherProjects(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<LauncherProject>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listLauncherProjects(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listLauncherProjects']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * LauncherApi - factory interface
+ * @export
+ */
+export const LauncherApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = LauncherApiFp(configuration)
+    return {
+        /**
+         *
+         * @summary Create Launcher Project
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<LauncherProject> {
+            return localVarFp.createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Launch Session
+         * @param {LaunchRequest} launchRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        launchSession(launchRequest: LaunchRequest, options?: RawAxiosRequestConfig): AxiosPromise<SessionLaunchRead> {
+            return localVarFp.launchSession(launchRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary List Launcher Projects
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listLauncherProjects(options?: RawAxiosRequestConfig): AxiosPromise<Array<LauncherProject>> {
+            return localVarFp.listLauncherProjects(options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * LauncherApi - object-oriented interface
+ * @export
+ * @class LauncherApi
+ * @extends {BaseAPI}
+ */
+export class LauncherApi extends BaseAPI {
+    /**
+     *
+     * @summary Create Launcher Project
+     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Launch Session
+     * @param {LaunchRequest} launchRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public launchSession(launchRequest: LaunchRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).launchSession(launchRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary List Launcher Projects
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listLauncherProjects(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listLauncherProjects(options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
  * ObservabilityApi - axios parameter creator
  * @export
  */
@@ -7203,6 +7598,178 @@ export class ProposalsApi extends BaseAPI {
      */
     public rejectProposal(proposalId: string, options?: RawAxiosRequestConfig) {
         return ProposalsApiFp(this.configuration).rejectProposal(proposalId, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * SettingsApi - axios parameter creator
+ * @export
+ */
+export const SettingsApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         *
+         * @summary Get Settings
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSettings: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/settings`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Update Settings
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSettings: async (appSettingsUpdateRequest: AppSettingsUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'appSettingsUpdateRequest' is not null or undefined
+            assertParamExists('updateSettings', 'appSettingsUpdateRequest', appSettingsUpdateRequest)
+            const localVarPath = `/api/v1/settings`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PATCH', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(appSettingsUpdateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * SettingsApi - functional programming interface
+ * @export
+ */
+export const SettingsApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = SettingsApiAxiosParamCreator(configuration)
+    return {
+        /**
+         *
+         * @summary Get Settings
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getSettings(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AppSettings>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getSettings(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SettingsApi.getSettings']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary Update Settings
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateSettings(appSettingsUpdateRequest: AppSettingsUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AppSettings>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateSettings(appSettingsUpdateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SettingsApi.updateSettings']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * SettingsApi - factory interface
+ * @export
+ */
+export const SettingsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = SettingsApiFp(configuration)
+    return {
+        /**
+         *
+         * @summary Get Settings
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSettings(options?: RawAxiosRequestConfig): AxiosPromise<AppSettings> {
+            return localVarFp.getSettings(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Update Settings
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSettings(appSettingsUpdateRequest: AppSettingsUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<AppSettings> {
+            return localVarFp.updateSettings(appSettingsUpdateRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * SettingsApi - object-oriented interface
+ * @export
+ * @class SettingsApi
+ * @extends {BaseAPI}
+ */
+export class SettingsApi extends BaseAPI {
+    /**
+     *
+     * @summary Get Settings
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SettingsApi
+     */
+    public getSettings(options?: RawAxiosRequestConfig) {
+        return SettingsApiFp(this.configuration).getSettings(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Update Settings
+     * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SettingsApi
+     */
+    public updateSettings(appSettingsUpdateRequest: AppSettingsUpdateRequest, options?: RawAxiosRequestConfig) {
+        return SettingsApiFp(this.configuration).updateSettings(appSettingsUpdateRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

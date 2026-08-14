@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     # roots, so chat proposals can never write it), edited through its own
     # endpoint.
     claude_instructions_file: Path = Path.home() / ".claude" / "CLAUDE.md"
+    # Repo root for the factory pipeline runner (factory/run.py), derived from
+    # this file's own location rather than an env var.
+    masterwork_repo_root: Path = Path(__file__).resolve().parents[2]
+    # Interpreter the launcher spawns factory/run.py with.
+    factory_python: str = "python3"
+    # Default projects_root before any app_settings row overrides it.
+    default_projects_root: Path = Path.home() / "Projects"
 
     @property
     def ingest_url(self) -> str:

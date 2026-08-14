@@ -21,6 +21,7 @@ from app.observability.registry import build_integrations
 from app.providers.azuredevops import AzureDevOpsClient
 from app.providers.base import Provider
 from app.providers.registry import build_providers
+from app.services import factory_launcher
 from app.services.claude_runner import ClaudeRunner
 
 __all__ = [
@@ -34,11 +35,17 @@ __all__ = [
     "get_session_factory",
     "get_devops_client_factory",
     "DevOpsClientFactory",
+    "get_launch_spawner",
+    "LaunchSpawner",
 ]
 
 # Short alias — the full Callable[[WorkSource], AzureDevOpsClient] spelling is
 # repeated at every call site that injects this dependency.
 DevOpsClientFactory = Callable[[WorkSource], AzureDevOpsClient]
+
+# (project_path, request_text, log_path) -> pid. Tests override this so no
+# test ever forks a real subprocess.
+LaunchSpawner = Callable[[Path, str, Path], int]
 
 
 def get_providers() -> list[Provider]:
@@ -102,3 +109,19 @@ def get_devops_client_factory() -> DevOpsClientFactory:
         )
 
     return _factory
+
+
+def get_launch_spawner() -> LaunchSpawner:
+    """Binds the repo root and interpreter from settings; tests override this
+    with a fake that records its args and returns a fake pid."""
+
+    def _spawn(project_path: Path, request_text: str, log_path: Path) -> int:
+        return factory_launcher.spawn_factory_run(
+            repo_root=settings.masterwork_repo_root,
+            python_bin=settings.factory_python,
+            project_path=project_path,
+            request_text=request_text,
+            log_path=log_path,
+        )
+
+    return _spawn

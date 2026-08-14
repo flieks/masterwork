@@ -2235,15 +2235,15 @@ WorkItemStartResponse {
   (select-then-insert-or-update, not a dialect-specific `ON CONFLICT`); stamps
   `work_sources.last_sync_at`. The whole DevOps payload is stored unchanged in
   `raw` — untrusted external data, rendered as markdown, never executed.
-- **Session launch is deferred.** This backend has no reusable path that
-  launches a *write-capable* coding session (`claude_runner` is deliberately
-  read-only; nothing else creates a `coding_sessions` row directly), so
-  `startWorkItem` assembles the prompt (title line, `external_url`, `## Story`
-  + `description_md`, then `## Acceptance criteria` + `acceptance_md` — that
-  section omitted entirely when acceptance criteria is absent or empty) and
-  returns it with `launched: false`. It writes a `work_item_sessions` row
-  (`kind: "spawned"`, `session_id: null`) so the request is on record; nothing
-  in v1 ever fills in that `session_id`.
+- **`startWorkItem` still only assembles a prompt, it does not launch.** A
+  reusable launch path now exists (`POST /api/v1/launcher/launch`, see the
+  Session launcher section below), but rewiring this endpoint to call it is
+  out of scope here — `startWorkItem` assembles the prompt (title line,
+  `external_url`, `## Story` + `description_md`, then `## Acceptance criteria`
+  + `acceptance_md` — that section omitted entirely when acceptance criteria
+  is absent or empty) and returns it with `launched: false`. It writes a
+  `work_item_sessions` row (`kind: "spawned"`, `session_id: null`) so the
+  request is on record; nothing in v1 ever fills in that `session_id`.
 - **No write path exists.** `AzureDevOpsClient` (in `app/providers/`, not a
   `Provider` — it is not registered in `build_providers`) exposes only
   `query_work_item_ids`, `get_work_items_batch`, `list_active_prs`, and
@@ -2255,3 +2255,88 @@ WorkItemStartResponse {
   `(source_id, external_id)`, indexed on `(source_id, state)`),
   `work_item_sessions` (`session_id` nullable, FK `coding_sessions.id` ON
   DELETE CASCADE). Alembic migration `0018_work_items`.
+
+---
+
+# API Contract v1.25 — in-app session launcher (FROZEN additions)
+
+Additive on top of v1.24. A coding session can now be started from the
+Sessions screen, always through `factory/run.py` — never a bare `claude`
+invocation. `projects_root` (default `~/Projects`, expanded server-side) is a
+persisted setting; every path this feature touches is resolved and checked to
+live inside it with `resolve_within_roots` (`app/providers/base.py`), the same
+helper the asset write path uses.
+
+## New schemas
+
+```
+AppSettings { projects_root: string }               // absolute, expanded ~
+AppSettingsUpdateRequest { projects_root?: string | null }   // omitted/null = unchanged
+
+LaunchMode = "autonomous" | "interview"
+
+LauncherProject {
+  name: string
+  path: string           // absolute, under projects_root
+  is_git_repo: boolean
+}
+LauncherProjectCreateRequest { name: string }   // no path separators or traversal
+
+LaunchRequest {
+  project_path: string   // absolute; must resolve under projects_root
+  request_text: string   // min length 1
+  mode?: LaunchMode       // default "autonomous"
+}
+SessionLaunchRead {
+  id: number
+  project_path: string
+  request_text: string
+  mode: LaunchMode
+  launched_at: string
+  pid: number | null
+  launched: boolean       // true once the subprocess was spawned
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/settings` | `getSettings` | — | `AppSettings` (default filled in when unset) |
+| PATCH `/api/v1/settings` | `updateSettings` | `AppSettingsUpdateRequest` | `AppSettings` (400 on a relative or non-existent `projects_root`) |
+| GET `/api/v1/launcher/projects` | `listLauncherProjects` | — | `LauncherProject[]` (immediate subdirectories of `projects_root`, sorted, dotted dirs and non-directories excluded) |
+| POST `/api/v1/launcher/projects` | `createLauncherProject` | `LauncherProjectCreateRequest` | `LauncherProject` (201; `mkdir` + `git init`; 400 on an invalid name; 409 if it already exists) |
+| POST `/api/v1/launcher/launch` | `launchSession` | `LaunchRequest` | `SessionLaunchRead` (400 when `project_path` is outside `projects_root`, not a directory, or not a git repo; 502 `LaunchFailedError` if the spawn itself fails) |
+
+## Behavior
+
+- **Always the factory, never a bare `claude` call.** The launch endpoint
+  spawns `python3 <masterwork_repo_root>/factory/run.py --repo <project_path>
+  "<request_text>"` as a detached, fire-and-forget `Popen`
+  (`start_new_session=True`, argv list, never `shell=True` — `request_text` is
+  untrusted and is passed as a single argv element). Nothing waits on it; a
+  `session_launches` row is written first (so a launch is on record even if
+  the spawn fails) and stamped with the child's pid.
+- **`mode` is stored and shown, not yet acted on.** Both `"autonomous"` and
+  `"interview"` launch the identical unattended run this iteration — no mode
+  flag reaches `run.py`. Interview behaviour ships separately.
+- **No extra attribution wiring.** A launched run's Claude sessions
+  self-attribute to the Sessions screen the same way every other factory run
+  does, via the `MASTERWORK_FACTORY_RUN_ID` env handshake
+  (`factory/adw/agent.py`, forwarded by
+  `app/observability/forwarders/claude_code.py`) — nothing in
+  `app/api/v1/coding/` changes for this feature.
+- **A run that dies at startup is not surfaced beyond its log.**
+  `factory/run.py` exits 2 for a missing/non-git repo or an unresolvable
+  config; the launch endpoint pre-checks directory-ness and `.git` so those
+  cases 400 synchronously instead, but a failure after that 200 is only
+  visible in `~/.masterwork/launches/<launch id>.log` — the response never
+  claims the run succeeded, only that it started.
+- **Project name validation** (`POST /api/v1/launcher/projects`) rejects
+  empty/whitespace-only names, `/`, `\`, and NUL bytes, `.` and `..`, any name
+  starting with `.`, and names over 100 characters.
+- **DB**: two new tables — `app_settings` (`key` PK, key-value so a future
+  setting needs no migration) and `session_launches` (`id`, `project_path`,
+  `request_text`, `mode`, `launched_at`, `pid` nullable). Not linked to
+  `coding_sessions` by FK — attribution rides the env handshake, not this
+  table. Alembic migration `0020_app_settings_and_launches`.

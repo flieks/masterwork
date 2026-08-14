@@ -1,8 +1,18 @@
 import { atom } from 'jotai';
 import { atomFamily, atomWithStorage } from 'jotai/utils';
-import { atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
+import { atomWithMutation, atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
 import { api } from '~/api/client';
-import type { CodingEvent, CodingSession, CodingSessionDetail } from '~/api/generated';
+import type {
+  AppSettings,
+  AppSettingsUpdateRequest,
+  CodingEvent,
+  CodingSession,
+  CodingSessionDetail,
+  LaunchRequest,
+  LauncherProject,
+  LauncherProjectCreateRequest,
+  SessionLaunchRead,
+} from '~/api/generated';
 import { windowSince, type AssetWindow } from './runs';
 
 const POLL_MS = 2500;
@@ -30,6 +40,45 @@ export {
   type AssetWindow,
   type RunTitle,
 } from './runs';
+
+const LAUNCHER_PROJECTS_QUERY_KEY = ['launcherProjects'];
+const APP_SETTINGS_QUERY_KEY = ['appSettings'];
+
+/** The launcher's project picker — immediate subdirectories of projects_root. */
+export const launcherProjectsQueryAtom = atomWithQuery(() => ({
+  queryKey: LAUNCHER_PROJECTS_QUERY_KEY,
+  queryFn: async (): Promise<LauncherProject[]> =>
+    (await api.launcher.listLauncherProjects()).data,
+}));
+
+/** projects_root and any other persisted app setting. */
+export const appSettingsQueryAtom = atomWithQuery(() => ({
+  queryKey: APP_SETTINGS_QUERY_KEY,
+  queryFn: async (): Promise<AppSettings> => (await api.settings.getSettings()).data,
+}));
+
+export const createLauncherProjectMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: LauncherProjectCreateRequest): Promise<LauncherProject> =>
+    api.launcher.createLauncherProject(body).then((r) => r.data),
+  onSuccess: () =>
+    get(queryClientAtom).invalidateQueries({ queryKey: LAUNCHER_PROJECTS_QUERY_KEY }),
+}));
+
+export const updateSettingsMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: AppSettingsUpdateRequest): Promise<AppSettings> =>
+    api.settings.updateSettings(body).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
+    // A new root points at a different set of project folders.
+    queryClient.invalidateQueries({ queryKey: LAUNCHER_PROJECTS_QUERY_KEY });
+  },
+}));
+
+export const launchSessionMutationAtom = atomWithMutation(() => ({
+  mutationFn: (body: LaunchRequest): Promise<SessionLaunchRead> =>
+    api.launcher.launchSession(body).then((r) => r.data),
+}));
 
 function sessionQueryKey(sessionId: string): [string, string] {
   return ['codingSession', sessionId];

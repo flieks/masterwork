@@ -1604,6 +1604,111 @@
                 }
             }
         },
+        "/api/v1/launcher/projects": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Launcher Projects",
+                "operationId": "listLauncherProjects",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/LauncherProject"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listlauncherprojects"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Create Launcher Project",
+                "operationId": "createLauncherProject",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LauncherProjectCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LauncherProject"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launch": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Launch Session",
+                "operationId": "launchSession",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LaunchRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SessionLaunchRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/observability/integrations": {
             "get": {
                 "tags": [
@@ -2180,6 +2285,66 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/Proposal"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings": {
+            "get": {
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Get Settings",
+                "operationId": "getSettings",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AppSettings"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Update Settings",
+                "operationId": "updateSettings",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AppSettingsUpdateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AppSettings"
                                 }
                             }
                         }
@@ -2972,6 +3137,38 @@
                 ],
                 "title": "AgentLane",
                 "description": "One horizontal lane of the run's timeline."
+            },
+            "AppSettings": {
+                "properties": {
+                    "projects_root": {
+                        "type": "string",
+                        "title": "Projects Root",
+                        "description": "Absolute folder all code projects live under."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "projects_root"
+                ],
+                "title": "AppSettings"
+            },
+            "AppSettingsUpdateRequest": {
+                "properties": {
+                    "projects_root": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Projects Root",
+                        "description": "New projects root; omitted or null leaves it unchanged."
+                    }
+                },
+                "type": "object",
+                "title": "AppSettingsUpdateRequest"
             },
             "AssetCall": {
                 "properties": {
@@ -5534,6 +5731,83 @@
                 ],
                 "title": "InstructionsUpdateRequest"
             },
+            "LaunchMode": {
+                "type": "string",
+                "enum": [
+                    "autonomous",
+                    "interview"
+                ],
+                "title": "LaunchMode"
+            },
+            "LaunchRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Request Text",
+                        "description": "What to build — handed to the factory as-is."
+                    },
+                    "mode": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LaunchMode"
+                            }
+                        ],
+                        "description": "Both modes launch the same unattended run today.",
+                        "default": "autonomous"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "request_text"
+                ],
+                "title": "LaunchRequest"
+            },
+            "LauncherProject": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path under projects_root."
+                    },
+                    "is_git_repo": {
+                        "type": "boolean",
+                        "title": "Is Git Repo"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "path",
+                    "is_git_repo"
+                ],
+                "title": "LauncherProject"
+            },
+            "LauncherProjectCreateRequest": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Folder name — no path separators or traversal."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "LauncherProjectCreateRequest",
+                "description": "Named apart from the unrelated `ProjectCreateRequest` (features/projects) — this creates a plain folder under projects_root, not a masterwork Project."
+            },
             "MessageRole": {
                 "type": "string",
                 "enum": [
@@ -6894,6 +7168,57 @@
                     "scenario"
                 ],
                 "title": "ScenarioGenerateResponse"
+            },
+            "SessionLaunchRead": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path"
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "mode": {
+                        "$ref": "#/components/schemas/LaunchMode"
+                    },
+                    "launched_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Launched At"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "True once the subprocess was spawned."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "project_path",
+                    "request_text",
+                    "mode",
+                    "launched_at",
+                    "pid",
+                    "launched"
+                ],
+                "title": "SessionLaunchRead"
             },
             "Simulation": {
                 "properties": {
