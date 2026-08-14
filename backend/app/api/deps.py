@@ -8,14 +8,17 @@ real CLI.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.db.models.work import WorkSource
 from app.db.session import AsyncSessionLocal, get_db
 from app.observability.base import Integration
 from app.observability.registry import build_integrations
+from app.providers.azuredevops import AzureDevOpsClient
 from app.providers.base import Provider
 from app.providers.registry import build_providers
 from app.services.claude_runner import ClaudeRunner
@@ -29,7 +32,13 @@ __all__ = [
     "get_light_runner",
     "get_simulation_runner",
     "get_session_factory",
+    "get_devops_client_factory",
+    "DevOpsClientFactory",
 ]
+
+# Short alias — the full Callable[[WorkSource], AzureDevOpsClient] spelling is
+# repeated at every call site that injects this dependency.
+DevOpsClientFactory = Callable[[WorkSource], AzureDevOpsClient]
 
 
 def get_providers() -> list[Provider]:
@@ -78,3 +87,18 @@ def get_simulation_runner() -> ClaudeRunner:
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     """Session factory for background tasks that outlive the request session."""
     return AsyncSessionLocal
+
+
+def get_devops_client_factory() -> DevOpsClientFactory:
+    """Builds a client for one work source; tests override this to inject a
+    MockTransport so no test ever reaches the network."""
+
+    def _factory(source: WorkSource) -> AzureDevOpsClient:
+        return AzureDevOpsClient(
+            org_url=source.org_url,
+            project=source.project,
+            secret_ref=source.secret_ref,
+            team=source.team,
+        )
+
+    return _factory

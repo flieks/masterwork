@@ -1,0 +1,61 @@
+import { atomWithMutation, atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
+import { api, WORK_SYNC_TIMEOUT_MS } from '~/api/client';
+import type {
+  WorkItem,
+  WorkItemStartResponse,
+  WorkSource,
+  WorkSourceCreateRequest,
+  WorkSyncResult,
+} from '~/api/generated';
+
+export const WORK_SOURCES_QUERY_KEY = ['workSources'];
+export const WORK_ITEMS_QUERY_KEY = ['workItems'];
+
+/** Env var naming the DevOps PAT. The backend only ever stores this name. */
+export const DEFAULT_SECRET_REF = 'AZURE_DEVOPS_PAT';
+
+export const workSourcesQueryAtom = atomWithQuery(() => ({
+  queryKey: WORK_SOURCES_QUERY_KEY,
+  queryFn: async (): Promise<WorkSource[]> => (await api.work.listWorkSources()).data,
+}));
+
+export const workItemsQueryAtom = atomWithQuery(() => ({
+  queryKey: WORK_ITEMS_QUERY_KEY,
+  queryFn: async (): Promise<WorkItem[]> => (await api.work.listWorkItems()).data,
+}));
+
+export const createWorkSourceMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: WorkSourceCreateRequest): Promise<WorkSource> =>
+    api.work.createWorkSource(body).then((r) => r.data),
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: WORK_SOURCES_QUERY_KEY }),
+}));
+
+export const syncWorkSourceMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (sourceId: string): Promise<WorkSyncResult> =>
+    api.work.syncWorkSource(sourceId, { timeout: WORK_SYNC_TIMEOUT_MS }).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: WORK_ITEMS_QUERY_KEY });
+    // The sync moved the source's last_sync_at too.
+    queryClient.invalidateQueries({ queryKey: WORK_SOURCES_QUERY_KEY });
+  },
+}));
+
+export const startWorkItemMutationAtom = atomWithMutation(() => ({
+  mutationFn: (itemId: number): Promise<WorkItemStartResponse> =>
+    api.work.startWorkItem(itemId).then((r) => r.data),
+}));
+
+/** "myorg / widgets" — the source as a human reads it, from its org URL. */
+export function sourceLabel(source: WorkSource): string {
+  const org = source.org_url.replace(/\/+$/, '').split('/').pop() || source.org_url;
+  return `${org} / ${source.project}`;
+}
+
+/**
+ * True for a plain http(s) link. Item URLs come from DevOps, so they are
+ * untrusted input: anything else (`javascript:`…) is rendered as text.
+ */
+export function isHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated
 
+from dotenv import dotenv_values
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -80,3 +82,21 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def read_secret(name: str) -> str | None:
+    """The named env var's value, or None. `secret_ref` (e.g. a work source's
+    PAT variable name) is dynamic and so can't be a Settings field — this
+    keeps config.py the only module that touches the environment regardless.
+
+    Falls back to backend/.env because the launchd-run backend never sees
+    shell env. Anchored to this file, not cwd — launchd's WorkingDirectory
+    is the repo root.
+    """
+    value = os.environ.get(name)
+    if not value:
+        value = dotenv_values(_ENV_PATH).get(name)
+    return value or None
+
+
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"

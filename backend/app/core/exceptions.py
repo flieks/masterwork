@@ -150,3 +150,21 @@ class NoLinkedAssetsError(DomainError):
     """A simulation/scenario was requested for a project with no linked assets."""
 
     status_code = 409
+
+
+class WorkSourceNotFoundError(DomainError):
+    status_code = 404
+
+
+class WorkItemNotFoundError(DomainError):
+    status_code = 404
+
+
+class InvalidWorkSourceError(DomainError):
+    status_code = 400
+
+
+class WorkSyncError(DomainError):
+    """The DevOps call failed, or the PAT env var named by secret_ref is unset."""
+
+    status_code = 502

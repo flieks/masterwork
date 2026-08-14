@@ -2547,6 +2547,227 @@
                     }
                 }
             }
+        },
+        "/api/v1/work/sources": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Work Sources",
+                "operationId": "listWorkSources",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkSource"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listworksources"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Create Work Source",
+                "operationId": "createWorkSource",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/WorkSourceCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkSource"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/items": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Work Items",
+                "operationId": "listWorkItems",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Scope to one registered source.",
+                            "title": "Source Id"
+                        },
+                        "description": "Scope to one registered source."
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Scope to one DevOps state, e.g. Active.",
+                            "title": "State"
+                        },
+                        "description": "Scope to one DevOps state, e.g. Active."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkItem"
+                                    },
+                                    "title": "Response Listworkitems"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/sources/{source_id}/sync": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Sync Work Source",
+                "operationId": "syncWorkSource",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Source Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkSyncResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/items/{item_id}/start": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Start Work Item",
+                "operationId": "startWorkItem",
+                "parameters": [
+                    {
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Item Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkItemStartResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -7229,6 +7450,314 @@
                     "type"
                 ],
                 "title": "ValidationError"
+            },
+            "WorkItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "title": "Source Id"
+                    },
+                    "external_id": {
+                        "type": "integer",
+                        "title": "External Id"
+                    },
+                    "external_url": {
+                        "type": "string",
+                        "title": "External Url"
+                    },
+                    "item_type": {
+                        "type": "string",
+                        "title": "Item Type"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "description_md": {
+                        "type": "string",
+                        "title": "Description Md"
+                    },
+                    "acceptance_md": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Acceptance Md"
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State"
+                    },
+                    "iteration": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Iteration"
+                    },
+                    "priority": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Priority"
+                    },
+                    "tags": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tags"
+                    },
+                    "external_changed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "External Changed At"
+                    },
+                    "synced_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Synced At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "source_id",
+                    "external_id",
+                    "external_url",
+                    "item_type",
+                    "title",
+                    "description_md",
+                    "acceptance_md",
+                    "state",
+                    "iteration",
+                    "priority",
+                    "tags",
+                    "external_changed_at",
+                    "synced_at"
+                ],
+                "title": "WorkItem"
+            },
+            "WorkItemStartResponse": {
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "title": "Prompt",
+                        "description": "The assembled session prompt."
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "Always false today \u2014 no reusable session-launch path exists yet."
+                    },
+                    "session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Session Id",
+                        "description": "Null until a launched session is linked."
+                    },
+                    "link_id": {
+                        "type": "integer",
+                        "title": "Link Id",
+                        "description": "The work_item_sessions row id."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "prompt",
+                    "launched",
+                    "session_id",
+                    "link_id"
+                ],
+                "title": "WorkItemStartResponse"
+            },
+            "WorkSource": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Work source uuid."
+                    },
+                    "provider": {
+                        "type": "string",
+                        "title": "Provider",
+                        "description": "Always \"azuredevops\" today."
+                    },
+                    "org_url": {
+                        "type": "string",
+                        "title": "Org Url"
+                    },
+                    "project": {
+                        "type": "string",
+                        "title": "Project"
+                    },
+                    "team": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Team"
+                    },
+                    "query_wiql": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Query Wiql",
+                        "description": "Overrides the default assigned-to-me WIQL when set."
+                    },
+                    "secret_ref": {
+                        "type": "string",
+                        "title": "Secret Ref",
+                        "description": "Env var naming the PAT \u2014 never the PAT itself."
+                    },
+                    "last_sync_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Sync At"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "provider",
+                    "org_url",
+                    "project",
+                    "team",
+                    "query_wiql",
+                    "secret_ref",
+                    "last_sync_at",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "WorkSource"
+            },
+            "WorkSourceCreateRequest": {
+                "properties": {
+                    "org_url": {
+                        "type": "string",
+                        "title": "Org Url",
+                        "description": "e.g. https://dev.azure.com/myorg"
+                    },
+                    "project": {
+                        "type": "string",
+                        "title": "Project"
+                    },
+                    "team": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Team"
+                    },
+                    "query_wiql": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Query Wiql",
+                        "description": "Overrides the default assigned-to-me WIQL."
+                    },
+                    "secret_ref": {
+                        "type": "string",
+                        "title": "Secret Ref",
+                        "description": "Env var naming the PAT.",
+                        "default": "AZURE_DEVOPS_PAT"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "org_url",
+                    "project"
+                ],
+                "title": "WorkSourceCreateRequest"
+            },
+            "WorkSyncResult": {
+                "properties": {
+                    "fetched": {
+                        "type": "integer",
+                        "title": "Fetched",
+                        "description": "Items returned by the WIQL + batch fetch."
+                    },
+                    "inserted": {
+                        "type": "integer",
+                        "title": "Inserted"
+                    },
+                    "updated": {
+                        "type": "integer",
+                        "title": "Updated"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "fetched",
+                    "inserted",
+                    "updated"
+                ],
+                "title": "WorkSyncResult"
             }
         }
     }

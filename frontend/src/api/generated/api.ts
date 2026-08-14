@@ -3437,6 +3437,257 @@ export interface ValidationError {
  */
 export interface ValidationErrorLocInner {
 }
+/**
+ * 
+ * @export
+ * @interface WorkItem
+ */
+export interface WorkItem {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'source_id': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'external_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'external_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'item_type': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'title': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'description_md': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'acceptance_md': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'state': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'iteration': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'priority': number | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof WorkItem
+     */
+    'tags': Array<string> | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'external_changed_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'synced_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkItemStartResponse
+ */
+export interface WorkItemStartResponse {
+    /**
+     * The assembled session prompt.
+     * @type {string}
+     * @memberof WorkItemStartResponse
+     */
+    'prompt': string;
+    /**
+     * Always false today — no reusable session-launch path exists yet.
+     * @type {boolean}
+     * @memberof WorkItemStartResponse
+     */
+    'launched': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItemStartResponse
+     */
+    'session_id': string | null;
+    /**
+     * The work_item_sessions row id.
+     * @type {number}
+     * @memberof WorkItemStartResponse
+     */
+    'link_id': number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkSource
+ */
+export interface WorkSource {
+    /**
+     * Work source uuid.
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'id': string;
+    /**
+     * Always \"azuredevops\" today.
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'provider': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'org_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'project': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'team': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'query_wiql': string | null;
+    /**
+     * Env var naming the PAT — never the PAT itself.
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'secret_ref': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'last_sync_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'created_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'updated_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkSourceCreateRequest
+ */
+export interface WorkSourceCreateRequest {
+    /**
+     * e.g. https://dev.azure.com/myorg
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'org_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'project': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'team'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'query_wiql'?: string | null;
+    /**
+     * Env var naming the PAT.
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'secret_ref'?: string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkSyncResult
+ */
+export interface WorkSyncResult {
+    /**
+     * Items returned by the WIQL + batch fetch.
+     * @type {number}
+     * @memberof WorkSyncResult
+     */
+    'fetched': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkSyncResult
+     */
+    'inserted': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkSyncResult
+     */
+    'updated': number;
+}
 
 /**
  * AssetsApi - axios parameter creator
@@ -7556,6 +7807,394 @@ export class SimulationsApi extends BaseAPI {
      */
     public stopSimulationAutopilot(runId: string, options?: RawAxiosRequestConfig) {
         return SimulationsApiFp(this.configuration).stopSimulationAutopilot(runId, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * WorkApi - axios parameter creator
+ * @export
+ */
+export const WorkApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Create Work Source
+         * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createWorkSource: async (workSourceCreateRequest: WorkSourceCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'workSourceCreateRequest' is not null or undefined
+            assertParamExists('createWorkSource', 'workSourceCreateRequest', workSourceCreateRequest)
+            const localVarPath = `/api/v1/work/sources`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workSourceCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Work Items
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkItems: async (sourceId?: string | null, state?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/work/items`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (sourceId !== undefined) {
+                localVarQueryParameter['source_id'] = sourceId;
+            }
+
+            if (state !== undefined) {
+                localVarQueryParameter['state'] = state;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Work Sources
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkSources: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/work/sources`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Start Work Item
+         * @param {number} itemId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startWorkItem: async (itemId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'itemId' is not null or undefined
+            assertParamExists('startWorkItem', 'itemId', itemId)
+            const localVarPath = `/api/v1/work/items/{item_id}/start`
+                .replace(`{${"item_id"}}`, encodeURIComponent(String(itemId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Sync Work Source
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncWorkSource: async (sourceId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sourceId' is not null or undefined
+            assertParamExists('syncWorkSource', 'sourceId', sourceId)
+            const localVarPath = `/api/v1/work/sources/{source_id}/sync`
+                .replace(`{${"source_id"}}`, encodeURIComponent(String(sourceId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * WorkApi - functional programming interface
+ * @export
+ */
+export const WorkApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = WorkApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Create Work Source
+         * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createWorkSource(workSourceCreateRequest: WorkSourceCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkSource>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createWorkSource(workSourceCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.createWorkSource']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Work Items
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listWorkItems(sourceId?: string | null, state?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkItem>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(sourceId, state, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listWorkItems']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Work Sources
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listWorkSources(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkSource>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkSources(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listWorkSources']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Start Work Item
+         * @param {number} itemId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async startWorkItem(itemId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemStartResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.startWorkItem(itemId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.startWorkItem']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Sync Work Source
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async syncWorkSource(sourceId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkSyncResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.syncWorkSource(sourceId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.syncWorkSource']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * WorkApi - factory interface
+ * @export
+ */
+export const WorkApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = WorkApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Create Work Source
+         * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createWorkSource(workSourceCreateRequest: WorkSourceCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkSource> {
+            return localVarFp.createWorkSource(workSourceCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Work Items
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkItems(sourceId?: string | null, state?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkItem>> {
+            return localVarFp.listWorkItems(sourceId, state, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Work Sources
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkSources(options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkSource>> {
+            return localVarFp.listWorkSources(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Start Work Item
+         * @param {number} itemId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startWorkItem(itemId: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemStartResponse> {
+            return localVarFp.startWorkItem(itemId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Sync Work Source
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncWorkSource(sourceId: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkSyncResult> {
+            return localVarFp.syncWorkSource(sourceId, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * WorkApi - object-oriented interface
+ * @export
+ * @class WorkApi
+ * @extends {BaseAPI}
+ */
+export class WorkApi extends BaseAPI {
+    /**
+     * 
+     * @summary Create Work Source
+     * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public createWorkSource(workSourceCreateRequest: WorkSourceCreateRequest, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).createWorkSource(workSourceCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Work Items
+     * @param {string | null} [sourceId] Scope to one registered source.
+     * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listWorkItems(sourceId?: string | null, state?: string | null, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listWorkItems(sourceId, state, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Work Sources
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listWorkSources(options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listWorkSources(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Start Work Item
+     * @param {number} itemId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public startWorkItem(itemId: number, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).startWorkItem(itemId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Sync Work Source
+     * @param {string} sourceId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public syncWorkSource(sourceId: string, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).syncWorkSource(sourceId, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

@@ -2151,3 +2151,107 @@ ends at the first quote or newline and is stored at 120 characters.
   bytes only exist in the transcript. The request block renders `image_ref`
   nodes if it ever finds any, so this becomes a forwarder change alone.
 - **DB**: unchanged. No migration — `title_source` is already a free string.
+
+---
+
+# API Contract v1.24 — Azure DevOps work items, read-only inbound (FROZEN additions)
+
+Additive on top of v1.23. Masterwork can now mirror the Azure DevOps work items
+assigned to the user. This is **read-only inbound only**: the DevOps client
+(`app/providers/azuredevops.py`) has no PATCH/PUT/DELETE/comment-post method at
+all, and outbound stays a deliberate stub
+(`app/services/work_outbound.perform` always raises `NotImplementedError`).
+The PAT is never stored — `WorkSource.secret_ref` only names the environment
+variable it is read from at call time.
+
+## New schemas
+
+```
+WorkSource {
+  id: string                    // uuid
+  provider: string               // "azuredevops" today
+  org_url: string
+  project: string
+  team: string | null
+  query_wiql: string | null      // overrides the default assigned-to-me WIQL when set
+  secret_ref: string             // env var naming the PAT — never the PAT itself
+  last_sync_at: string | null
+  created_at: string
+  updated_at: string
+}
+WorkSourceCreateRequest {
+  org_url: string                // must match ^https://dev\.azure\.com/[A-Za-z0-9._~-]+/?$
+  project: string
+  team?: string | null
+  query_wiql?: string | null
+  secret_ref?: string            // default "AZURE_DEVOPS_PAT"
+}
+WorkItem {
+  id: number
+  source_id: string
+  external_id: number            // DevOps work item id
+  external_url: string           // {org_url}/{project}/_workitems/edit/{external_id}
+  item_type: string              // System.WorkItemType, e.g. "Bug"
+  title: string
+  description_md: string         // System.Description, HTML converted to markdown
+  acceptance_md: string | null   // Microsoft.VSTS.Common.AcceptanceCriteria, converted; null if absent
+  state: string
+  iteration: string | null
+  priority: number | null
+  tags: string[] | null
+  external_changed_at: string
+  synced_at: string
+}
+WorkSyncResult { fetched: number, inserted: number, updated: number }
+WorkItemStartResponse {
+  prompt: string                 // the assembled session prompt
+  launched: boolean               // always false today — see Behavior
+  session_id: string | null      // null until a launched session is linked
+  link_id: number                // the work_item_sessions row id
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/work/sources` | `listWorkSources` | — | `WorkSource[]` (created_at desc) |
+| POST `/api/v1/work/sources` | `createWorkSource` | `WorkSourceCreateRequest` | `WorkSource` (201; 400 `InvalidWorkSourceError` on a non-DevOps `org_url`) |
+| GET `/api/v1/work/items?source_id=&state=` | `listWorkItems` | query: both optional | `WorkItem[]` |
+| POST `/api/v1/work/sources/{source_id}/sync` | `syncWorkSource` | — | `WorkSyncResult` (404 unknown source; 502 `WorkSyncError` on a DevOps failure or an unset PAT) |
+| POST `/api/v1/work/items/{item_id}/start` | `startWorkItem` | — | `WorkItemStartResponse` (404 unknown item) |
+
+## Behavior
+
+- **Sync**: runs `source.query_wiql`, or the default
+  `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND
+  [System.State] NOT IN ('Closed','Removed','Done') ORDER BY
+  [System.ChangedDate] DESC` when unset, against the DevOps WIQL endpoint;
+  batch-fetches the returned ids in chunks of 200
+  (`Microsoft.VSTS.Common.AcceptanceCriteria`, `System.Description`, and seven
+  other fields); converts `System.Description` and
+  `Microsoft.VSTS.Common.AcceptanceCriteria` from HTML to markdown with
+  `markdownify`; upserts one `work_items` row per `(source_id, external_id)`
+  (select-then-insert-or-update, not a dialect-specific `ON CONFLICT`); stamps
+  `work_sources.last_sync_at`. The whole DevOps payload is stored unchanged in
+  `raw` — untrusted external data, rendered as markdown, never executed.
+- **Session launch is deferred.** This backend has no reusable path that
+  launches a *write-capable* coding session (`claude_runner` is deliberately
+  read-only; nothing else creates a `coding_sessions` row directly), so
+  `startWorkItem` assembles the prompt (title line, `external_url`, `## Story`
+  + `description_md`, then `## Acceptance criteria` + `acceptance_md` — that
+  section omitted entirely when acceptance criteria is absent or empty) and
+  returns it with `launched: false`. It writes a `work_item_sessions` row
+  (`kind: "spawned"`, `session_id: null`) so the request is on record; nothing
+  in v1 ever fills in that `session_id`.
+- **No write path exists.** `AzureDevOpsClient` (in `app/providers/`, not a
+  `Provider` — it is not registered in `build_providers`) exposes only
+  `query_work_item_ids`, `get_work_items_batch`, `list_active_prs`, and
+  `list_pr_threads`; the last two are implemented and unit-tested but unused
+  by any endpoint in v1. `work_outbound.perform` describes a
+  `ProposedOutboundAction` (state change / comment / PR link) and always
+  raises before doing anything.
+- **DB**: three new tables — `work_sources`, `work_items` (unique on
+  `(source_id, external_id)`, indexed on `(source_id, state)`),
+  `work_item_sessions` (`session_id` nullable, FK `coding_sessions.id` ON
+  DELETE CASCADE). Alembic migration `0018_work_items`.

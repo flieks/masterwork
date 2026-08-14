@@ -15,3 +15,4 @@ from app.db.models import coding as _coding  # noqa: E402,F401
 from app.db.models import diagram as _diagram  # noqa: E402,F401
 from app.db.models import project as _project  # noqa: E402,F401
 from app.db.models import simulation as _simulation  # noqa: E402,F401
+from app.db.models import work as _work  # noqa: E402,F401

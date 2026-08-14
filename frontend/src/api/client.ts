@@ -8,6 +8,7 @@ import {
   ProjectsApi,
   ProposalsApi,
   SimulationsApi,
+  WorkApi,
   Configuration,
 } from './generated';
 
@@ -24,6 +25,9 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export const CHAT_TIMEOUT_MS = 0;
 // Diagram generation is the same one-shot claude -p round trip — no timeout.
 export const GENERATE_TIMEOUT_MS = 0;
+// A work sync is a WIQL query plus batched item reads against Azure DevOps —
+// routinely past the 30s default, but bounded, unlike the claude -p calls.
+export const WORK_SYNC_TIMEOUT_MS = 120_000;
 
 /** Shared axios instance. baseURL is the origin; `/api/v1` is baked into paths. */
 export const http: AxiosInstance = axios.create({
@@ -43,6 +47,7 @@ export const api = {
   projects: new ProjectsApi(configuration, '', http),
   proposals: new ProposalsApi(configuration, '', http),
   simulations: new SimulationsApi(configuration, '', http),
+  work: new WorkApi(configuration, '', http),
 };
 
 /** True for a 404 from the backend — used to treat "not generated yet" as empty. */
