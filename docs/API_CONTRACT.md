@@ -2502,3 +2502,32 @@ DirectoryListing {
   settings and launcher-projects queries on success.
 - **DB**: none. **Migrations**: none — the alembic head stays
   `0022_session_launch_run_id`.
+
+# API Contract v1.28 — folder picker home shortcut
+
+Additive on top of v1.27. `DirectoryListing` gains one required field so the
+picker can offer a Home shortcut that points at the *backend's* home directory
+— the browser has no way to learn it, and on a remote backend the browser's own
+home would be the wrong machine's.
+
+## Changed schema
+
+```
+DirectoryListing {
+  path: string                  // unchanged
+  parent?: string | null        // unchanged
+  entries?: DirectoryEntry[]    // unchanged
+  home: string                  // NEW, required — absolute path of the home
+                                //      directory the backend process runs as
+}
+```
+
+## Behavior
+
+- **`home` is `Path.home()` of the backend process**, resolved per request. It
+  is a navigation hint only: `browse` neither defaults to it nor treats it as a
+  boundary, and passing it back as `path` is an ordinary browse.
+- **Required, not optional.** Every `browse` response carries it, so the client
+  never has to guess a home directory from path segments.
+- **DB**: none. **Migrations**: none — the alembic head stays
+  `0022_session_launch_run_id`.

@@ -108,3 +108,4 @@ class DirectoryListing(BaseModel):
     entries: list[DirectoryEntry] = Field(
         default_factory=list, description="Non-hidden subdirectories, sorted by name."
     )
+    home: str = Field(..., description="Absolute path of the home directory the backend runs as.")

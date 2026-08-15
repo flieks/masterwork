@@ -5093,11 +5093,17 @@
                         "type": "array",
                         "title": "Entries",
                         "description": "Non-hidden subdirectories, sorted by name."
+                    },
+                    "home": {
+                        "type": "string",
+                        "title": "Home",
+                        "description": "Absolute path of the home directory the backend runs as."
                     }
                 },
                 "type": "object",
                 "required": [
-                    "path"
+                    "path",
+                    "home"
                 ],
                 "title": "DirectoryListing"
             },

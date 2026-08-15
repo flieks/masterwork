@@ -105,7 +105,10 @@ async def browse(db: AsyncSession, path: str | None) -> schemas.DirectoryListing
                 continue  # unreadable entry — skip it, don't fail the whole listing
 
     return schemas.DirectoryListing(
-        path=str(target), parent=str(parent) if parent is not None else None, entries=entries
+        path=str(target),
+        parent=str(parent) if parent is not None else None,
+        entries=entries,
+        home=str(Path.home()),
     )
 
 

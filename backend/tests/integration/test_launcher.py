@@ -205,6 +205,15 @@ async def test_browse_descends_into_a_subdirectory(
     assert body["parent"] == str(seeded_projects)
 
 
+async def test_browse_reports_the_backend_home_directory(
+    client: AsyncClient, seeded_projects: Path
+) -> None:
+    """The picker's Home shortcut points at the backend's home, not the browser's."""
+    r = await client.get("/api/v1/launcher/browse", params={"path": str(seeded_projects)})
+    assert r.status_code == 200
+    assert r.json()["home"] == str(Path.home())
+
+
 async def test_browse_filesystem_root_has_no_parent(client: AsyncClient) -> None:
     r = await client.get("/api/v1/launcher/browse", params={"path": "/"})
     assert r.status_code == 200

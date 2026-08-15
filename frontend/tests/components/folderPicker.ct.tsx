@@ -31,7 +31,7 @@ async function mockFolderPicker(
   page: Page,
   root: string,
   tree: Record<string, TreeNode>,
-  opts: { failOnce?: string } = {},
+  opts: { failOnce?: string; home?: string } = {},
 ) {
   const patchCalls: unknown[] = [];
   const browseCalls: string[] = [];
@@ -69,7 +69,12 @@ async function mockFolderPicker(
       }
       const node = tree[path];
       if (!node) throw new Error(`unexpected browse path in test: ${path}`);
-      await json(route, 200, { path, parent: node.parent, entries: node.entries });
+      await json(route, 200, {
+        path,
+        parent: node.parent,
+        entries: node.entries,
+        home: opts.home ?? '/Users/nobody',
+      });
       return;
     }
 
@@ -182,4 +187,35 @@ test('a failed browse renders the inline error, and Retry re-issues the request'
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect.poll(() => browseCalls.length).toBe(2);
   await expect(page.getByText('No subfolders here.')).toBeVisible();
+});
+
+test('the sidebar jumps to the home directory the server reported, and Cancel saves nothing', async ({
+  mount,
+  page,
+}) => {
+  const home = '/Users/side-test';
+  const root = `${home}/Projects`;
+  const tree: Record<string, TreeNode> = {
+    [root]: { parent: home, entries: [{ name: 'alpha', path: `${root}/alpha` }] },
+    [home]: { parent: '/Users', entries: [{ name: 'Projects', path: root }] },
+  };
+  const { patchCalls, browseCalls } = await mockFolderPicker(page, root, tree, { home });
+
+  await mount(
+    <TestProviders>
+      <LaunchSessionDialog open onOpenChange={() => {}} />
+    </TestProviders>,
+  );
+
+  await page.getByRole('button', { name: 'Browse' }).click();
+  await expect(page.getByRole('button', { name: 'alpha', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect.poll(() => browseCalls).toContain(home);
+  await expect(page.getByRole('button', { name: 'Projects', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('button', { name: 'Use this folder' })).toHaveCount(0);
+  expect(patchCalls).toEqual([]);
+  await expect(page.getByLabel('Projects root')).toHaveValue(root);
 });

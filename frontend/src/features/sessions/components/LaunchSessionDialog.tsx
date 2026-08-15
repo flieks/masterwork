@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useAtom, useSetAtom } from 'jotai';
-import { AlertTriangle } from 'lucide-react';
+import { useAtom } from 'jotai';
+import { AlertTriangle, FolderOpen } from 'lucide-react';
 import type { LaunchMode } from '~/api/generated';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
@@ -16,12 +16,10 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import { apiErrorMessage } from '~/api/client';
-import { FolderPicker } from './FolderPicker';
+import { FolderPickerDialog } from '~/components/FolderPickerDialog';
 import {
   appSettingsQueryAtom,
-  browsePathAtom,
   createLauncherProjectMutationAtom,
-  folderBrowserOpenAtom,
   launchSessionMutationAtom,
   launcherProjectsQueryAtom,
   updateSettingsMutationAtom,
@@ -58,8 +56,7 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
   );
   const [{ mutateAsync: launchSession, isPending: isLaunching }] =
     useAtom(launchSessionMutationAtom);
-  const [folderBrowserOpen, setFolderBrowserOpen] = useAtom(folderBrowserOpenAtom);
-  const setBrowsePath = useSetAtom(browsePathAtom);
+  const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
 
   const [rootDraft, setRootDraft] = useState('');
   const [projectPath, setProjectPath] = useState('');
@@ -78,14 +75,15 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
     setRequestText('');
     setMode('autonomous');
     setFolderBrowserOpen(false);
-    setBrowsePath(null); // a reopened dialog starts browsing from projects_root again
   }
 
-  async function saveRoot() {
-    const trimmed = rootDraft.trim();
+  async function saveRoot(path?: string) {
+    const trimmed = (path ?? rootDraft).trim();
     if (!trimmed) return;
     try {
       await saveSettings({ projects_root: trimmed });
+      setRootDraft(trimmed);
+      setFolderBrowserOpen(false);
       toast.success('Projects root updated');
     } catch (err) {
       toast.error('Could not update the projects root', { description: apiErrorMessage(err) });
@@ -178,24 +176,23 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
                 >
                   {isSavingRoot ? 'Saving…' : 'Save'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setFolderBrowserOpen((prev) => !prev)}
-                >
-                  Browse
+                <Button type="button" variant="outline" onClick={() => setFolderBrowserOpen(true)}>
+                  <FolderOpen className="size-4" /> Browse
                 </Button>
               </div>
             )}
-            {folderBrowserOpen && (
-              <FolderPicker
-                onPicked={(path) => {
-                  setFolderBrowserOpen(false);
-                  setBrowsePath(null);
-                  setRootDraft(path);
-                }}
-              />
-            )}
+            <FolderPickerDialog
+              open={folderBrowserOpen}
+              onOpenChange={setFolderBrowserOpen}
+              initialPath={appSettings?.projects_root ?? null}
+              title="Choose the projects root"
+              description="Folders are listed from the machine running the backend, not from this browser."
+              shortcuts={
+                appSettings ? [{ label: 'Current root', path: appSettings.projects_root }] : []
+              }
+              isConfirming={isSavingRoot}
+              onConfirm={(path) => void saveRoot(path)}
+            />
           </div>
 
           <div className="space-y-1.5">

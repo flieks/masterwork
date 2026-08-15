@@ -1515,6 +1515,12 @@ export interface DirectoryListing {
      * @memberof DirectoryListing
      */
     'entries'?: Array<DirectoryEntry>;
+    /**
+     * Absolute path of the home directory the backend runs as.
+     * @type {string}
+     * @memberof DirectoryListing
+     */
+    'home': string;
 }
 /**
  * One envelope an agent returned, and whether the runner could read it.
