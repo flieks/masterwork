@@ -71,6 +71,30 @@ async def launch_session(
 
 
 @router.get(
+    "/launcher/runs",
+    response_model=list[schemas.FactoryRun],
+    operation_id="listFactoryRuns",
+)
+async def list_factory_runs(
+    db: AsyncSession = Depends(get_db),
+) -> list[schemas.FactoryRun]:
+    return await service.list_factory_runs(db)
+
+
+@router.post(
+    "/launcher/runs/resume",
+    response_model=schemas.FactoryRunResumeRead,
+    operation_id="resumeFactoryRun",
+)
+async def resume_factory_run(
+    body: schemas.FactoryRunResumeRequest,
+    db: AsyncSession = Depends(get_db),
+    resume_spawner: ResumeSpawner = Depends(get_resume_spawner),
+) -> schemas.FactoryRunResumeRead:
+    return await service.resume_run(db, body, resume_spawner)
+
+
+@router.get(
     "/launcher/launches",
     response_model=list[schemas.SessionLaunchListItem],
     operation_id="listSessionLaunches",

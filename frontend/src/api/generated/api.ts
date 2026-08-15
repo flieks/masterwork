@@ -1416,6 +1416,184 @@ export interface CodingSessionDetail {
     'gate_checks': Array<GateCheckItem>;
 }
 /**
+ * One turn\'s context usage, read back with its delta from the previous sample on the same lane.
+ * @export
+ * @interface ContextSample
+ */
+export interface ContextSample {
+    /**
+     *
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'seq': number;
+    /**
+     *
+     * @type {string}
+     * @memberof ContextSample
+     */
+    'message_id': string;
+    /**
+     *
+     * @type {string}
+     * @memberof ContextSample
+     */
+    'at': string;
+    /**
+     *
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'total_tokens': number;
+    /**
+     *
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'output_tokens': number | null;
+    /**
+     * Null for the first sample of its lane.
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'delta_tokens': number | null;
+    /**
+     * Derived: delta_tokens is not null and negative.
+     * @type {boolean}
+     * @memberof ContextSample
+     */
+    'is_truncation': boolean;
+    /**
+     * Tool results that landed since the previous sample.
+     * @type {Array<string>}
+     * @memberof ContextSample
+     */
+    'tools': Array<string>;
+}
+/**
+ * One context-usage sample as the forwarder reports it — one per deduped assistant message id, in transcript order.
+ * @export
+ * @interface ContextSampleIn
+ */
+export interface ContextSampleIn {
+    /**
+     * Position in the deduped stream, chronological across lanes.
+     * @type {number}
+     * @memberof ContextSampleIn
+     */
+    'seq': number;
+    /**
+     *
+     * @type {string}
+     * @memberof ContextSampleIn
+     */
+    'message_id': string;
+    /**
+     * Falls back to the event\'s own time when absent.
+     * @type {string}
+     * @memberof ContextSampleIn
+     */
+    'at'?: string | null;
+    /**
+     * input + cache_read + cache_creation tokens on this turn.
+     * @type {number}
+     * @memberof ContextSampleIn
+     */
+    'total_tokens': number;
+    /**
+     *
+     * @type {number}
+     * @memberof ContextSampleIn
+     */
+    'output_tokens'?: number | null;
+    /**
+     * Accepted but not stored — no column for it.
+     * @type {string}
+     * @memberof ContextSampleIn
+     */
+    'model'?: string | null;
+    /**
+     * True for a subagent turn.
+     * @type {boolean}
+     * @memberof ContextSampleIn
+     */
+    'is_sidechain'?: boolean;
+    /**
+     * Tool results that landed in context since the previous sample.
+     * @type {Array<string>}
+     * @memberof ContextSampleIn
+     */
+    'tools'?: Array<string> | null;
+}
+/**
+ * The context-growth curve for one session — main lane and sidechain kept apart.
+ * @export
+ * @interface ContextSeries
+ */
+export interface ContextSeries {
+    /**
+     *
+     * @type {string}
+     * @memberof ContextSeries
+     */
+    'session_id': string;
+    /**
+     * The first main-lane sample\'s total — preamble plus first prompt.
+     * @type {number}
+     * @memberof ContextSeries
+     */
+    'baseline_tokens': number | null;
+    /**
+     * The highest main-lane total reached.
+     * @type {number}
+     * @memberof ContextSeries
+     */
+    'peak_tokens': number | null;
+    /**
+     * Main lane, ordered by seq.
+     * @type {Array<ContextSample>}
+     * @memberof ContextSeries
+     */
+    'samples': Array<ContextSample>;
+    /**
+     * Subagent turns, their own series — never interleaved with the main lane.
+     * @type {Array<ContextSample>}
+     * @memberof ContextSeries
+     */
+    'sidechain_samples': Array<ContextSample>;
+    /**
+     * Main-lane roll-up, summed delta descending then tool name.
+     * @type {Array<ContextToolCost>}
+     * @memberof ContextSeries
+     */
+    'tools': Array<ContextToolCost>;
+}
+/**
+ * One tool\'s share of a session\'s context growth, main lane only.
+ * @export
+ * @interface ContextToolCost
+ */
+export interface ContextToolCost {
+    /**
+     *
+     * @type {string}
+     * @memberof ContextToolCost
+     */
+    'tool': string;
+    /**
+     * Summed positive delta attributed to this tool.
+     * @type {number}
+     * @memberof ContextToolCost
+     */
+    'delta_tokens': number;
+    /**
+     * Samples this tool appeared in.
+     * @type {number}
+     * @memberof ContextToolCost
+     */
+    'calls': number;
+}
+/**
  * A modification another project made to an asset this project links.
  * @export
  * @interface CrossChange
@@ -2023,6 +2201,12 @@ export interface HookEventRequest {
      * @memberof HookEventRequest
      */
     'gate'?: GateIn | null;
+    /**
+     * The context-usage curve since the previous Stop/SessionEnd.
+     * @type {Array<ContextSampleIn>}
+     * @memberof HookEventRequest
+     */
+    'context_samples'?: Array<ContextSampleIn> | null;
 }
 /**
  * 
@@ -5557,7 +5741,41 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
             }
 
 
-    
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary The context-growth curve: total tokens per turn, and which tool grew it
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readSessionContextSeries: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('readSessionContextSeries', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/coding-sessions/{session_id}/context`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -5759,6 +5977,19 @@ export const CodingApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listRunStats']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         *
+         * @summary The context-growth curve: total tokens per turn, and which tool grew it
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async readSessionContextSeries(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ContextSeries>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.readSessionContextSeries(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.readSessionContextSeries']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -5914,6 +6145,16 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          */
         listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunStat>> {
             return localVarFp.listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary The context-growth curve: total tokens per turn, and which tool grew it
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readSessionContextSeries(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<ContextSeries> {
+            return localVarFp.readSessionContextSeries(sessionId, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -6093,6 +6334,18 @@ export class CodingApi extends BaseAPI {
      */
     public listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig) {
         return CodingApiFp(this.configuration).listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary The context-growth curve: total tokens per turn, and which tool grew it
+     * @param {string} sessionId
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public readSessionContextSeries(sessionId: string, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).readSessionContextSeries(sessionId, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
@@ -6485,6 +6738,45 @@ export class InstructionsApi extends BaseAPI {
  * LauncherApi - axios parameter creator
  * @export
  */
+/**
+ * One run.json under a project's runs root — the factory's ground truth.
+ * @export
+ * @interface FactoryRun
+ */
+export interface FactoryRun {
+    'run_id': string;
+    'project_path': string;
+    'project_name': string;
+    'state': string;
+    'request_text': string;
+    'branch': string | null;
+    'reason'?: string | null;
+    'interview': boolean;
+    'accepted': boolean;
+    'started_at': string | null;
+    'ended_at': string | null;
+    'resumable': boolean;
+}
+/**
+ *
+ * @export
+ * @interface FactoryRunResumeRequest
+ */
+export interface FactoryRunResumeRequest {
+    'project_path': string;
+    'run_id': string;
+}
+/**
+ *
+ * @export
+ * @interface FactoryRunResumeRead
+ */
+export interface FactoryRunResumeRead {
+    'run_id': string;
+    'resumed': boolean;
+    'pid': number | null;
+}
+
 export const LauncherApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
@@ -6628,6 +6920,72 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        /**
+         *
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFactoryRuns: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/runs`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Resume Factory Run
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeFactoryRun: async (factoryRunResumeRequest: FactoryRunResumeRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'factoryRunResumeRequest' is not null or undefined
+            assertParamExists('resumeFactoryRun', 'factoryRunResumeRequest', factoryRunResumeRequest)
+            const localVarPath = `/api/v1/launcher/runs/resume`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunResumeRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         listSessionLaunches: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/launcher/launches`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
@@ -6793,6 +7151,31 @@ export const LauncherApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        /**
+         *
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listFactoryRuns(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FactoryRun>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listFactoryRuns(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listFactoryRuns']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary Resume Factory Run
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRunResumeRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.resumeFactoryRun(factoryRunResumeRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.resumeFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
         async listSessionLaunches(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SessionLaunchListItem>>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listSessionLaunches(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
@@ -6881,6 +7264,25 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        /**
+         *
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFactoryRuns(options?: RawAxiosRequestConfig): AxiosPromise<Array<FactoryRun>> {
+            return localVarFp.listFactoryRuns(options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Resume Factory Run
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRunResumeRead> {
+            return localVarFp.resumeFactoryRun(factoryRunResumeRequest, options).then((request) => request(axios, basePath));
+        },
         listSessionLaunches(options?: RawAxiosRequestConfig): AxiosPromise<Array<SessionLaunchListItem>> {
             return localVarFp.listSessionLaunches(options).then((request) => request(axios, basePath));
         },
@@ -6969,6 +7371,29 @@ export class LauncherApi extends BaseAPI {
      * @throws {RequiredError}
      * @memberof LauncherApi
      */
+    /**
+     *
+     * @summary List Factory Runs
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listFactoryRuns(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listFactoryRuns(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Resume Factory Run
+     * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).resumeFactoryRun(factoryRunResumeRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
     public listSessionLaunches(options?: RawAxiosRequestConfig) {
         return LauncherApiFp(this.configuration).listSessionLaunches(options).then((request) => request(this.axios, this.basePath));
     }

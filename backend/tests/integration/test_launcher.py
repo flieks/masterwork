@@ -596,3 +596,178 @@ async def test_an_autonomous_launch_reports_not_interview(
     assert body["state"] == "not_interview"
     assert body["run_id"] is None
     assert body["questions"] == []
+
+
+# --- factory runs: list + resume ------------------------------------------
+
+
+def _write_run_record(
+    runs_root: Path,
+    project_path: Path,
+    run_id: str,
+    *,
+    state: str = "stopped",
+    pid: int | None = None,
+    accepted: bool = False,
+    branch: str | None = "factory/x",
+    started: str = "2026-08-15T09:00:00+00:00",
+    reason: str | None = None,
+) -> Path:
+    run_dir = _run_dir(runs_root, project_path, run_id)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": run_id,
+        "repo": str(project_path),
+        "request": f"request for {run_id}",
+        "state": state,
+        "pid": pid,
+        "accepted": accepted,
+        "branch": branch,
+        "started": started,
+        "ended": None,
+        "reason": reason,
+        "interview": False,
+    }
+    (run_dir / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    return run_dir
+
+
+async def test_list_factory_runs_reads_every_projects_run_dirs(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    beta = seeded_projects / "beta"
+    _write_run_record(
+        runs_root, alpha, "aaaa1111",
+        state="stopped", reason="cost cap reached: $32 of $25 budget",
+        started="2026-08-15T09:40:00+00:00",
+    )
+    _write_run_record(
+        runs_root, beta, "bbbb2222",
+        state="finished", accepted=True, started="2026-08-14T08:00:00+00:00",
+    )
+
+    r = await client.get("/api/v1/launcher/runs")
+    assert r.status_code == 200
+    runs = r.json()
+    assert [run["run_id"] for run in runs] == ["aaaa1111", "bbbb2222"]  # newest first
+
+    stopped = runs[0]
+    assert stopped["project_name"] == "alpha"
+    assert stopped["state"] == "stopped"
+    assert stopped["reason"].startswith("cost cap reached")
+    assert stopped["resumable"] is True
+
+    accepted = runs[1]
+    assert accepted["resumable"] is False  # completed and accepted — nothing to resume
+
+
+async def test_run_with_live_pid_is_not_resumable_but_dead_pid_is(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "live1111", state="running", pid=os.getpid())
+    _write_run_record(runs_root, alpha, "dead2222", state="running", pid=99999999)
+
+    runs = {run["run_id"]: run for run in (await client.get("/api/v1/launcher/runs")).json()}
+    assert runs["live1111"]["resumable"] is False
+    assert runs["dead2222"]["resumable"] is True  # crashed mid-run: worth offering
+
+
+async def test_resume_run_spawns_the_detached_resume(
+    client: AsyncClient,
+    seeded_projects: Path,
+    runs_root: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "aaaa1111", state="stopped")
+
+    r = await client.post(
+        "/api/v1/launcher/runs/resume",
+        json={"project_path": str(alpha), "run_id": "aaaa1111"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"run_id": "aaaa1111", "resumed": True, "pid": 5000}
+
+    (call,) = fake_resume_spawner.calls
+    assert call["project_path"] == alpha
+    assert call["run_id"] == "aaaa1111"
+
+
+async def test_resume_unknown_run_404(
+    client: AsyncClient,
+    seeded_projects: Path,
+    runs_root: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    alpha = seeded_projects / "alpha"
+    r = await client.post(
+        "/api/v1/launcher/runs/resume",
+        json={"project_path": str(alpha), "run_id": "nope0000"},
+    )
+    assert r.status_code == 404
+    assert fake_resume_spawner.calls == []
+
+
+async def test_resume_refuses_live_and_accepted_runs_409(
+    client: AsyncClient,
+    seeded_projects: Path,
+    runs_root: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "live1111", state="running", pid=os.getpid())
+    _write_run_record(runs_root, alpha, "done2222", state="finished", accepted=True)
+
+    for run_id in ("live1111", "done2222"):
+        r = await client.post(
+            "/api/v1/launcher/runs/resume",
+            json={"project_path": str(alpha), "run_id": run_id},
+        )
+        assert r.status_code == 409
+    assert fake_resume_spawner.calls == []
+
+
+async def test_resume_rejects_a_project_outside_projects_root(
+    client: AsyncClient,
+    seeded_projects: Path,
+    runs_root: Path,
+    tmp_path: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    r = await client.post(
+        "/api/v1/launcher/runs/resume",
+        json={"project_path": str(outside), "run_id": "aaaa1111"},
+    )
+    assert r.status_code == 400
+    assert fake_resume_spawner.calls == []
+
+
+async def test_list_factory_runs_finds_a_project_nested_below_projects_root(
+    client: AsyncClient, projects_root: Path, runs_root: Path
+) -> None:
+    # projects_root/group/masterwork — deeper than the first level, like a
+    # project picked through the folder browser. run.json's "repo" names it.
+    nested = projects_root / "group" / "masterwork"
+    nested.mkdir(parents=True)
+    _write_run_record(runs_root, nested, "cccc3333", state="stopped")
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert [r["run_id"] for r in runs] == ["cccc3333"]
+    assert runs[0]["project_name"] == "masterwork"
+    assert runs[0]["project_path"] == str(nested)
+
+
+async def test_list_factory_runs_skips_repos_outside_projects_root(
+    client: AsyncClient, projects_root: Path, runs_root: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    _write_run_record(runs_root, outside, "dddd4444")
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs == []

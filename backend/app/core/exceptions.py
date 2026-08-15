@@ -221,3 +221,15 @@ class InvalidBrowsePathError(DomainError):
     """A browse path was relative, nonexistent, not a directory, or unreadable."""
 
     status_code = 400
+
+
+class RunNotFoundError(DomainError):
+    """No run.json for that run id under the project's runs root."""
+
+    status_code = 404
+
+
+class RunNotResumableError(DomainError):
+    """The run is still running, or completed accepted — nothing to resume."""
+
+    status_code = 409

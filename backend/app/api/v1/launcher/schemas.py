@@ -95,6 +95,37 @@ class SessionLaunchListItem(SessionLaunchRead):
     )
 
 
+class FactoryRun(BaseModel):
+    """One run.json under a project's runs root — the factory's ground truth,
+    independent of whether the run was launched from this UI or a terminal."""
+
+    run_id: str
+    project_path: str = Field(..., description="The project the run worked on.")
+    project_name: str
+    state: str = Field(..., description="run.json's raw state, e.g. running/stopped/finished.")
+    request_text: str
+    branch: str | None
+    reason: str | None = Field(None, description="Why the run ended, e.g. 'cost cap reached…'.")
+    interview: bool
+    accepted: bool
+    started_at: str | None
+    ended_at: str | None
+    resumable: bool = Field(
+        ..., description="True when a resume would be accepted: not live, not completed-accepted."
+    )
+
+
+class FactoryRunResumeRequest(BaseModel):
+    project_path: str = Field(..., description="Absolute path; must resolve under projects_root.")
+    run_id: str
+
+
+class FactoryRunResumeRead(BaseModel):
+    run_id: str
+    resumed: bool
+    pid: int | None
+
+
 class DirectoryEntry(BaseModel):
     name: str
     path: str = Field(..., description="Absolute path.")

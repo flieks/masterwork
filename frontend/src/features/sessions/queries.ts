@@ -8,6 +8,10 @@ import type {
   CodingEvent,
   CodingSession,
   CodingSessionDetail,
+  ContextSeries,
+  FactoryRun,
+  FactoryRunResumeRead,
+  FactoryRunResumeRequest,
   InterviewAnswersRequest,
   InterviewResumeRead,
   LaunchRequest,
@@ -93,6 +97,23 @@ export const sessionLaunchesQueryAtom = atomWithQuery(() => ({
     (await api.launcher.listSessionLaunches()).data,
   refetchInterval: 5000,
   refetchIntervalInBackground: true,
+}));
+
+const FACTORY_RUNS_QUERY_KEY = ['factoryRuns'];
+
+/** Every project's runs, read from the run dirs themselves — runs launched
+ * from a terminal show up too, not just the ones this UI started. */
+export const factoryRunsQueryAtom = atomWithQuery(() => ({
+  queryKey: FACTORY_RUNS_QUERY_KEY,
+  queryFn: async (): Promise<FactoryRun[]> => (await api.launcher.listFactoryRuns()).data,
+  refetchInterval: 5000,
+  refetchIntervalInBackground: true,
+}));
+
+export const resumeFactoryRunMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: FactoryRunResumeRequest): Promise<FactoryRunResumeRead> =>
+    api.launcher.resumeFactoryRun(body).then((r) => r.data),
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY }),
 }));
 
 export const submitInterviewAnswersMutationAtom = atomWithMutation((get) => ({
@@ -239,6 +260,32 @@ export const codingSessionQueryAtom = atomFamily((sessionId: string) =>
     refetchInterval: (query) => (query.state.data?.ended_at ? false : POLL_MS),
     refetchIntervalInBackground: true,
   })),
+);
+
+function contextQueryKey(sessionId: string): [string, string] {
+  return ['codingSessionContext', sessionId];
+}
+
+/**
+ * The context-growth series for one session. Same cache-driven poll as the
+ * event stream: stop once the session closes, since a closed run's transcript
+ * cannot grow another sample.
+ */
+export const sessionContextQueryAtom = atomFamily((sessionId: string) =>
+  atomWithQuery((get) => {
+    const queryClient = get(queryClientAtom);
+    return {
+      queryKey: contextQueryKey(sessionId),
+      queryFn: async (): Promise<ContextSeries> =>
+        (await api.coding.readSessionContextSeries(sessionId)).data,
+      enabled: sessionId.length > 0,
+      refetchInterval: () => {
+        const session = queryClient.getQueryData<CodingSession>(sessionQueryKey(sessionId));
+        return session?.ended_at ? false : POLL_MS;
+      },
+      refetchIntervalInBackground: true,
+    };
+  }),
 );
 
 /** Drain the cursor from `after` so a long history loads in one pass, not one page per poll. */

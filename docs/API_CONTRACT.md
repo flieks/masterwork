@@ -2531,3 +2531,179 @@ DirectoryListing {
   never has to guess a home directory from path segments.
 - **DB**: none. **Migrations**: none — the alembic head stays
   `0022_session_launch_run_id`.
+
+# API Contract v1.29 — context-growth series
+
+Additive on top of v1.28. Claude Code's transcript already carries one
+cumulative `usage` block per API response — every assistant turn says how big
+the context window was at that instant — and the forwarder used to throw all
+of it away except the final sum. It now keeps the shape of that curve: an
+ordered sample per turn, posted on the existing Stop/SessionEnd hook body,
+stored in a new reported table, and read back as a session detail panel.
+
+## New schemas
+
+```
+ContextSampleIn {                 // the hook's inbound shape, one per sample
+  seq: int                        // position in the deduped stream, chronological across lanes
+  message_id: string
+  at?: datetime | null            // falls back to the event's own time when absent
+  total_tokens: int                // input + cache_read + cache_creation
+  output_tokens?: int | null
+  model?: string | null           // accepted, not stored — no column for it
+  is_sidechain?: bool = false
+  tools?: string[] | null         // tool results that landed since the previous sample
+}
+
+ContextSample {                   // the read-back shape
+  seq: int
+  message_id: string
+  at: datetime
+  total_tokens: int
+  output_tokens: int | null
+  delta_tokens: int | null        // null for the first sample of its lane
+  is_truncation: bool             // derived: delta_tokens is not null and negative
+  tools: string[]
+}
+
+ContextToolCost {
+  tool: string
+  delta_tokens: int               // summed POSITIVE delta attributed to it
+  calls: int                      // samples this tool appeared in
+}
+
+ContextSeries {
+  session_id: string
+  baseline_tokens: int | null     // first main-lane sample's total — static preamble + first prompt
+  peak_tokens: int | null         // highest main-lane total reached
+  samples: ContextSample[]        // main lane, ordered by seq
+  sidechain_samples: ContextSample[]  // subagent turns, their own series
+  tools: ContextToolCost[]        // main-lane roll-up, summed delta descending then tool name
+}
+```
+
+`HookEventRequest` gains one optional field: `context_samples: ContextSampleIn[] | null`.
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-sessions/{session_id}/context` | `readSessionContextSeries` | — | `ContextSeries` (404 unknown session; 200 with empty arrays and null baseline/peak for a session with no samples) |
+
+## Behavior
+
+- **The forwarder walks the same transcript `transcript_usage()` reads**, and
+  dedupes by assistant message id the same way — one API response spans
+  several transcript lines carrying the same cumulative usage. The trap:
+  dedupe gates *sample creation* only, never `tool_use` collection, which runs
+  over every assistant line regardless — a tool named on the line after the
+  first (same message id) would otherwise be lost. `tools[]` on a sample is
+  resolved by `tool_use_id` against those blocks; an id that resolves to
+  nothing is dropped, never invented.
+- **Lanes never interleave.** `is_sidechain` is read straight off the
+  transcript's `isSidechain` flag, and the pending-tools accumulator is keyed
+  by it, so a subagent's `tool_result` can never land on the main lane's next
+  sample. `seq` stays one monotonic counter chronological across both lanes;
+  the read side is what splits them apart.
+  Bounded like everything else the hook posts: the last 2000 samples, 20 tool
+  names per sample.
+- **`coding_context_samples` is REPORTED, not derived** — exactly like
+  `coding_envelopes` and `coding_gate_checks`. The hook body carrying the
+  series is never stored, so `service.backfill_session` leaves this table
+  alone rather than clearing it. Ingest upserts by `(session_id, message_id)`
+  in `_apply` only — never `_apply_derived`, which a backfill replays — and
+  recomputes `delta_tokens` for the whole session, per lane, in one pass on
+  every ingest. Recomputing wholesale rather than incrementally is what makes
+  a re-post of the same cumulative list idempotent.
+- **Negative deltas are real and stored verbatim.** A context truncation drops
+  the total mid-session — observed as a −7570-token step in a live transcript.
+  Such a sample is flagged `is_truncation` and excluded from the tool
+  roll-up: a truncation is not something a tool earned.
+- **The roll-up splits a multi-tool sample's delta exactly**: `delta //
+  len(tools)` to each, the remainder to the first tools named, so the parts
+  sum back to the delta. Only samples with a positive `delta_tokens` and at
+  least one named tool contribute; the first sample of a lane (`delta_tokens`
+  is null) and every truncation contribute nothing.
+- **The header describes the main lane only.** `baseline_tokens`,
+  `peak_tokens` and `tools` never fold in sidechain samples — a subagent's
+  totals blended into the main lane's baseline would be a number nobody could
+  point at. `sidechain_samples` is returned as its own ordered array.
+- **Frontend**: a `ContextGrowthPanel` on the session detail page — a
+  hand-rolled SVG line/area of `total_tokens` over `seq` (no charting
+  dependency exists in this repo and none was added), truncation drops marked
+  with a dashed rule and a dot, and beside it the ranked tool roll-up.
+  Clicking a tool row switches the (now controlled) events tab and filters
+  `EventTimeline` to that tool via a new `toolName` prop. An empty series
+  renders no panel at all, so the hundreds of sessions recorded before this
+  shipped stay visually unchanged.
+- **DB**: one new table, additive:
+  ```
+  coding_context_samples
+    id             int pk
+    session_id     varchar(200) fk coding_sessions.id on delete cascade
+    seq            int
+    message_id     varchar(200)
+    is_sidechain   bool
+    at             timestamptz
+    total_tokens   bigint
+    output_tokens  bigint null
+    delta_tokens   int null      -- null = first sample of its lane
+    tools          json null
+    unique (session_id, message_id)
+    index (session_id, seq)
+  ```
+  Alembic migration `0023_coding_context_samples` on `0022_session_launch_run_id`.
+  Additive, reversible, no backfill — nothing in the stored event stream can
+  reconstruct a sample.
+
+# API Contract v1.30 — factory runs list + resume from the UI
+
+Additive on top of v1.29. Every factory run a project's runs root records is
+now visible to the frontend, and a stopped, crashed or rejected run can be
+resumed with one click — no terminal needed. The list reads the run dirs
+themselves (`run.json`), so runs launched outside the UI show up too.
+
+## New schemas
+
+```
+FactoryRun {
+  run_id: string
+  project_path: string           // the project the run worked on
+  project_name: string
+  state: string                  // run.json's raw state: running/stopped/finished/waiting_input
+  request_text: string
+  branch: string | null
+  reason: string | null          // why the run ended, e.g. "cost cap reached: $32.94 of $25 budget"
+  interview: boolean
+  accepted: boolean
+  started_at: string | null
+  ended_at: string | null
+  resumable: boolean             // server-side verdict, mirrors factory plan_resume's gate
+}
+FactoryRunResumeRequest { project_path: string, run_id: string }
+FactoryRunResumeRead { run_id: string, resumed: boolean, pid: number | null }
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/runs` | `listFactoryRuns` | — | `FactoryRun[]` (all projects under projects_root, started_at desc) |
+| POST `/api/v1/launcher/runs/resume` | `resumeFactoryRun` | `FactoryRunResumeRequest` | `FactoryRunResumeRead` (400 outside projects_root, 404 unknown run, 409 not resumable, 502 spawn failure) |
+
+## Behavior
+
+- **`resumable`** is computed server-side, mirroring `factory/adw/runs.plan_resume`:
+  false while the run is live (state `running` AND its recorded pid is alive),
+  false once a run completed accepted, false without a recorded branch. A
+  `running` record whose pid is dead is a crash — resumable.
+- **The resume never re-imposes a cost cap.** `factory/run.py --resume <id>` reads
+  budget flags from its own argv, and the spawned argv carries none — a run
+  stopped at "cost cap reached" continues uncapped. The spawn is detached
+  (same mechanism as `launchSession`), logs to
+  `<masterwork_home>/launches/run-<run_id>.log`, and writes no DB row: the run
+  dir stays the single source of truth for run state.
+- **Frontend**: a `FactoryRunsCard` on SessionsListPage (outside the tabs,
+  beside `InterviewQuestions`) polls `listFactoryRuns` every 5s and offers
+  Resume on resumable rows.
+- **DB**: none.

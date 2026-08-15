@@ -1462,6 +1462,48 @@
                 }
             }
         },
+        "/api/v1/coding-sessions/{session_id}/context": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "The context-growth curve: total tokens per turn, and which tool grew it",
+                "operationId": "readSessionContextSeries",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ContextSeries"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/coding-sessions/{session_id}/media/{media_id}": {
             "get": {
                 "tags": [
@@ -3087,6 +3129,72 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/WorkItemStartResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Factory Runs",
+                "operationId": "listFactoryRuns",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/FactoryRun"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listfactoryruns"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/resume": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Resume Factory Run",
+                "operationId": "resumeFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunResumeRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRunResumeRead"
                                 }
                             }
                         }
@@ -4983,6 +5091,253 @@
                 "title": "CodingSessionDetail",
                 "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence — kept as sibling arrays keyed by `phase_id`."
             },
+            "ContextSample": {
+                "properties": {
+                    "seq": {
+                        "type": "integer",
+                        "title": "Seq"
+                    },
+                    "message_id": {
+                        "type": "string",
+                        "title": "Message Id"
+                    },
+                    "at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "At"
+                    },
+                    "total_tokens": {
+                        "type": "integer",
+                        "title": "Total Tokens"
+                    },
+                    "output_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Output Tokens"
+                    },
+                    "delta_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Delta Tokens",
+                        "description": "Null for the first sample of its lane."
+                    },
+                    "is_truncation": {
+                        "type": "boolean",
+                        "title": "Is Truncation",
+                        "description": "Derived: delta_tokens is not null and negative."
+                    },
+                    "tools": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Tools",
+                        "description": "Tool results that landed since the previous sample."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seq",
+                    "message_id",
+                    "at",
+                    "total_tokens",
+                    "output_tokens",
+                    "delta_tokens",
+                    "is_truncation",
+                    "tools"
+                ],
+                "title": "ContextSample",
+                "description": "One turn's context usage, read back with its delta from the previous\nsample on the same lane."
+            },
+            "ContextSampleIn": {
+                "properties": {
+                    "seq": {
+                        "type": "integer",
+                        "title": "Seq",
+                        "description": "Position in the deduped stream, chronological across lanes."
+                    },
+                    "message_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Message Id"
+                    },
+                    "at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "At",
+                        "description": "Falls back to the event's own time when absent."
+                    },
+                    "total_tokens": {
+                        "type": "integer",
+                        "title": "Total Tokens",
+                        "description": "input + cache_read + cache_creation tokens on this turn."
+                    },
+                    "output_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Output Tokens"
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "Accepted but not stored — no column for it."
+                    },
+                    "is_sidechain": {
+                        "type": "boolean",
+                        "title": "Is Sidechain",
+                        "description": "True for a subagent turn.",
+                        "default": false
+                    },
+                    "tools": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tools",
+                        "description": "Tool results that landed in context since the previous sample."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seq",
+                    "message_id",
+                    "total_tokens"
+                ],
+                "title": "ContextSampleIn",
+                "description": "One context-usage sample as the forwarder reports it — one per deduped\nassistant message id, in transcript order."
+            },
+            "ContextSeries": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "baseline_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Baseline Tokens",
+                        "description": "The first main-lane sample's total — preamble plus first prompt."
+                    },
+                    "peak_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Peak Tokens",
+                        "description": "The highest main-lane total reached."
+                    },
+                    "samples": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextSample"
+                        },
+                        "type": "array",
+                        "title": "Samples",
+                        "description": "Main lane, ordered by seq."
+                    },
+                    "sidechain_samples": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextSample"
+                        },
+                        "type": "array",
+                        "title": "Sidechain Samples",
+                        "description": "Subagent turns, their own series — never interleaved with the main lane."
+                    },
+                    "tools": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextToolCost"
+                        },
+                        "type": "array",
+                        "title": "Tools",
+                        "description": "Main-lane roll-up, summed delta descending then tool name."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "baseline_tokens",
+                    "peak_tokens",
+                    "samples",
+                    "sidechain_samples",
+                    "tools"
+                ],
+                "title": "ContextSeries",
+                "description": "The context-growth curve for one session — main lane and sidechain kept apart."
+            },
+            "ContextToolCost": {
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "title": "Tool"
+                    },
+                    "delta_tokens": {
+                        "type": "integer",
+                        "title": "Delta Tokens",
+                        "description": "Summed positive delta attributed to this tool."
+                    },
+                    "calls": {
+                        "type": "integer",
+                        "title": "Calls",
+                        "description": "Samples this tool appeared in."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "tool",
+                    "delta_tokens",
+                    "calls"
+                ],
+                "title": "ContextToolCost",
+                "description": "One tool's share of a session's context growth, main lane only."
+            },
             "CrossChange": {
                 "properties": {
                     "asset_id": {
@@ -5897,6 +6252,21 @@
                             }
                         ],
                         "description": "The gate this event reports, and the note each check wrote."
+                    },
+                    "context_samples": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "$ref": "#/components/schemas/ContextSampleIn"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Samples",
+                        "description": "The context-usage curve since the previous Stop/SessionEnd."
                     }
                 },
                 "type": "object",
@@ -8585,6 +8955,155 @@
                     "updated"
                 ],
                 "title": "WorkSyncResult"
+            },
+            "FactoryRun": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "The project the run worked on."
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "title": "Project Name"
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State",
+                        "description": "run.json's raw state, e.g. running/stopped/finished."
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "branch": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Branch"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason",
+                        "description": "Why the run ended, e.g. 'cost cap reached…'."
+                    },
+                    "interview": {
+                        "type": "boolean",
+                        "title": "Interview"
+                    },
+                    "accepted": {
+                        "type": "boolean",
+                        "title": "Accepted"
+                    },
+                    "started_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Started At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At"
+                    },
+                    "resumable": {
+                        "type": "boolean",
+                        "title": "Resumable",
+                        "description": "True when a resume would be accepted: not live, not completed-accepted."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "project_path",
+                    "project_name",
+                    "state",
+                    "request_text",
+                    "branch",
+                    "interview",
+                    "accepted",
+                    "started_at",
+                    "ended_at",
+                    "resumable"
+                ],
+                "title": "FactoryRun",
+                "description": "One run.json under a project's runs root — the factory's ground truth,\nindependent of whether the run was launched from this UI or a terminal."
+            },
+            "FactoryRunResumeRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "run_id"
+                ],
+                "title": "FactoryRunResumeRequest"
+            },
+            "FactoryRunResumeRead": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "resumed": {
+                        "type": "boolean",
+                        "title": "Resumed"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "resumed",
+                    "pid"
+                ],
+                "title": "FactoryRunResumeRead"
             }
         }
     }

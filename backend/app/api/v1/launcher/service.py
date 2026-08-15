@@ -28,6 +28,8 @@ from app.core.exceptions import (
     ProjectCreationError,
     ProjectExistsError,
     ProjectPathOutsideRootError,
+    RunNotFoundError,
+    RunNotResumableError,
 )
 from app.db.models.launcher import MODE_INTERVIEW, SessionLaunch
 from app.providers.base import resolve_within_roots
@@ -202,6 +204,119 @@ async def launch(
         run_id=launch_row.run_id,
         launched=True,
     )
+
+
+# --- factory runs ---------------------------------------------------------
+
+
+def _run_to_schema(project: Path, record: dict[str, object]) -> schemas.FactoryRun | None:
+    """None for a record without a usable run_id — nothing to act on."""
+    run_id = record.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        return None
+    state = record.get("state")
+    state_str = state if isinstance(state, str) else "unknown"
+    accepted = record.get("accepted") is True
+    live = state_str == "running" and factory_runs.pid_alive(record.get("pid"))
+    branch = record.get("branch")
+    return schemas.FactoryRun(
+        run_id=run_id,
+        project_path=str(project),
+        project_name=project.name,
+        state=state_str,
+        request_text=str(record.get("request") or ""),
+        branch=branch if isinstance(branch, str) else None,
+        reason=str(record["reason"]) if isinstance(record.get("reason"), str) else None,
+        interview=record.get("interview") is True,
+        accepted=accepted,
+        started_at=str(record["started"]) if isinstance(record.get("started"), str) else None,
+        ended_at=str(record["ended"]) if isinstance(record.get("ended"), str) else None,
+        # Mirrors factory plan_resume's own gate: a live run and a completed
+        # accepted run refuse; everything else is worth offering.
+        resumable=not live and not accepted and isinstance(branch, str),
+    )
+
+
+def _runs_roots(projects_root: Path) -> list[Path]:
+    """Every directory that can hold run dirs: the global factory runs root's
+    children, plus any per-project configured runs_dir for projects_root's
+    immediate children (factory.config.json can point anywhere)."""
+    roots: dict[Path, None] = {}
+    global_root = app_settings.factory_runs_root
+    if global_root.is_dir():
+        for entry in sorted(global_root.iterdir()):
+            if entry.is_dir():
+                roots[entry] = None
+    if projects_root.is_dir():
+        for project in sorted(projects_root.iterdir()):
+            if project.is_dir():
+                configured = factory_runs.runs_root_for(project)
+                if configured.is_dir():
+                    roots[configured] = None
+    return list(roots)
+
+
+async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
+    """Every run recorded under the factory's runs roots whose repo resolves
+    under projects_root — terminal launches show up too, not just rows this
+    backend wrote. Each run.json's own "repo" names the project, so a project
+    nested deeper than projects_root's first level is still found."""
+    root = await _projects_root(db)
+    runs: list[schemas.FactoryRun] = []
+    seen: set[tuple[str, str]] = set()
+    for runs_root in _runs_roots(root):
+        for run_dir in runs_root.iterdir():
+            if not run_dir.is_dir():
+                continue
+            record = factory_runs.read_run_record(run_dir)
+            if record is None or not isinstance(record.get("repo"), str):
+                continue
+            project = resolve_within_roots(Path(str(record["repo"])), [root])
+            if project is None or not project.is_dir():
+                continue
+            run = _run_to_schema(project, record)
+            if run is not None and (run.project_path, run.run_id) not in seen:
+                seen.add((run.project_path, run.run_id))
+                runs.append(run)
+    runs.sort(key=lambda r: r.started_at or "", reverse=True)
+    return runs
+
+
+async def resume_run(
+    db: AsyncSession,
+    body: schemas.FactoryRunResumeRequest,
+    resume_spawner: Callable[..., int],
+) -> schemas.FactoryRunResumeRead:
+    root = await _projects_root(db)
+    resolved = resolve_within_roots(Path(body.project_path), [root])
+    if resolved is None or not resolved.is_dir():
+        raise ProjectPathOutsideRootError(
+            f"project_path must be a directory under {root}, got: {body.project_path}"
+        )
+
+    run_dir = factory_runs.run_dir_for(resolved, body.run_id)
+    record = factory_runs.read_run_record(run_dir)
+    if record is None:
+        raise RunNotFoundError(f"no run '{body.run_id}' recorded for {resolved.name}")
+    run = _run_to_schema(resolved, record)
+    if run is None:
+        raise RunNotFoundError(f"run '{body.run_id}' has an unreadable record")
+    if not run.resumable:
+        raise RunNotResumableError(
+            f"run '{body.run_id}' is not resumable (state: {run.state}"
+            f"{', accepted' if run.accepted else ''})"
+        )
+
+    log_path = app_settings.masterwork_home / "launches" / f"run-{body.run_id}.log"
+    try:
+        pid = resume_spawner(
+            project_path=resolved,
+            run_id=body.run_id,
+            log_path=log_path,
+        )
+    except OSError as exc:
+        raise LaunchFailedError(f"could not resume the factory run: {exc}") from exc
+    return schemas.FactoryRunResumeRead(run_id=body.run_id, resumed=True, pid=pid)
 
 
 # --- interview state -----------------------------------------------------

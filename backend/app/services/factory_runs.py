@@ -92,6 +92,27 @@ def read_run_state(run_dir: Path) -> str | None:
     return state if isinstance(state, str) else None
 
 
+def read_run_record(run_dir: Path) -> dict[str, object] | None:
+    """The whole run.json dict, or None when absent/unreadable — the factory
+    owns the file; this only ever reads it."""
+    path = run_dir / RECORD_FILENAME
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def pid_alive(pid: object) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except (OSError, PermissionError):
+        return False
+    return True
+
+
 def write_answers(run_dir: Path, pairs: list[dict[str, str]]) -> None:
     """Atomic tmp + os.replace, matching the factory's own writes. Refuses a
     missing run dir — a run dir that does not exist means the run never
