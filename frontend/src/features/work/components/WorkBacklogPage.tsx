@@ -9,6 +9,7 @@ import { toast } from '~/components/ui/sonner';
 import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
 import {
+  ASSIGNEE_ME,
   assigneeOptions,
   buildWorkItemTree,
   countNodes,
@@ -16,6 +17,7 @@ import {
   hasActiveFilters,
   sprintOptions,
   startWorkItemMutationAtom,
+  workFilterSelectionAtom,
   workItemsQueryAtom,
   workSourcesQueryAtom,
   type WorkItemFilters,
@@ -35,7 +37,8 @@ export function WorkBacklogPage() {
   const [{ mutateAsync: start, isPending: starting, variables: startingId }] =
     useAtom(startWorkItemMutationAtom);
 
-  const [chosenFilters, setFilters] = useState<WorkItemFilters | null>(null);
+  const [selection, setSelection] = useAtom(workFilterSelectionAtom);
+  const [query, setQuery] = useState('');
   const [started, setStarted] = useState<StartedItem | null>(null);
   const [detail, setDetail] = useState<WorkItem | null>(null);
 
@@ -47,10 +50,27 @@ export function WorkBacklogPage() {
     sources.data?.map((s) => s.current_iteration).find((ci) => ci && sprints.includes(ci)) ??
     null;
   // Until the user touches the filters, the view opens on the active sprint.
-  const filters = useMemo(
-    () => chosenFilters ?? { ...NO_FILTERS, iteration: activeSprint },
-    [chosenFilters, activeSprint],
-  );
+  // The picked sprint + assignee persist across reloads; a stored value that no
+  // longer exists (ended sprint, vanished name) falls back to the default.
+  const filters = useMemo<WorkItemFilters>(() => {
+    const iteration =
+      selection === null || (selection.iteration !== null && !sprints.includes(selection.iteration))
+        ? activeSprint
+        : selection.iteration;
+    const assignee =
+      selection !== null &&
+      (selection.assignee === null ||
+        selection.assignee === ASSIGNEE_ME ||
+        assignees.includes(selection.assignee))
+        ? selection.assignee
+        : null;
+    return { iteration, assignee, query };
+  }, [selection, activeSprint, sprints, assignees, query]);
+
+  function changeFilters(next: WorkItemFilters) {
+    setQuery(next.query);
+    setSelection({ iteration: next.iteration, assignee: next.assignee });
+  }
   const tree = useMemo(() => buildWorkItemTree(loaded), [loaded]);
   const visible = useMemo(() => filterWorkItemTree(tree, filters), [tree, filters]);
   const filtered = hasActiveFilters(filters);
@@ -127,7 +147,7 @@ export function WorkBacklogPage() {
             <>
               <WorkFilters
                 filters={filters}
-                onChange={setFilters}
+                onChange={changeFilters}
                 sprints={sprints}
                 activeSprint={activeSprint}
                 assignees={assignees}
@@ -137,7 +157,7 @@ export function WorkBacklogPage() {
                   icon={<SearchX className="size-8" />}
                   title="No work item matches these filters"
                   action={
-                    <Button variant="outline" size="sm" onClick={() => setFilters(NO_FILTERS)}>
+                    <Button variant="outline" size="sm" onClick={() => changeFilters(NO_FILTERS)}>
                       Clear filters
                     </Button>
                   }

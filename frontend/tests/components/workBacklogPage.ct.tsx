@@ -351,3 +351,51 @@ test('picking a name narrows to the items assigned to that person', async ({ mou
   await expect(page.getByText(STORY)).toHaveCount(0);
   await expect(page.getByLabel('1 work items')).toBeVisible();
 });
+
+test('the sprint and assignee picks are stored for the next visit', async ({ mount, page }) => {
+  await mockWork(page);
+  await mountPage(mount);
+
+  await page.getByLabel('Sprint').selectOption(SPRINT_34);
+  await page.getByLabel('Assignee').selectOption('@Me');
+
+  const stored = await page.evaluate(() => localStorage.getItem('masterwork.work-filters'));
+  expect(JSON.parse(stored ?? '{}')).toEqual({ iteration: SPRINT_34, assignee: '@Me' });
+});
+
+test('a reload comes back with the remembered sprint and assignee', async ({ mount, page }) => {
+  await mockWork(page);
+  await page.evaluate(
+    (sprint) =>
+      localStorage.setItem(
+        'masterwork.work-filters',
+        JSON.stringify({ iteration: sprint, assignee: '@Me' }),
+      ),
+    SPRINT_34,
+  );
+  await mountPage(mount);
+
+  await expect(page.getByLabel('Sprint')).toHaveValue(SPRINT_34);
+  await expect(page.getByLabel('Assignee')).toHaveValue('@Me');
+  // Both remembered filters really apply: Q3.4 @Me rows, story hidden.
+  await expect(page.getByText(ORPHAN)).toBeVisible();
+  await expect(page.getByText(STORY)).toHaveCount(0);
+  await expect(page.getByLabel('3 work items')).toBeVisible();
+});
+
+test('a stored sprint that no longer exists falls back to the active sprint', async ({
+  mount,
+  page,
+}) => {
+  await mockWork(page, { sources: [workSource({ current_iteration: SPRINT_33 })] });
+  await page.evaluate(() =>
+    localStorage.setItem(
+      'masterwork.work-filters',
+      JSON.stringify({ iteration: 'widgets\\1999 Q1.1', assignee: null }),
+    ),
+  );
+  await mountPage(mount);
+
+  await expect(page.getByLabel('Sprint')).toHaveValue(SPRINT_33);
+  await expect(page.getByLabel('3 work items')).toBeVisible();
+});
