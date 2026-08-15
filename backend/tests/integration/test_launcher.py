@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -806,7 +807,7 @@ async def test_every_unresumable_run_says_why(
     runs = {r["run_id"]: r for r in (await client.get("/api/v1/launcher/runs")).json()}
     assert runs["live1111"]["resume_hint"] == "still running"
     assert "nothing to resume" in runs["done2222"]["resume_hint"]
-    assert "no branch recorded" in runs["nobr3333"]["resume_hint"]
+    assert "no branch to resume onto" in runs["nobr3333"]["resume_hint"]
     # The resumable one carries no hint — the button speaks for it.
     assert runs["open4444"]["resumable"] is True
     assert runs["open4444"]["resume_hint"] is None
@@ -859,3 +860,115 @@ async def test_by_session_is_null_for_a_session_no_run_owns(
     r = await client.get("/api/v1/launcher/runs/by-session/sess-unknown")
     assert r.status_code == 200
     assert r.json() is None
+
+
+# --- resume gate: --no-branch, detached HEAD, deleted branch ---------------
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+@pytest.fixture
+def real_repo(projects_root: Path) -> Path:
+    """A genuine git repo, so the branch-existence half of the gate is real."""
+    repo = projects_root / "realrepo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "T")
+    (repo / "README.md").write_text("x", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "first")
+    _git(repo, "branch", "factory/kept")
+    return repo
+
+
+async def test_a_no_branch_run_resumes_onto_the_branch_it_started_from(
+    client: AsyncClient, real_repo: Path, runs_root: Path
+) -> None:
+    # `--no-branch` records no branch of its own; the factory falls back to
+    # branch_origin, so this run IS resumable and must not claim otherwise.
+    run_dir = _run_dir(runs_root, real_repo, "nobr1111")
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": "nobr1111",
+                "repo": str(real_repo),
+                "request": "no-branch run",
+                "state": "finished",
+                "accepted": False,
+                "branch": None,
+                "branch_origin": "factory/kept",
+                "started": "2026-08-15T09:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs[0]["resumable"] is True
+    assert runs[0]["resume_hint"] is None
+
+
+async def test_a_detached_head_run_says_so_and_stays_unresumable(
+    client: AsyncClient, real_repo: Path, runs_root: Path
+) -> None:
+    run_dir = _run_dir(runs_root, real_repo, "det22222")
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": "det22222",
+                "repo": str(real_repo),
+                "request": "detached run",
+                "state": "stopped",
+                "accepted": False,
+                "branch": None,
+                # A bare sha names no ref that still means "where this run was".
+                "branch_origin": "430182e7b090bef3643ccc0e7f7d79ba15dc3dfb",
+                "started": "2026-08-15T09:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs[0]["resumable"] is False
+    assert "detached HEAD" in runs[0]["resume_hint"]
+
+
+async def test_a_run_whose_branch_was_deleted_reports_it_and_refuses_409(
+    client: AsyncClient,
+    real_repo: Path,
+    runs_root: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    _write_run_record(runs_root, real_repo, "gone3333", state="stopped", branch="factory/deleted")
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs[0]["resumable"] is False
+    assert "is gone" in runs[0]["resume_hint"]
+
+    # The spawn is detached, so this has to be refused here, not discovered later.
+    r = await client.post(
+        "/api/v1/launcher/runs/resume",
+        json={"project_path": str(real_repo), "run_id": "gone3333"},
+    )
+    assert r.status_code == 409
+    assert "is gone" in r.json()["detail"]
+    assert fake_resume_spawner.calls == []
+
+
+async def test_by_session_also_answers_for_the_runs_own_session(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    # The pipeline run itself is a session too, id `factory-<run_id>` — that is
+    # the page a user lands on from the runs grid.
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "aaaa1111", state="stopped")
+
+    r = await client.get("/api/v1/launcher/runs/by-session/factory-aaaa1111")
+    assert r.status_code == 200
+    assert r.json()["run_id"] == "aaaa1111"

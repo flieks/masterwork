@@ -151,6 +151,26 @@ def read_session_ids(run_dir: Path) -> list[str]:
     return ids
 
 
+def _looks_like_sha(text: str) -> bool:
+    return len(text) == 40 and all(c in "0123456789abcdef" for c in text.lower())
+
+
+def resume_ref(record: dict[str, object]) -> str | None:
+    """The ref a resume would land on, mirroring factory/adw/runs.py:_resume_ref.
+
+    A `--no-branch` run records no `branch` but still committed somewhere: its
+    `branch_origin` names that ref, unless the run started on a detached HEAD,
+    where the origin is a bare sha and no ref means "where this run was".
+    """
+    branch = record.get("branch")
+    if isinstance(branch, str) and branch:
+        return branch
+    origin = record.get("branch_origin")
+    if isinstance(origin, str) and origin and not _looks_like_sha(origin):
+        return origin
+    return None
+
+
 def pid_alive(pid: object) -> bool:
     if not isinstance(pid, int) or pid <= 0:
         return False

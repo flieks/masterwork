@@ -15,6 +15,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.coding.service import FACTORY_SESSION_PREFIX
 from app.api.v1.launcher import schemas
 from app.api.v1.settings.service import read_settings
 from app.config import settings as app_settings
@@ -223,20 +224,51 @@ def _outcome(state: str, *, live: bool, accepted: bool) -> schemas.RunOutcome:
     return schemas.RunOutcome.FAILED
 
 
-def _resume_hint(*, live: bool, accepted: bool, branch: str | None) -> str | None:
+def _resume_hint(
+    *, live: bool, accepted: bool, ref: str | None, branches: set[str] | None
+) -> str | None:
     """Why a resume is refused, in the user's words. None means it is offered.
-    Mirrors factory plan_resume's own gate (factory/adw/runs.py)."""
+    Mirrors factory plan_resume's own gate (factory/adw/runs.py), including its
+    refusals — a detached-HEAD run and a run whose branch was deleted since."""
     if live:
         return "still running"
     if accepted:
         return "completed and approved — nothing to resume"
-    if branch is None:
-        return "no branch recorded — nothing safe to resume onto"
+    if ref is None:
+        return "ran on a detached HEAD — no branch to resume onto"
+    if branches is not None and ref not in branches:
+        return f"the branch it worked on ('{ref}') is gone"
     return None
 
 
+async def _branch_names(project: Path) -> set[str] | None:
+    """Local branch names, or None when git cannot answer — an unverifiable
+    ref is trusted rather than reported as gone."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "-C",
+            str(project),
+            "for-each-ref",
+            "--format=%(refname:short)",
+            "refs/heads",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError:
+        return None
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return None
+    return {line for line in stdout.decode(errors="replace").splitlines() if line}
+
+
 def _run_to_schema(
-    project: Path, record: dict[str, object], *, run_dir: Path | None = None
+    project: Path,
+    record: dict[str, object],
+    *,
+    run_dir: Path | None = None,
+    branches: set[str] | None = None,
 ) -> schemas.FactoryRun | None:
     """None for a record without a usable run_id — nothing to act on."""
     run_id = record.get("run_id")
@@ -248,7 +280,12 @@ def _run_to_schema(
     live = state_str == "running" and factory_runs.pid_alive(record.get("pid"))
     raw_branch = record.get("branch")
     branch = raw_branch if isinstance(raw_branch, str) else None
-    hint = _resume_hint(live=live, accepted=accepted, branch=branch)
+    hint = _resume_hint(
+        live=live,
+        accepted=accepted,
+        ref=factory_runs.resume_ref(record),
+        branches=branches,
+    )
     return schemas.FactoryRun(
         run_id=run_id,
         project_path=str(project),
@@ -295,6 +332,7 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
     root = await _projects_root(db)
     runs: list[schemas.FactoryRun] = []
     seen: set[tuple[str, str]] = set()
+    branches: dict[Path, set[str] | None] = {}
     for runs_root in _runs_roots(root):
         for run_dir in runs_root.iterdir():
             if not run_dir.is_dir():
@@ -305,7 +343,9 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
             project = resolve_within_roots(Path(str(record["repo"])), [root])
             if project is None or not project.is_dir():
                 continue
-            run = _run_to_schema(project, record, run_dir=run_dir)
+            if project not in branches:  # one git call per project, not per run
+                branches[project] = await _branch_names(project)
+            run = _run_to_schema(project, record, run_dir=run_dir, branches=branches[project])
             if run is not None and (run.project_path, run.run_id) not in seen:
                 seen.add((run.project_path, run.run_id))
                 runs.append(run)
@@ -314,10 +354,12 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
 
 
 async def find_run_for_session(db: AsyncSession, session_id: str) -> schemas.FactoryRun | None:
-    """The run whose stages reported this coding session, or None. The link is
-    exact: the factory records each stage's session id in its telemetry."""
+    """The run this coding session belongs to, or None. Two exact links, no
+    guessing: the runner's own session is `factory-<run_id>` (telemetry.py
+    builds it, coding/service.py reads it), and each stage's session id is
+    recorded in the run's telemetry."""
     for run in await list_factory_runs(db):
-        if session_id in run.session_ids:
+        if session_id == f"{FACTORY_SESSION_PREFIX}{run.run_id}" or session_id in run.session_ids:
             return run
     return None
 
@@ -338,14 +380,13 @@ async def resume_run(
     record = factory_runs.read_run_record(run_dir)
     if record is None:
         raise RunNotFoundError(f"no run '{body.run_id}' recorded for {resolved.name}")
-    run = _run_to_schema(resolved, record)
+    # Checked here too, synchronously: the resume is detached, so a refusal it
+    # discovers for itself would only ever reach a log file nobody is reading.
+    run = _run_to_schema(resolved, record, branches=await _branch_names(resolved))
     if run is None:
         raise RunNotFoundError(f"run '{body.run_id}' has an unreadable record")
     if not run.resumable:
-        raise RunNotResumableError(
-            f"run '{body.run_id}' is not resumable (state: {run.state}"
-            f"{', accepted' if run.accepted else ''})"
-        )
+        raise RunNotResumableError(f"run '{body.run_id}' cannot be resumed: {run.resume_hint}")
 
     log_path = app_settings.masterwork_home / "launches" / f"run-{body.run_id}.log"
     try:

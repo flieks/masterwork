@@ -2753,3 +2753,26 @@ case, and it is not an error.
   button would be; `SessionRunBanner` puts the same badge + Resume on the
   session detail page for the run that spawned that session.
 - **DB**: none.
+
+# API Contract v1.32 — the resume gate, corrected
+
+Fixes two wrong answers v1.31 gave. No new endpoints, no schema changes.
+
+- **A `--no-branch` run is resumable.** v1.31 required `branch` to be set and
+  reported `no branch recorded` otherwise. The factory does not work that way:
+  `factory/adw/runs.py:_resume_ref` falls back to `branch_origin`, which names
+  the branch such a run committed onto. Only a run that started on a detached
+  HEAD (where `branch_origin` is a bare 40-char sha) has no ref to return to;
+  its hint is now `ran on a detached HEAD — no branch to resume onto`.
+- **A run whose branch was deleted is refused, not offered.** `plan_resume`
+  checks the ref still exists; v1.31 did not, so such a run showed a Resume
+  button whose spawn would refuse itself into a log file nobody reads. The
+  list now reports `the branch it worked on ('X') is gone`, and
+  `resumeFactoryRun` returns 409 with that same sentence before spawning
+  anything. Branch names are read once per project per request, and a repo
+  git cannot answer for is trusted rather than reported as gone.
+- **`getRunForSession` also answers for a pipeline run's own session.** The
+  runner's session id is `factory-<run_id>` (built in `factory/adw/telemetry.py`,
+  read in `coding/service.py:FACTORY_SESSION_PREFIX`), which is the page the
+  runs grid links to; only the stage session ids from telemetry were matched
+  before, so that page showed no banner.
