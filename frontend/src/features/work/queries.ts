@@ -1,3 +1,4 @@
+import { atomWithStorage } from 'jotai/utils';
 import { atomWithMutation, atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
 import { api, WORK_SYNC_TIMEOUT_MS } from '~/api/client';
 import type {
@@ -22,6 +23,23 @@ export {
   type WorkItemFilters,
   type WorkItemNode,
 } from './tree';
+
+/** The sprint + assignee the user last picked; null until a filter is touched. */
+export interface WorkFilterSelection {
+  iteration: string | null;
+  assignee: string | null;
+}
+
+export const WORK_FILTERS_STORAGE_KEY = 'masterwork.work-filters';
+
+// getOnInit: read localStorage before the first render, so a reload opens on
+// the remembered selection instead of flashing the default first.
+export const workFilterSelectionAtom = atomWithStorage<WorkFilterSelection | null>(
+  WORK_FILTERS_STORAGE_KEY,
+  null,
+  undefined,
+  { getOnInit: true },
+);
 
 export const WORK_SOURCES_QUERY_KEY = ['workSources'];
 export const WORK_ITEMS_QUERY_KEY = ['workItems'];
