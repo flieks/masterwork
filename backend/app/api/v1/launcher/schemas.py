@@ -95,6 +95,17 @@ class SessionLaunchListItem(SessionLaunchRead):
     )
 
 
+class RunOutcome(StrEnum):
+    """What actually happened, which run.json's `state` alone does not say: a
+    rejected run and an approved one both end up `state="finished"`."""
+
+    RUNNING = "running"
+    WAITING = "waiting"
+    DONE = "done"
+    FAILED = "failed"
+    STOPPED = "stopped"
+
+
 class FactoryRun(BaseModel):
     """One run.json under a project's runs root — the factory's ground truth,
     independent of whether the run was launched from this UI or a terminal."""
@@ -102,6 +113,7 @@ class FactoryRun(BaseModel):
     run_id: str
     project_path: str = Field(..., description="The project the run worked on.")
     project_name: str
+    outcome: RunOutcome = Field(..., description="Read this, not `state`.")
     state: str = Field(..., description="run.json's raw state, e.g. running/stopped/finished.")
     request_text: str
     branch: str | None
@@ -112,6 +124,12 @@ class FactoryRun(BaseModel):
     ended_at: str | None
     resumable: bool = Field(
         ..., description="True when a resume would be accepted: not live, not completed-accepted."
+    )
+    resume_hint: str | None = Field(
+        None, description="Why a resume is not offered; null when `resumable` is true."
+    )
+    session_ids: list[str] = Field(
+        default_factory=list, description="Coding sessions this run's stages reported."
     )
 
 

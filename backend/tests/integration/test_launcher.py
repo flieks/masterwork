@@ -771,3 +771,91 @@ async def test_list_factory_runs_skips_repos_outside_projects_root(
 
     runs = (await client.get("/api/v1/launcher/runs")).json()
     assert runs == []
+
+
+# --- outcome, resume hints, and the session -> run link --------------------
+
+
+async def test_outcome_separates_approved_from_rejected_finished_runs(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    # Both end state="finished"; only `accepted` says which one actually worked.
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "good1111", state="finished", accepted=True)
+    _write_run_record(runs_root, alpha, "bad22222", state="finished", accepted=False)
+    _write_run_record(runs_root, alpha, "cap33333", state="stopped")
+    _write_run_record(runs_root, alpha, "crash444", state="running", pid=99999999)
+
+    runs = {r["run_id"]: r for r in (await client.get("/api/v1/launcher/runs")).json()}
+    assert runs["good1111"]["outcome"] == "done"
+    assert runs["bad22222"]["outcome"] == "failed"
+    assert runs["cap33333"]["outcome"] == "stopped"
+    # A record still claiming "running" whose pid is gone died; it did not finish.
+    assert runs["crash444"]["outcome"] == "failed"
+
+
+async def test_every_unresumable_run_says_why(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "live1111", state="running", pid=os.getpid())
+    _write_run_record(runs_root, alpha, "done2222", state="finished", accepted=True)
+    _write_run_record(runs_root, alpha, "nobr3333", state="finished", branch=None)
+    _write_run_record(runs_root, alpha, "open4444", state="stopped")
+
+    runs = {r["run_id"]: r for r in (await client.get("/api/v1/launcher/runs")).json()}
+    assert runs["live1111"]["resume_hint"] == "still running"
+    assert "nothing to resume" in runs["done2222"]["resume_hint"]
+    assert "no branch recorded" in runs["nobr3333"]["resume_hint"]
+    # The resumable one carries no hint — the button speaks for it.
+    assert runs["open4444"]["resumable"] is True
+    assert runs["open4444"]["resume_hint"] is None
+    for run_id in ("live1111", "done2222", "nobr3333"):
+        assert runs[run_id]["resumable"] is False
+
+
+async def test_run_reports_the_session_ids_its_stages_recorded(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    run_dir = _write_run_record(runs_root, alpha, "aaaa1111")
+    (run_dir / "telemetry.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"stage": "plan", "session_id": "sess-plan"}),
+                json.dumps({"stage": "plan", "session_id": "sess-plan"}),  # repeats collapse
+                "not json at all",  # a torn last line must not lose the rest
+                json.dumps({"stage": "build", "session_id": "sess-build"}),
+                json.dumps({"stage": "build"}),  # no session id yet
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs[0]["session_ids"] == ["sess-plan", "sess-build"]
+
+
+async def test_by_session_finds_the_run_that_spawned_a_session(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    run_dir = _write_run_record(runs_root, alpha, "aaaa1111", state="stopped")
+    (run_dir / "telemetry.jsonl").write_text(
+        json.dumps({"stage": "build", "session_id": "sess-build"}), encoding="utf-8"
+    )
+
+    r = await client.get("/api/v1/launcher/runs/by-session/sess-build")
+    assert r.status_code == 200
+    assert r.json()["run_id"] == "aaaa1111"
+    assert r.json()["resumable"] is True
+
+
+async def test_by_session_is_null_for_a_session_no_run_owns(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    # A plain chat session belongs to no run; that is not an error.
+    _write_run_record(runs_root, seeded_projects / "alpha", "aaaa1111")
+    r = await client.get("/api/v1/launcher/runs/by-session/sess-unknown")
+    assert r.status_code == 200
+    assert r.json() is None

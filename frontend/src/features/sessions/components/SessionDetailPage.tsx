@@ -20,6 +20,7 @@ import { RunWaterfall } from './RunWaterfall';
 import { SessionAssets } from './SessionAssets';
 import { SessionHeader } from './SessionHeader';
 import { SessionRequest } from './SessionRequest';
+import { SessionRunBanner } from './SessionRunBanner';
 import { UnattributedEvidence } from './UnattributedEvidence';
 
 export function SessionDetailPage() {
@@ -56,6 +57,7 @@ export function SessionDetailPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-6">
       <Breadcrumb runId={runIdLabel(session)} />
       <SessionHeader session={session} />
+      <SessionRunBanner sessionId={session.id} />
       <SessionRequest sessionId={session.id} />
       <RouteDecisionNote sessionId={session.id} />
       <SessionAssets session={session} />

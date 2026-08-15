@@ -103,6 +103,54 @@ def read_run_record(run_dir: Path) -> dict[str, object] | None:
     return data if isinstance(data, dict) else None
 
 
+TELEMETRY_FILENAME = "telemetry.jsonl"
+
+# Parsed session ids per telemetry file, keyed by its (mtime, size) — the list
+# endpoint polls, and re-reading every run's telemetry each tick would be waste.
+_SESSION_ID_CACHE: dict[Path, tuple[tuple[float, int], list[str]]] = {}
+
+
+def read_session_ids(run_dir: Path) -> list[str]:
+    """The Claude session ids the run's stages reported, in first-seen order.
+
+    These are coding_sessions.id values, so this is the exact link from a
+    session back to the factory run that spawned it — no time-window guessing.
+    """
+    path = run_dir / TELEMETRY_FILENAME
+    try:
+        stat = path.stat()
+    except OSError:
+        return []
+    stamp = (stat.st_mtime, stat.st_size)
+    cached = _SESSION_ID_CACHE.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+
+    seen: dict[str, None] = {}
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                # An agent_turn carries it under `payload`; read the top level
+                # too, so a plainer telemetry line is not missed.
+                payload = entry.get("payload")
+                for holder in (payload if isinstance(payload, dict) else {}, entry):
+                    session_id = holder.get("session_id")
+                    if isinstance(session_id, str) and session_id:
+                        seen[session_id] = None
+    except OSError:
+        return []
+
+    ids = list(seen)
+    _SESSION_ID_CACHE[path] = (stamp, ids)
+    return ids
+
+
 def pid_alive(pid: object) -> bool:
     if not isinstance(pid, int) or pid <= 0:
         return False

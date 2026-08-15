@@ -1,4 +1,4 @@
-import type { CodingEvent, CodingSession } from '~/api/generated';
+import type { CodingEvent, CodingSession, FactoryRun } from '~/api/generated';
 import { LIVE_WINDOW_MS } from '~/lib/timeline';
 
 /**
@@ -208,3 +208,28 @@ export function routeDecision(events: CodingEvent[]): RouteDecision | null {
  */
 export const INTERRUPTED_NEVER_DERIVED =
   'Masterwork never derives this status — only the tool that ran the session can report it, and nothing does yet.';
+
+/** How a factory run's outcome reads: `state` alone cannot say, since a
+ * rejected run and an approved one both end up "finished". */
+export function runOutcomeMeta(run: FactoryRun): {
+  label: string;
+  variant: 'success' | 'destructive' | 'muted' | 'secondary';
+} {
+  switch (run.outcome) {
+    case 'running':
+      return { label: 'running', variant: 'secondary' };
+    case 'waiting':
+      return { label: 'waiting', variant: 'secondary' };
+    case 'done':
+      return { label: 'done', variant: 'success' };
+    case 'stopped':
+      return { label: 'stopped', variant: 'destructive' };
+    default:
+      return { label: 'failed', variant: 'destructive' };
+  }
+}
+
+/** First line of the request, which is all a row has room for. */
+export function factoryRunTitle(run: FactoryRun): string {
+  return run.request_text.split('\n', 1)[0] || run.run_id;
+}

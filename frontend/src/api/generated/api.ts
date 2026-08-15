@@ -6747,6 +6747,7 @@ export interface FactoryRun {
     'run_id': string;
     'project_path': string;
     'project_name': string;
+    'outcome': RunOutcome;
     'state': string;
     'request_text': string;
     'branch': string | null;
@@ -6756,7 +6757,19 @@ export interface FactoryRun {
     'started_at': string | null;
     'ended_at': string | null;
     'resumable': boolean;
+    'resume_hint'?: string | null;
+    'session_ids'?: Array<string>;
 }
+
+export const RunOutcome = {
+    Running: 'running',
+    Waiting: 'waiting',
+    Done: 'done',
+    Failed: 'failed',
+    Stopped: 'stopped'
+} as const;
+
+export type RunOutcome = typeof RunOutcome[keyof typeof RunOutcome];
 /**
  *
  * @export
@@ -6926,6 +6939,40 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        /**
+         *
+         * @summary Get Run For Session
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunForSession: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('getRunForSession', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/launcher/runs/by-session/{session_id}`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         listFactoryRuns: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/launcher/runs`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
@@ -7157,6 +7204,19 @@ export const LauncherApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        /**
+         *
+         * @summary Get Run For Session
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun | null>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunForSession(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getRunForSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
         async listFactoryRuns(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FactoryRun>>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listFactoryRuns(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
@@ -7270,6 +7330,16 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
+        /**
+         *
+         * @summary Get Run For Session
+         * @param {string} sessionId
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun | null> {
+            return localVarFp.getRunForSession(sessionId, options).then((request) => request(axios, basePath));
+        },
         listFactoryRuns(options?: RawAxiosRequestConfig): AxiosPromise<Array<FactoryRun>> {
             return localVarFp.listFactoryRuns(options).then((request) => request(axios, basePath));
         },
@@ -7378,6 +7448,18 @@ export class LauncherApi extends BaseAPI {
      * @throws {RequiredError}
      * @memberof LauncherApi
      */
+    /**
+     *
+     * @summary Get Run For Session
+     * @param {string} sessionId
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public getRunForSession(sessionId: string, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).getRunForSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
     public listFactoryRuns(options?: RawAxiosRequestConfig) {
         return LauncherApiFp(this.configuration).listFactoryRuns(options).then((request) => request(this.axios, this.basePath));
     }

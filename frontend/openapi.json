@@ -3211,6 +3211,57 @@
                     }
                 }
             }
+        },
+        "/api/v1/launcher/runs/by-session/{session_id}": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Get Run For Session",
+                "description": "Null — not 404 — when the session came from anywhere but a factory run,\nwhich is the common case and not an error.",
+                "operationId": "getRunForSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "$ref": "#/components/schemas/FactoryRun"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ],
+                                    "title": "Response Getrunforsession"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -8971,6 +9022,10 @@
                         "type": "string",
                         "title": "Project Name"
                     },
+                    "outcome": {
+                        "$ref": "#/components/schemas/RunOutcome",
+                        "description": "Read this, not `state`."
+                    },
                     "state": {
                         "type": "string",
                         "title": "State",
@@ -9037,6 +9092,26 @@
                         "type": "boolean",
                         "title": "Resumable",
                         "description": "True when a resume would be accepted: not live, not completed-accepted."
+                    },
+                    "resume_hint": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Resume Hint",
+                        "description": "Why a resume is not offered; null when `resumable` is true."
+                    },
+                    "session_ids": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Session Ids",
+                        "description": "Coding sessions this run's stages reported."
                     }
                 },
                 "type": "object",
@@ -9044,6 +9119,7 @@
                     "run_id",
                     "project_path",
                     "project_name",
+                    "outcome",
                     "state",
                     "request_text",
                     "branch",
@@ -9104,6 +9180,18 @@
                     "pid"
                 ],
                 "title": "FactoryRunResumeRead"
+            },
+            "RunOutcome": {
+                "type": "string",
+                "enum": [
+                    "running",
+                    "waiting",
+                    "done",
+                    "failed",
+                    "stopped"
+                ],
+                "title": "RunOutcome",
+                "description": "What actually happened, which run.json's `state` alone does not say: a\nrejected run and an approved one both end up `state=\"finished\"`."
             }
         }
     }

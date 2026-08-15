@@ -2707,3 +2707,49 @@ FactoryRunResumeRead { run_id: string, resumed: boolean, pid: number | null }
   beside `InterviewQuestions`) polls `listFactoryRuns` every 5s and offers
   Resume on resumable rows.
 - **DB**: none.
+
+# API Contract v1.31 — run outcome, resume hints, session → run link
+
+Additive on top of v1.30, correcting how a run's result is reported.
+
+## Changed schemas
+
+`FactoryRun` gains three fields:
+
+```
+outcome: "running" | "waiting" | "done" | "failed" | "stopped"
+resume_hint: string | null     // why no resume is offered; null when resumable
+session_ids: string[]          // coding sessions this run's stages reported
+```
+
+`state` stays, unchanged and raw, but **`outcome` is the field to read**.
+`state` is the *process's* state, not the run's: a run whose review rejected it
+and a run that was approved both end up `state: "finished"`, and a run that
+crashed is left claiming `state: "running"` forever. `outcome` resolves all
+three — `done` only when `accepted` is true, `failed` for a rejected or crashed
+run, `stopped` for a budget/kill stop.
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/runs/by-session/{session_id}` | `getRunForSession` | — | `FactoryRun \| null` |
+
+Null, not 404, when no run owns the session — every plain chat session is that
+case, and it is not an error.
+
+## Behavior
+
+- **The session → run link is exact, not inferred.** The factory records each
+  stage's Claude session id in `<run_dir>/telemetry.jsonl`, and those ids are
+  `coding_sessions.id` values. No time-window or cwd guessing is involved.
+  Parsed ids are cached per file by (mtime, size), since the runs list polls.
+- **`resume_hint` names the blocker** in the same terms as
+  `factory/adw/runs.plan_resume`: `still running`, `completed and approved —
+  nothing to resume`, or `no branch recorded — nothing safe to resume onto`.
+  A run with no recorded branch is the one failure that can never be resumed.
+- **Frontend**: `FactoryRunsCard` folds `done` runs away behind a "Show N
+  completed runs" toggle and prints `resume_hint` where an unresumable row's
+  button would be; `SessionRunBanner` puts the same badge + Resume on the
+  session detail page for the run that spawned that session.
+- **DB**: none.

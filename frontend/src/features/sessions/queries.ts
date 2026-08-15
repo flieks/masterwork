@@ -110,10 +110,24 @@ export const factoryRunsQueryAtom = atomWithQuery(() => ({
   refetchIntervalInBackground: true,
 }));
 
+/** The run that spawned one coding session, or null when no run owns it. */
+export const runForSessionQueryAtom = atomFamily((sessionId: string) =>
+  atomWithQuery(() => ({
+    queryKey: ['runForSession', sessionId],
+    queryFn: async (): Promise<FactoryRun | null> =>
+      (await api.launcher.getRunForSession(sessionId)).data,
+  })),
+);
+
 export const resumeFactoryRunMutationAtom = atomWithMutation((get) => ({
   mutationFn: (body: FactoryRunResumeRequest): Promise<FactoryRunResumeRead> =>
     api.launcher.resumeFactoryRun(body).then((r) => r.data),
-  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY }),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
+    // The detail page's own banner reads a different key.
+    queryClient.invalidateQueries({ queryKey: ['runForSession'] });
+  },
 }));
 
 export const submitInterviewAnswersMutationAtom = atomWithMutation((get) => ({

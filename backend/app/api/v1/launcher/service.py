@@ -209,7 +209,35 @@ async def launch(
 # --- factory runs ---------------------------------------------------------
 
 
-def _run_to_schema(project: Path, record: dict[str, object]) -> schemas.FactoryRun | None:
+def _outcome(state: str, *, live: bool, accepted: bool) -> schemas.RunOutcome:
+    """`state` is the process's, not the run's: a rejected run and an approved
+    one both end `finished`, and a crashed one is left claiming `running`."""
+    if live:
+        return schemas.RunOutcome.RUNNING
+    if state == "waiting_input":
+        return schemas.RunOutcome.WAITING
+    if accepted:
+        return schemas.RunOutcome.DONE
+    if state == "stopped":
+        return schemas.RunOutcome.STOPPED
+    return schemas.RunOutcome.FAILED
+
+
+def _resume_hint(*, live: bool, accepted: bool, branch: str | None) -> str | None:
+    """Why a resume is refused, in the user's words. None means it is offered.
+    Mirrors factory plan_resume's own gate (factory/adw/runs.py)."""
+    if live:
+        return "still running"
+    if accepted:
+        return "completed and approved — nothing to resume"
+    if branch is None:
+        return "no branch recorded — nothing safe to resume onto"
+    return None
+
+
+def _run_to_schema(
+    project: Path, record: dict[str, object], *, run_dir: Path | None = None
+) -> schemas.FactoryRun | None:
     """None for a record without a usable run_id — nothing to act on."""
     run_id = record.get("run_id")
     if not isinstance(run_id, str) or not run_id:
@@ -218,22 +246,25 @@ def _run_to_schema(project: Path, record: dict[str, object]) -> schemas.FactoryR
     state_str = state if isinstance(state, str) else "unknown"
     accepted = record.get("accepted") is True
     live = state_str == "running" and factory_runs.pid_alive(record.get("pid"))
-    branch = record.get("branch")
+    raw_branch = record.get("branch")
+    branch = raw_branch if isinstance(raw_branch, str) else None
+    hint = _resume_hint(live=live, accepted=accepted, branch=branch)
     return schemas.FactoryRun(
         run_id=run_id,
         project_path=str(project),
         project_name=project.name,
+        outcome=_outcome(state_str, live=live, accepted=accepted),
         state=state_str,
         request_text=str(record.get("request") or ""),
-        branch=branch if isinstance(branch, str) else None,
+        branch=branch,
         reason=str(record["reason"]) if isinstance(record.get("reason"), str) else None,
         interview=record.get("interview") is True,
         accepted=accepted,
         started_at=str(record["started"]) if isinstance(record.get("started"), str) else None,
         ended_at=str(record["ended"]) if isinstance(record.get("ended"), str) else None,
-        # Mirrors factory plan_resume's own gate: a live run and a completed
-        # accepted run refuse; everything else is worth offering.
-        resumable=not live and not accepted and isinstance(branch, str),
+        resumable=hint is None,
+        resume_hint=hint,
+        session_ids=factory_runs.read_session_ids(run_dir) if run_dir else [],
     )
 
 
@@ -274,12 +305,21 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
             project = resolve_within_roots(Path(str(record["repo"])), [root])
             if project is None or not project.is_dir():
                 continue
-            run = _run_to_schema(project, record)
+            run = _run_to_schema(project, record, run_dir=run_dir)
             if run is not None and (run.project_path, run.run_id) not in seen:
                 seen.add((run.project_path, run.run_id))
                 runs.append(run)
     runs.sort(key=lambda r: r.started_at or "", reverse=True)
     return runs
+
+
+async def find_run_for_session(db: AsyncSession, session_id: str) -> schemas.FactoryRun | None:
+    """The run whose stages reported this coding session, or None. The link is
+    exact: the factory records each stage's session id in its telemetry."""
+    for run in await list_factory_runs(db):
+        if session_id in run.session_ids:
+            return run
+    return None
 
 
 async def resume_run(

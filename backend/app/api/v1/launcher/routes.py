@@ -81,6 +81,20 @@ async def list_factory_runs(
     return await service.list_factory_runs(db)
 
 
+@router.get(
+    "/launcher/runs/by-session/{session_id}",
+    response_model=schemas.FactoryRun | None,
+    operation_id="getRunForSession",
+)
+async def get_run_for_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.FactoryRun | None:
+    """Null — not 404 — when the session came from anywhere but a factory run,
+    which is the common case and not an error."""
+    return await service.find_run_for_session(db, session_id)
+
+
 @router.post(
     "/launcher/runs/resume",
     response_model=schemas.FactoryRunResumeRead,
