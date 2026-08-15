@@ -39,6 +39,20 @@ from app.services import factory_runs
 
 _MAX_NAME_LEN = 100
 
+# How long a resumed run gets to refuse itself before the caller is told it started.
+RESUME_SETTLE_SECONDS = 2.0
+
+# factory/run.py prints every refusal to stderr with this prefix.
+_ERROR_PREFIX = "error: "
+
+
+def _refusal_in(log_text: str) -> str | None:
+    """The factory's own refusal line, if the resume it just spawned wrote one."""
+    for line in log_text.splitlines():
+        if line.startswith(_ERROR_PREFIX):
+            return line[len(_ERROR_PREFIX) :].strip()
+    return None
+
 
 def _validate_project_name(name: str) -> str:
     trimmed = name.strip()
@@ -225,7 +239,12 @@ def _outcome(state: str, *, live: bool, accepted: bool) -> schemas.RunOutcome:
 
 
 def _resume_hint(
-    *, live: bool, accepted: bool, ref: str | None, branches: set[str] | None
+    *,
+    live: bool,
+    accepted: bool,
+    ref: str | None,
+    tips: dict[str, str] | None,
+    expected: str | None,
 ) -> str | None:
     """Why a resume is refused, in the user's words. None means it is offered.
     Mirrors factory plan_resume's own gate (factory/adw/runs.py), including its
@@ -236,21 +255,28 @@ def _resume_hint(
         return "completed and approved — nothing to resume"
     if ref is None:
         return "ran on a detached HEAD — no branch to resume onto"
-    if branches is not None and ref not in branches:
+    if tips is None:
+        return None
+    if ref not in tips:
         return f"the branch it worked on ('{ref}') is gone"
+    if expected and tips[ref] != expected:
+        return (
+            f"'{ref}' has moved on since this run left it "
+            f"(tip {tips[ref][:8]}, run left {expected[:8]})"
+        )
     return None
 
 
-async def _branch_names(project: Path) -> set[str] | None:
-    """Local branch names, or None when git cannot answer — an unverifiable
-    ref is trusted rather than reported as gone."""
+async def _branch_tips(project: Path) -> dict[str, str] | None:
+    """Local branch name -> tip sha, or None when git cannot answer — an
+    unverifiable ref is trusted rather than reported as gone or moved."""
     try:
         proc = await asyncio.create_subprocess_exec(
             "git",
             "-C",
             str(project),
             "for-each-ref",
-            "--format=%(refname:short)",
+            "--format=%(refname:short) %(objectname)",
             "refs/heads",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
@@ -260,7 +286,12 @@ async def _branch_names(project: Path) -> set[str] | None:
     stdout, _ = await proc.communicate()
     if proc.returncode != 0:
         return None
-    return {line for line in stdout.decode(errors="replace").splitlines() if line}
+    tips: dict[str, str] = {}
+    for line in stdout.decode(errors="replace").splitlines():
+        name, _, sha = line.partition(" ")
+        if name and sha:
+            tips[name] = sha
+    return tips
 
 
 def _run_to_schema(
@@ -268,7 +299,7 @@ def _run_to_schema(
     record: dict[str, object],
     *,
     run_dir: Path | None = None,
-    branches: set[str] | None = None,
+    tips: dict[str, str] | None = None,
 ) -> schemas.FactoryRun | None:
     """None for a record without a usable run_id — nothing to act on."""
     run_id = record.get("run_id")
@@ -284,7 +315,8 @@ def _run_to_schema(
         live=live,
         accepted=accepted,
         ref=factory_runs.resume_ref(record),
-        branches=branches,
+        tips=tips,
+        expected=factory_runs.expected_tip(run_dir, record) if run_dir else None,
     )
     return schemas.FactoryRun(
         run_id=run_id,
@@ -332,7 +364,7 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
     root = await _projects_root(db)
     runs: list[schemas.FactoryRun] = []
     seen: set[tuple[str, str]] = set()
-    branches: dict[Path, set[str] | None] = {}
+    branch_tips: dict[Path, dict[str, str] | None] = {}
     for runs_root in _runs_roots(root):
         for run_dir in runs_root.iterdir():
             if not run_dir.is_dir():
@@ -343,9 +375,9 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
             project = resolve_within_roots(Path(str(record["repo"])), [root])
             if project is None or not project.is_dir():
                 continue
-            if project not in branches:  # one git call per project, not per run
-                branches[project] = await _branch_names(project)
-            run = _run_to_schema(project, record, run_dir=run_dir, branches=branches[project])
+            if project not in branch_tips:  # one git call per project, not per run
+                branch_tips[project] = await _branch_tips(project)
+            run = _run_to_schema(project, record, run_dir=run_dir, tips=branch_tips[project])
             if run is not None and (run.project_path, run.run_id) not in seen:
                 seen.add((run.project_path, run.run_id))
                 runs.append(run)
@@ -382,13 +414,14 @@ async def resume_run(
         raise RunNotFoundError(f"no run '{body.run_id}' recorded for {resolved.name}")
     # Checked here too, synchronously: the resume is detached, so a refusal it
     # discovers for itself would only ever reach a log file nobody is reading.
-    run = _run_to_schema(resolved, record, branches=await _branch_names(resolved))
+    run = _run_to_schema(resolved, record, run_dir=run_dir, tips=await _branch_tips(resolved))
     if run is None:
         raise RunNotFoundError(f"run '{body.run_id}' has an unreadable record")
     if not run.resumable:
         raise RunNotResumableError(f"run '{body.run_id}' cannot be resumed: {run.resume_hint}")
 
     log_path = app_settings.masterwork_home / "launches" / f"run-{body.run_id}.log"
+    written_before = log_path.stat().st_size if log_path.is_file() else 0
     try:
         pid = resume_spawner(
             project_path=resolved,
@@ -397,6 +430,14 @@ async def resume_run(
         )
     except OSError as exc:
         raise LaunchFailedError(f"could not resume the factory run: {exc}") from exc
+
+    # The checks above mirror the factory's, but it owns the last word and the
+    # spawn is detached — so give it a moment and read back what it said,
+    # rather than reporting a success that only ever existed in this process.
+    await asyncio.sleep(RESUME_SETTLE_SECONDS)
+    refusal = _refusal_in(factory_runs.read_log_since(log_path, written_before))
+    if refusal is not None:
+        raise LaunchFailedError(refusal)
     return schemas.FactoryRunResumeRead(run_id=body.run_id, resumed=True, pid=pid)
 
 

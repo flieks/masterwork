@@ -15,6 +15,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.deps import get_launch_spawner, get_resume_spawner
+from app.api.v1.launcher import service as launcher_service
 from app.config import settings
 from app.db.models.launcher import SessionLaunch
 from app.main import app
@@ -76,6 +77,12 @@ def fake_resume_spawner() -> Iterator[_FakeResumeSpawner]:
         yield spawner
     finally:
         app.dependency_overrides.pop(get_resume_spawner, None)
+
+
+@pytest.fixture(autouse=True)
+def _no_resume_settle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The settle wait exists for a real spawn; the fake one has nothing to say."""
+    monkeypatch.setattr(launcher_service, "RESUME_SETTLE_SECONDS", 0)
 
 
 @pytest.fixture
@@ -972,3 +979,92 @@ async def test_by_session_also_answers_for_the_runs_own_session(
     r = await client.get("/api/v1/launcher/runs/by-session/factory-aaaa1111")
     assert r.status_code == 200
     assert r.json()["run_id"] == "aaaa1111"
+
+
+async def test_a_branch_that_moved_past_the_run_is_refused_not_offered(
+    client: AsyncClient,
+    real_repo: Path,
+    runs_root: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    # Commits landing on the branch after the run stopped are work the run
+    # never did; the factory refuses to build on them, so neither do we.
+    left_at = subprocess.run(
+        ["git", "-C", str(real_repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    run_dir = _write_run_record(
+        runs_root, real_repo, "moved111", state="stopped", branch="factory/kept"
+    )
+    (run_dir / "telemetry.jsonl").write_text(
+        json.dumps({"event": "commit", "phase": "plan", "payload": {"sha": left_at}}),
+        encoding="utf-8",
+    )
+    _git(real_repo, "checkout", "-q", "factory/kept")
+    (real_repo / "later.txt").write_text("added after the run", encoding="utf-8")
+    _git(real_repo, "add", "-A")
+    _git(real_repo, "commit", "-qm", "work the run never did")
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs[0]["resumable"] is False
+    assert "has moved on since this run left it" in runs[0]["resume_hint"]
+
+    r = await client.post(
+        "/api/v1/launcher/runs/resume",
+        json={"project_path": str(real_repo), "run_id": "moved111"},
+    )
+    assert r.status_code == 409
+    assert fake_resume_spawner.calls == []
+
+
+async def test_a_run_still_on_its_recorded_tip_stays_resumable(
+    client: AsyncClient, real_repo: Path, runs_root: Path
+) -> None:
+    tip = subprocess.run(
+        ["git", "-C", str(real_repo), "rev-parse", "factory/kept"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    run_dir = _write_run_record(
+        runs_root, real_repo, "still222", state="stopped", branch="factory/kept"
+    )
+    (run_dir / "telemetry.jsonl").write_text(
+        json.dumps({"event": "commit", "payload": {"sha": tip}}), encoding="utf-8"
+    )
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert runs[0]["resumable"] is True
+    assert runs[0]["resume_hint"] is None
+
+
+async def test_a_resume_that_refuses_itself_is_reported_not_celebrated(
+    client: AsyncClient,
+    seeded_projects: Path,
+    runs_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Every pre-check can pass and the factory can still say no; the caller
+    # must hear that instead of a green "resumed".
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "argue333", state="stopped")
+
+    def refusing_spawner(*, project_path: Path, run_id: str, log_path: Path) -> int:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("ab") as log:
+            log.write(b"resuming run argue333\nerror: something the backend cannot foresee\n")
+        return 6001
+
+    app.dependency_overrides[get_resume_spawner] = lambda: refusing_spawner
+    try:
+        r = await client.post(
+            "/api/v1/launcher/runs/resume",
+            json={"project_path": str(alpha), "run_id": "argue333"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_resume_spawner, None)
+
+    assert r.status_code == 502
+    assert r.json()["detail"] == "something the backend cannot foresee"

@@ -90,6 +90,16 @@ test('a stopped run shows its state, reason and a Resume button', async ({ mount
   await expect(page.getByText('done', { exact: true })).toBeVisible();
 });
 
+test('a run row links to the session the run reports itself as', async ({ mount, page }) => {
+  await mockRuns(page, [factoryRun()]);
+  await mountCard(mount);
+
+  await expect(page.getByRole('link', { name: /Add a context-growth series/ })).toHaveAttribute(
+    'href',
+    '/sessions/factory-aaaa1111',
+  );
+});
+
 test('a rejected run reads as failed, not finished, and offers Resume', async ({ mount, page }) => {
   // Both a rejected and an approved run end run.json's state as "finished";
   // the badge has to tell them apart or the list reads as all-green.

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useAtom } from 'jotai';
+import { Link } from 'react-router-dom';
 import type { FactoryRun } from '~/api/generated';
 import { Badge } from '~/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
-import { factoryRunTitle, runOutcomeMeta } from '../runs';
+import { factoryRunTitle, runOutcomeMeta, sessionDetailPath } from '../runs';
 import { factoryRunsQueryAtom } from '../queries';
 import { ResumeRunButton } from './ResumeRunButton';
 
@@ -66,7 +67,11 @@ function RunRow({ run }: { run: FactoryRun }) {
       <Badge variant={meta.variant} className="w-20 justify-center">
         {meta.label}
       </Badge>
-      <div className="min-w-0 flex-1">
+      {/* The run reports itself as a session too, under `factory-<run_id>`. */}
+      <Link
+        to={sessionDetailPath(`factory-${run.run_id}`)}
+        className="min-w-0 flex-1 rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <p className="truncate text-sm" title={run.request_text}>
           {factoryRunTitle(run)}
         </p>
@@ -77,7 +82,7 @@ function RunRow({ run }: { run: FactoryRun }) {
           ) : null}
           {run.reason ? ` · ${run.reason}` : ''}
         </p>
-      </div>
+      </Link>
       {run.resumable ? (
         <ResumeRunButton run={run} />
       ) : (

@@ -171,6 +171,46 @@ def resume_ref(record: dict[str, object]) -> str | None:
     return None
 
 
+def expected_tip(run_dir: Path, record: dict[str, object]) -> str | None:
+    """The sha the run's branch must still point at, mirroring plan_resume:
+    the last commit the run's own telemetry claims, else where it started.
+
+    A branch that has moved past this holds work the run never did, and the
+    factory refuses to build on it.
+    """
+    last = ""
+    path = run_dir / TELEMETRY_FILENAME
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict) or entry.get("event") != "commit":
+                    continue
+                payload = entry.get("payload")
+                sha = (payload or {}).get("sha") if isinstance(payload, dict) else None
+                if isinstance(sha, str) and sha:
+                    last = sha
+    except OSError:
+        pass
+    if last:
+        return last
+    base = record.get("base_sha")
+    return base if isinstance(base, str) and base else None
+
+
+def read_log_since(path: Path, offset: int) -> str:
+    """Whatever a spawned child appended to its log after `offset`."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            return handle.read().decode(errors="replace")
+    except OSError:
+        return ""
+
+
 def pid_alive(pid: object) -> bool:
     if not isinstance(pid, int) or pid <= 0:
         return False
