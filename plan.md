@@ -1,142 +1,336 @@
-# Plan — sprint-wide work sync and a real identity behind `@Me`
+# Plan — widen the work sync to the whole sprint, give @Me a real identity
 
-## The change
+## The change, in one paragraph
 
-Today `work_sync.sync_source` always asks DevOps for `DEFAULT_WIQL`
-(`[System.AssignedTo] = @Me`), so the local mirror only ever holds the PAT
-owner's own items and the work page's "Everyone" assignee filter has nothing
-extra to show. This change resolves the team's current iteration **before**
-querying and, when a path comes back, sends a sprint-scoped WIQL
-(`[System.IterationPath] UNDER '<path>'`, every assignee) instead; with no
-current sprint — or a failed lookup — it falls back to the unchanged
-assigned-to-me WIQL, and an operator-set `source.query_wiql` still overrides
-both. Because the mirror now contains other people's rows, `@Me` can no longer
-mean "not `pulled_as_parent`": the DevOps client gains one read-only
-`connectionData` GET that returns the PAT owner's display name, the name is
-persisted on `work_sources.owner_display_name` (new nullable column, refreshed
-best-effort each sync) and exposed on the `WorkSource` response schema, and the
-frontend's `ASSIGNEE_ME` becomes `item.assigned_to === <that source's owner>`.
-The iteration path is the first — and only — piece of external data ever
-interpolated into a WIQL string, so it is escaped by doubling single quotes and
-the module docstring's blanket "no interpolation" rule is rewritten to describe
-exactly that one exception and why it is safe.
+Today `sync_source` always sends `DEFAULT_WIQL` (`[System.AssignedTo] = @Me`), so the local
+mirror only ever holds the PAT owner's items and the frontend's "Everyone" assignee filter
+has nothing extra to show. This change resolves the team's current iteration path *first*,
+and when one comes back, queries the whole sprint (`[System.IterationPath] UNDER '<path>'`,
+every assignee, non-closed states) instead; with no current iteration it falls back to the
+existing assigned-to-me WIQL, and an operator-set `source.query_wiql` still beats both. The
+iteration path is external data interpolated into a query string, so it is escaped by
+doubling single quotes and the module docstring's "no interpolation ever" rule is rewritten
+to describe the single interpolation that is now allowed and why it is safe. Because the
+sprint query drags in other people's items, "@Me" in the UI can no longer mean
+"`!pulled_as_parent`" — so the backend learns the PAT owner's display name from a new
+read-only `GET /_apis/connectionData` call, persists it on the work source
+(`owner_display_name`, new nullable column + migration + response schema), and the frontend
+matches `item.assigned_to` against that name, per source. Sprint dropdown, search box and
+tree building are untouched.
 
 ## Files to add or change
 
-### Backend — sync and provider
+### Backend — sync
 
-| Path | Change | Why |
-|---|---|---|
-| `backend/app/services/work_sync.py` | Module docstring: replace "The only WIQL sent to DevOps is `DEFAULT_WIQL` or the operator-entered `source.query_wiql` — no item field is ever concatenated into a query" with the new rule: the team's current iteration path (from `teamsettings/iterations`, not from any work item) is interpolated into the sprint WIQL, single quotes doubled per WIQL's own escape; no work-item field is ever concatenated in. | The docstring is the file's stated invariant and would otherwise be a lie. |
-| same | Add `_sprint_wiql(iteration_path: str) -> str` next to `DEFAULT_WIQL`: `escaped = iteration_path.replace("'", "''")`, then `SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER '<escaped>' AND [System.State] NOT IN ('Closed','Removed','Done') ORDER BY [System.ChangedDate] DESC`. | One place to build and escape the query; the test asserts on it directly. |
-| same | In `sync_source`, move the sprint refresh from the bottom of the function to before `query_work_item_ids`, into a **local** variable: <br>`iteration: str \| None = None` <br>`with contextlib.suppress(AzureDevOpsError): iteration = await client.get_current_iteration_path(); source.current_iteration = iteration` <br>then `wiql = source.query_wiql or (_sprint_wiql(iteration) if iteration else DEFAULT_WIQL)`. | The local is what selects the WIQL, so a *failed* lookup falls back to `DEFAULT_WIQL` even when the column still holds a stale path from a previous run — while the "keep the last known value on failure" behaviour of the column itself is preserved (the assignment never runs when the call raises). |
-| same | Add, in the same shape, right after it: `with contextlib.suppress(AzureDevOpsError): source.owner_display_name = await client.get_owner_display_name()`. | Refreshes the `@Me` identity each run; a raising call leaves the last known name in place. |
-| same | Leave `pulled_as_parent`, the parent-id collection and the second `get_work_items_batch` pass byte-for-byte as they are. | Parents outside the sprint still have to be pulled for tree grouping. |
-| `backend/app/providers/azuredevops.py` | Add `async def get_owner_display_name(self) -> str \| None` — `GET {org_url}/_apis/connectionData?api-version={API_VERSION}` via `self._client()`, read `authenticatedUser` from `_read_json(response)`, take `providerDisplayName`, `return name if isinstance(name, str) and name else None`. One-line docstring saying it answers "who is @Me". | The mirror needs the PAT owner's name; `connectionData` is the org-level read that gives it. Must stay a `client.get(...)` — the guard test `test_module_has_no_write_methods` greps this file for `.patch(` / `.put(` / `.delete(`. |
+**`backend/app/services/work_sync.py`** (change)
 
-### Backend — persistence and contract
+1. Module docstring: keep the "untrusted payload is stored/rendered, never executed" para,
+   and replace the last sentence (`no item field is ever concatenated into a query`) with a
+   description of the one interpolation now allowed: the team's current iteration path from
+   `get_current_iteration_path()` is interpolated into the sprint WIQL, single-quote-escaped
+   by doubling, and WIQL has no comment/statement-separator syntax to break out into — no
+   *work-item field* is ever concatenated into a query.
+2. Add next to `DEFAULT_WIQL`:
+   ```python
+   SPRINT_WIQL = (
+       "SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER '{path}' "
+       "AND [System.State] NOT IN ('Closed','Removed','Done') "
+       "ORDER BY [System.ChangedDate] DESC"
+   )
+   ```
+   plus a small helper, e.g.
+   ```python
+   def _sprint_wiql(path: str) -> str:
+       """WIQL string literals escape a quote by doubling it."""
+       return SPRINT_WIQL.format(path=path.replace("'", "''"))
+   ```
+   (Exact constant/helper names are the builder's call; keep them module-level and
+   importable so tests can assert against them rather than re-typing the SQL.)
+3. In `sync_source`, **move the best-effort iteration refresh from the end of the function to
+   the top**, before `client.query_work_item_ids(...)`:
+   ```python
+   # Sprint lookup is best-effort; on failure keep the last known value.
+   with contextlib.suppress(AzureDevOpsError):
+       source.current_iteration = await client.get_current_iteration_path()
+   ```
+   Behaviour to preserve exactly: a *successful* call that returns `None` still clears
+   `current_iteration`; only a raised `AzureDevOpsError` keeps the previous value.
+4. WIQL selection becomes: `source.query_wiql` if set → else `_sprint_wiql(current_iteration)`
+   if `source.current_iteration` is a non-empty string → else `DEFAULT_WIQL`.
+5. Add a second best-effort refresh alongside the iteration one:
+   ```python
+   with contextlib.suppress(AzureDevOpsError):
+       source.owner_display_name = await client.get_authenticated_user_display_name()
+   ```
+   Same shape as the iteration refresh: a raised error keeps the last known value.
+6. Leave `pulled_as_parent`, the parent-id collection and the second parent-fetch pass
+   exactly as they are — parents outside the sprint still have to be pulled for tree
+   grouping. Leave `FIELDS`, the upsert and `SyncCounts` alone.
+7. Update the `sync_source` docstring's first line ("Run the source's WIQL (or the default)")
+   to name the three-way choice.
 
-| Path | Change | Why |
-|---|---|---|
-| `backend/alembic/versions/0025_work_source_owner.py` *(new)* | `revision = "0025_work_source_owner"`, `down_revision = "0024_dismissed_runs"`; `upgrade` → `op.add_column("work_sources", sa.Column("owner_display_name", sa.Text(), nullable=True))`; `downgrade` → `op.drop_column(...)`. Copy the header/typing boilerplate from `0024_dismissed_runs.py`. | The request said "next after `0022_session_launch_run_id`", but 0023 and 0024 have landed since; chaining to the real head keeps `alembic upgrade head` single-headed (see Assumptions). Additive nullable column — no backfill, no lock concern on SQLite or Postgres. |
-| `backend/app/db/models/work.py` | On `WorkSource`, after `current_iteration`: `owner_display_name: Mapped[str \| None] = mapped_column(Text, nullable=True)` with a one-line comment ("the PAT owner's display name, refreshed on sync — who `@Me` is"). `Text` is already imported. | Model and migration must agree on the type; tests build the schema from `Base.metadata`, so the model is what pytest exercises. |
-| `backend/app/api/v1/work/schemas.py` | On the `WorkSource` response model, after `current_iteration`: `owner_display_name: str \| None = Field(..., description="Display name of the PAT owner — who \"@Me\" is for this source.")`. **Do not** touch `WorkSourceCreateRequest`. | Derived from the PAT, never operator input. Field order decides the property order in `openapi.json` and the generated client. |
-| `backend/app/api/v1/work/serializers.py` | Add `owner_display_name=source.owner_display_name,` to `work_source_to_schema`, in the same position. | Serializers are explicit, not `from_attributes`. |
+### Backend — provider
 
-The repo's hand-written API contract doc under `docs/` enumerates the `WorkSource`
-schema field by field, one line per field, immediately under `current_iteration`.
-Adding the new field there is a one-line courtesy — nothing in CI enforces it —
-and it was outside this stage's write boundary, so it is left to the build stage.
+**`backend/app/providers/azuredevops.py`** (change) — one new read-only method, in the same
+shape as `get_current_iteration_path`:
 
-### Frontend
+```python
+async def get_authenticated_user_display_name(self) -> str | None:
+    """The PAT owner's display name, or None when the org does not report one."""
+    url = f"{self._org_url}/_apis/connectionData?api-version={API_VERSION}"
+    async with self._client() as client:
+        response = await client.get(url)
+    user = _read_json(response).get("authenticatedUser")
+    name = user.get("providerDisplayName") if isinstance(user, dict) else None
+    return name if isinstance(name, str) and name else None
+```
 
-| Path | Change | Why |
-|---|---|---|
-| `frontend/openapi.json` | Regenerate from the running backend: `cd backend && uv run uvicorn app.main:app --port 8008` then `curl -s localhost:8008/openapi.json \| python3 -m json.tool > frontend/openapi.json` (CONTRIBUTING.md §"If you change the API"). Expected diff: one `owner_display_name` property on `WorkSource` (`anyOf` string/null + title/description) and one entry in its `required` list. | CI job "openapi contract is current" diffs this file against a live backend. |
-| `frontend/src/api/generated/**` | `cd frontend && npm run generate:api:local`, then `rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore` (CI does the same before diffing). Expected diff: `'owner_display_name': string \| null;` on `interface WorkSource` in `api.ts`. Do not hand-edit unless the generator cannot run — see Risks. | CI fails if the committed client differs from a fresh generation. |
-| `frontend/src/features/work/tree.ts` | Rewrite the `ASSIGNEE_ME` doc comment: it is the sentinel for "assigned to the PAT owner of the item's own source" — the sync now pulls the whole sprint, so `pulled_as_parent` no longer stands in for ownership. Extend the signature to `filterWorkItemTree(nodes, filters, ownerNames: ReadonlyMap<string, string \| null>)` (required third argument, no default) and thread it into `matchesAssignee(item, assignee, ownerNames)`: for `ASSIGNEE_ME`, `const owner = ownerNames.get(item.source_id) ?? null; return owner !== null && item.assigned_to === owner;`. Everything else (tree building, sprint/query matching, `assigneeOptions`, `sprintOptions`) untouched. | Keyed by source id because two sources have two different PAT owners; the explicit `owner !== null` guard is what stops a source with no `owner_display_name` yet from matching every unassigned item (`null === null`). |
-| `frontend/src/features/work/components/WorkBacklogPage.tsx` | Add `const ownerNames = useMemo(() => new Map((sources.data ?? []).map((s) => [s.id, s.owner_display_name])), [sources.data]);` and pass it as the third argument in the `visible` memo (add to its dep array). No other change — sprint dropdown, search box, `WorkFilters`, `WorkItemTable` all stay as they are. | The sources query is already read on line 35 and used for `activeSprint`, so no new query or prop-drilling is needed. |
-| `frontend/src/features/work/queries.ts` | No change — it re-exports `filterWorkItemTree` by name, and the signature change flows through. | Listed so the builder does not "helpfully" edit it. |
+Org-level URL (no project segment), `client.get` only. The docstring's HARD RULE block stays
+as written — this adds no POST, so "the only two POSTs" remains true — and
+`tests/unit/test_azuredevops_client.py::test_module_has_no_write_methods` (greps for
+`.patch(`, `.put(`, `.delete(`) stays green.
 
-### Tests
+### Backend — persistence
 
-| Path | Change |
-|---|---|
-| `backend/tests/integration/test_work.py` | (a) Extend `_devops_handler` with a `connectionData` branch returning `{"authenticatedUser": {"providerDisplayName": "Felix De Lille"}}` — **required**, the handler raises `AssertionError` on any unexpected path, so every existing sync test breaks without it. (b) Have the handler capture the WIQL body from the `wiql` branch (e.g. append `json.loads(request.content)["query"]` to a list closed over, or make `_use_devops` return it) and make the WIQL branch parameterisable per test for the iteration response (current path / empty `value` / raising 500 / quoted path). (c) New tests: *sprint-scoped sync sends the UNDER query and stores other people's items* — give one `_ITEMS` entry an `AssignedTo` display name other than "Felix De Lille", assert the sent WIQL contains `[System.IterationPath] UNDER 'widgets\Sprint 1'` and no `@Me`, and that the row lands with that `assigned_to`; *no current iteration → assigned-to-me fallback* (iterations returns `{"value": []}`, and a second case where it returns 500) asserting the sent WIQL is `work_sync.DEFAULT_WIQL`; *a path containing a single quote is escaped* (iterations returns `widgets\O'Brien Sprint`) asserting the sent WIQL contains `UNDER 'widgets\O''Brien Sprint'` and that the query is otherwise intact (still ends with the `ORDER BY`, still one `WHERE`); *owner_display_name is persisted* (`GET /api/v1/work/sources` shows "Felix De Lille") *and survives a failing connectionData call* (sync once, then make the branch return 500, sync again, assert the name is still there and the sync still returns 200). |
-| `backend/tests/unit/test_work_sync.py` | **Required to stay green:** `_FakeDevOpsClient` needs `async def get_owner_display_name(self) -> str \| None` (an `AttributeError` is not an `AzureDevOpsError` and would not be suppressed). Give it the same `owner`/`owner_fails` constructor knobs as the iteration ones. `test_sync_uses_default_wiql_when_source_has_none` (fake returns no iteration) and `test_sync_uses_the_sources_own_wiql_verbatim_when_set` must keep passing unchanged; add a unit case that a fake reporting an iteration produces the `UNDER` query. |
-| `frontend/tests/components/harness/workFixtures.ts` | Add `owner_display_name: 'Alex Doe'` to `workSource()` — required by the regenerated type, and it makes the default fixture's owner match `workItem()`'s default `assigned_to: 'Alex Doe'`, which is what keeps the existing `@Me` expectations (`a reload comes back with the remembered sprint and assignee`, count of 3) true under the new semantics. Optionally add a sprint-mate item assigned to `'Sam Owner'` for the new "Everyone" case rather than inlining it in the spec. |
-| `frontend/tests/components/workBacklogPage.ct.tsx` | Rewrite `'@Me drops the rows pulled only as context for someone else'` so it discriminates on `assigned_to` vs the source's owner, not on `pulled_as_parent`: mount with a source whose `owner_display_name` is `'Alex Doe'` and two **non-context** items in the same sprint (Alex's story, Sam's task), select `@Me`, assert only Alex's row survives. Add a new test: with the same fixture and the assignee filter on "Everyone" (the default), both rows are listed — proving another person's sprint item now reaches the page. Also worth one case: a source with `owner_display_name: null` under `@Me` matches nothing (no accidental null-equals-null hit). Leave the sprint/search/persistence tests alone. |
+**`backend/alembic/versions/0025_work_source_owner.py`** (add)
 
-## Data and contract impact
+```python
+revision: str = "0025_work_source_owner"
+down_revision: str | None = "0024_dismissed_runs"
 
-- **Schema**: one additive nullable column, `work_sources.owner_display_name` (TEXT). No backfill, no data migration, no index. Existing rows read `null` until their next sync; a `null` owner simply means `@Me` matches nothing for that source, which is the correct conservative behaviour.
-- **API**: `WorkSource` responses gain a required-but-nullable `owner_display_name`. Additive for the frontend; `WorkSourceCreateRequest` is unchanged, so no client sends it.
-- **Behavioural, not schema-level**: after this lands, `/api/v1/work/items` returns other people's items for any source whose team has a current sprint, and the mirror stops holding items assigned to the PAT owner that fall **outside** the current sprint (they are no longer re-synced; existing rows are not deleted — nothing in `sync_source` prunes). The sprint dropdown, which derives its options from the loaded items, will therefore narrow over time to the sprints actually pulled. That is the intended trade of "whole current sprint" over "all my items", and it is worth calling out in the PR description.
-- **Outbound**: unchanged. The new provider method is a GET; the read-only guarantee stated in the API contract doc and in the module docstring still holds.
+def upgrade() -> None:
+    op.add_column("work_sources", sa.Column("owner_display_name", sa.Text(), nullable=True))
+
+def downgrade() -> None:
+    op.drop_column("work_sources", "owner_display_name")
+```
+
+The request said "next revision after `0022_session_launch_run_id`", but that is no longer
+head: the chain is linear and runs `…0022 → 0023_coding_context_samples →
+0024_dismissed_runs`. Chaining from `0024_dismissed_runs` is the only correct reading — a
+new revision must descend from head or `alembic upgrade head` reports multiple heads. Follow
+the file style of `0021_work_assignee_and_current_sprint.py` (module docstring with
+`Revision ID` / `Revises` / `Create Date: 2026-08-16`, `from __future__ import annotations`,
+`branch_labels`/`depends_on` set to `None`).
+
+**`backend/app/db/models/work.py`** (change) — on `WorkSource`, next to `current_iteration`:
+
+```python
+# The PAT owner's DevOps display name, refreshed on sync; what "@Me" matches on.
+owner_display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+```
+
+`Text` is already imported. Nothing in `repositories/work.py` changes: `create_source` never
+sets it, `sync_source` writes it on a loaded row and the existing `db.flush()` / route-level
+`db.commit()` persist it.
+
+### Backend — contract
+
+**`backend/app/api/v1/work/schemas.py`** (change) — add to the `WorkSource` response model
+only, after `current_iteration`:
+
+```python
+owner_display_name: str | None = Field(
+    ..., description="Display name of the PAT owner, refreshed on sync; what @Me matches."
+)
+```
+
+Do **not** touch `WorkSourceCreateRequest` — the value is derived from the PAT, never
+operator input.
+
+**`backend/app/api/v1/work/serializers.py`** (change) — one line in
+`work_source_to_schema`: `owner_display_name=source.owner_display_name,`.
+
+`docs/API_CONTRACT.md` is deliberately **not** edited in this stage — the contract delta is
+recorded under "Data / contract impact" below for the document stage to apply at the end of
+the run.
+
+### Frontend — generated client
+
+**`frontend/openapi.json`** and **`frontend/src/api/generated/*`** (regenerate, never
+hand-edit). The repo's documented procedure (CONTRIBUTING.md ~line 50, mirrored by the
+`contract` job in `.github/workflows/ci.yml`), with the backend running on port 8008:
+
+```bash
+cd backend && uv run alembic upgrade head && uv run uvicorn app.main:app --port 8008 &
+curl -s localhost:8008/openapi.json | python3 -m json.tool > frontend/openapi.json
+cd frontend && npm run generate:api:local
+rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore
+```
+
+CI diffs both, so the committed `openapi.json` must be the `json.tool`-formatted body and
+the client must be the untouched generator output. Expected delta: one
+`'owner_display_name': string | null;` member on the `WorkSource` interface in
+`src/api/generated/api.ts` (note the generator drops descriptions on `anyOf`-nullable
+fields, as it already does for `current_iteration` — that is not drift).
+
+### Frontend — filter semantics
+
+**`frontend/src/features/work/tree.ts`** (change)
+
+- Rewrite the `ASSIGNEE_ME` doc comment: it currently explains the `pulled_as_parent` trick,
+  which the sprint-wide sync retires. New meaning: matches items whose `assigned_to` equals
+  the owning source's `owner_display_name`.
+- Add an exported type for the lookup, keyed by source id because items from different
+  sources have different owners:
+  ```ts
+  /** `owner_display_name` per work-source id; a source with no owner yet matches nobody. */
+  export type OwnerNames = Record<string, string | null>;
+  ```
+- `filterWorkItemTree(nodes, filters, owners: OwnerNames)` — third parameter, required (one
+  call site), threaded into `matchesAssignee(item, filters.assignee, owners)`.
+- ```ts
+  function matchesAssignee(item: WorkItem, assignee: string | null, owners: OwnerNames): boolean {
+    if (assignee === null) return true;
+    if (assignee === ASSIGNEE_ME) {
+      const owner = owners[item.source_id];
+      return !!owner && item.assigned_to === owner;
+    }
+    return item.assigned_to === assignee;
+  }
+  ```
+  An item whose source has no `owner_display_name` (null/absent/empty) must not match @Me.
+- Leave `buildWorkItemTree`, `hasActiveFilters`, `countNodes`, `sprintOptions`,
+  `assigneeOptions`, `sprintLabel` untouched. Re-export `OwnerNames` from
+  `frontend/src/features/work/queries.ts` alongside the other `./tree` re-exports if the page
+  imports the type from there (the page already imports every tree symbol via `../queries`).
+
+**`frontend/src/features/work/components/WorkBacklogPage.tsx`** (change) — it already holds
+`sources` from `workSourcesQueryAtom`:
+
+```ts
+const owners = useMemo<OwnerNames>(
+  () => Object.fromEntries((sources.data ?? []).map((s) => [s.id, s.owner_display_name])),
+  [sources.data],
+);
+const visible = useMemo(() => filterWorkItemTree(tree, filters, owners), [tree, filters, owners]);
+```
+
+Nothing else on the page changes.
+
+**`frontend/src/features/work/components/WorkFilters.tsx`** (optional, one line) — the inline
+comment above the `@Me` option ("Matches the rows the source's own (assigned-to-me) query
+returned") describes the retired trick. Correct it to one line about matching the source
+owner. No markup or props change; the dropdown, sprint select and search box stay as-is.
+
+## Data / contract impact
+
+- **Schema:** `work_sources.owner_display_name text NULL` (revision `0025_work_source_owner`,
+  down-revision `0024_dismissed_runs`). Additive and nullable — existing rows read `NULL`
+  until their next sync, and `downgrade()` drops the column. No data backfill, no destructive
+  step.
+- **API contract (for the document stage to write into `docs/API_CONTRACT.md`, not this
+  stage):** the `WorkSource` **response** object gains `owner_display_name: string | null` —
+  display name of the PAT owner, refreshed on every sync, null until the first successful
+  sync or when DevOps reports none. `WorkSourceCreateRequest` is unchanged: the field is
+  derived from the PAT and is never accepted as input. No endpoint, path, status code or
+  request body changes anywhere.
+- **Behavioural contract:** `POST /api/v1/work/sources/{id}/sync` now mirrors the *whole
+  current sprint* (all assignees, states other than Closed/Removed/Done) when the team
+  reports a current iteration, instead of only the PAT owner's items — so
+  `GET /api/v1/work/items` returns strictly more rows for a source with an active sprint, and
+  fewer duplicated `pulled_as_parent` rows (a story inside the sprint now arrives through the
+  query itself). With no current iteration the behaviour is byte-identical to today.
+- **Outbound calls:** one extra read-only request per sync,
+  `GET {org_url}/_apis/connectionData?api-version=7.1`. Still zero writes to DevOps.
 
 ## Test strategy
 
-Run the gate exactly as CONTRIBUTING.md documents it:
+**`backend/tests/integration/test_work.py`** (change) — the fake DevOps handler must grow
+first, or *every* existing test in this file breaks:
 
-```bash
-cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest
-cd ../frontend && npm run typecheck && npm run lint && npm run build && npm run test:ct
-```
+- `_devops_handler` currently raises `AssertionError("unexpected request")` on any unknown
+  path. Add a `/_apis/connectionData` branch returning
+  `{"authenticatedUser": {"providerDisplayName": "Felix De Lille"}}`, parameterised so a test
+  can make it fail (e.g. return `httpx.Response(500, ...)`) or omit the name.
+- Capture the WIQL the handler receives (`json.loads(request.content)["query"]`) into a list
+  the test can assert on, and make the WIQL branch honour it: for the sprint query, return
+  the ids of the items whose `System.IterationPath` matches the current iteration (including
+  one assigned to somebody else); for the assigned-to-me query keep today's `_WIQL_IDS`.
+- Add an item to `_ITEMS` in `_CURRENT_ITERATION` assigned to a *different* person
+  (e.g. `{"displayName": "Sam Owner"}`), reachable only via the sprint query.
+- Existing count assertions (`{"fetched": 4, "inserted": 4, ...}`, `len(items) == 4`, the
+  state/source filters, `pulled_as_parent is True` for 104) must be re-derived, not deleted:
+  under the sprint query the mirror legitimately holds more rows. Note `_CURRENT_ITERATION`
+  is `"widgets\\Sprint 1"` while `_ITEMS` iteration paths are `"Sprint 1"`/`"Sprint 2"` —
+  align them (or make the handler's UNDER-match prefix-based) so the widened query really
+  selects something.
 
-Beyond that: `uv run alembic upgrade head` (and once back down) against a scratch
-SQLite file to prove 0025 applies and reverses; `DATABASE_URL="sqlite+aiosqlite:///:memory:" uv run pytest`
-is the default, and Postgres is worth a pass if one is to hand since CI runs both.
-Backend integration tests own the WIQL-selection and escaping behaviour end to end
-through the real HTTP endpoint with `httpx.MockTransport` (no live DevOps, per the
-file's own docstring); the unit tests own WIQL *selection* without a DB. The
-`test_module_has_no_write_methods` guard must be left untouched and observed to pass.
-On the frontend, the Playwright component tests own the `@Me`/"Everyone" semantics;
-`npm run typecheck` is what catches a fixture or caller that did not learn about the
-new field or the new third argument.
+New cases required:
+
+1. Sprint resolves → the WIQL sent contains `[System.IterationPath] UNDER '<current
+   iteration>'` and `NOT IN ('Closed','Removed','Done')`, does **not** contain `@Me`, and an
+   item assigned to another person is persisted and returned by `GET /api/v1/work/items`.
+2. Iteration lookup raises (`teamsettings/iterations` → 500) → the WIQL sent is exactly
+   `DEFAULT_WIQL`; and the same when the lookup succeeds with `{"value": []}` (no sprint
+   covering today).
+3. An iteration path containing a single quote (e.g. `widgets\O'Brien Sprint`) → the WIQL
+   contains `UNDER 'widgets\O''Brien Sprint'`, i.e. the doubled quote, and the query is not
+   truncated/injected (assert the trailing `AND [System.State] NOT IN …` clause survives).
+4. `owner_display_name` is persisted from `connectionData` (`GET /api/v1/work/sources`
+   reports `"Felix De Lille"`), and a failing `connectionData` on a later sync keeps the
+   previously stored value while the sync itself still succeeds.
+5. An operator-set `query_wiql` still wins over the sprint query (cheap regression, add if
+   the WIQL capture makes it a two-liner).
+
+**`backend/tests/unit/test_work_sync.py`** (change, required for a green `pytest` even though
+the request only names the integration file) — `_FakeDevOpsClient` needs a
+`get_authenticated_user_display_name()` (plus a failure flag) or `sync_source` raises
+`AttributeError`. `test_sync_uses_default_wiql_when_source_has_none` stays valid (that fake
+reports no iteration); add unit coverage for the escaping helper if it is exposed
+module-level.
+
+**Frontend**
+
+- `frontend/tests/components/harness/workFixtures.ts`: add `owner_display_name` to
+  `workSource()` — default `'Alex Doe'`, the name `workItem()` already assigns — so the
+  existing `@Me` expectations hold under the new semantics (item 4900 "Ingest reliability" is
+  assigned to `'Sam Owner'` and so still drops out). Export the two names as constants
+  (e.g. `OWNER_NAME`, `OTHER_ASSIGNEE`) and add a fixture for a *sprint* item assigned to
+  another person that is **not** `pulled_as_parent` — the row only the widened sync can
+  produce.
+- `frontend/tests/components/workBacklogPage.ct.tsx`: rework
+  `'@Me drops the rows pulled only as context for someone else'` so it proves the new rule —
+  the dropped row must be excluded because `assigned_to !== owner_display_name`, not because
+  of `pulled_as_parent`; the clearest form is an item with `pulled_as_parent: false` assigned
+  to `'Sam Owner'` that @Me still hides. Add a case where the source has
+  `owner_display_name: null` and @Me therefore matches nothing. Add the required "Everyone"
+  case: with the sprint selected, the other person's non-context item is listed (and the
+  count badge reflects it) while @Me hides it. Prefer passing these rows through the per-test
+  `items:`/`sources:` overrides of `mockWork` rather than growing `workItemTree()`, so the
+  row/count assertions in the ten other tests in this file stay valid.
+
+**Gate before calling it done:** `cd backend && uv run ruff check . && uv run ruff format
+--check . && uv run mypy app && uv run pytest`; `cd frontend && npm run typecheck && npm run
+lint && npm run test:ct`; and the CI `contract` job's check reproduced locally — regenerated
+`openapi.json` byte-identical to the committed one, `git diff --quiet -- src/api/generated`.
 
 ## Risks
 
-1. **The generator has to actually run.** CI regenerates `openapi.json` *and* the
-   typescript-axios client and fails on any diff, so a hand-edit has to be
-   byte-identical to generator output. `npm run generate:api:local` needs Java and
-   the openapi-generator jar (`@openapitools/openapi-generator-cli` downloads it on
-   first use); if that is unavailable offline, the fallback is a hand-edit matching
-   the existing pattern for a nullable-with-description field — note that
-   `current_iteration` (nullable + description) renders in `api.ts` with an **empty**
-   doc-comment body, so `owner_display_name` must too. Prefer running the real
-   generator; say so explicitly in the summary if it had to be hand-written.
-2. **Migration numbering.** The request named 0022 as the parent; the real head is
-   `0024_dismissed_runs`. Chaining to 0022 would create a second head and break
-   `alembic upgrade head` in CI. Plan chains to 0024.
-3. **The mock handler is a tripwire.** `_devops_handler` raises on any unrecognised
-   path, so the `connectionData` branch is not optional — forgetting it fails every
-   existing sync test with a confusing `AssertionError`, not a clean failure.
-4. **Stale-iteration fallback.** Using `source.current_iteration` (rather than a
-   local) to pick the WIQL would silently keep querying last month's sprint after a
-   failed lookup. The local-variable shape above is the guard; a reviewer should
-   check it survived.
-5. **`@Me` matching a `null` owner.** If `matchesAssignee` compares
-   `item.assigned_to === ownerNames.get(id)` without the explicit non-null guard,
-   every unassigned item matches `@Me` on a source that has never synced. Covered by
-   the suggested null-owner component test.
-6. **Escaping is the security surface.** Doubling single quotes is WIQL's own escape
-   and is sufficient for a quoted string literal; the value comes from DevOps'
-   own iterations endpoint, not from a work item. Do not extend the interpolation to
-   anything else, and keep the docstring narrow so the next change cannot cite it as
-   precedent.
-7. **Concurrent factory runs reset the worktree.** Check `--list-runs` before
-   editing; a live run doing `git add -A` will sweep up in-progress edits.
-
-## Assumptions
-
-- New migration is `0025_work_source_owner`, chaining to `0024_dismissed_runs` (the
-  actual head), not to `0022_session_launch_run_id` as literally requested.
-- `owner_display_name` sits immediately after `current_iteration` in the model, the
-  response schema and the serializer — field order is what drives the generated
-  client's diff, and this keeps the two DevOps-derived fields together.
-- The default component-test source owner is `'Alex Doe'`, matching the existing
-  `workItem()` fixture, so the existing `@Me` assertions keep their meaning.
-- `filterWorkItemTree`'s third parameter is required (no default `new Map()`), so a
-  caller that forgets it fails typecheck rather than silently filtering nothing.
-- The one-line `WorkSource` addition to the hand-written API contract doc is left
-  to the build stage; nothing enforces it, but leaving it stale is contract drift.
+- **Existing integration tests break silently-ish.** The new `connectionData` GET hits
+  `_devops_handler`'s catch-all `AssertionError`, so *every* test using `_use_devops` fails
+  until the handler is extended. Do that first.
+- **Volume.** A sprint-wide query can return far more items than an assigned-to-me one;
+  `get_work_items_batch` already chunks at 200, so the risk is UI/DB volume, not a failed
+  call. The default sprint filter on the page keeps the view scoped.
+- **`pulled_as_parent` now means less.** Items previously flagged as context can arrive
+  through the sprint query as first-class rows (`pulled_as_parent=False`). The upsert
+  overwrites the flag on the row, which is correct — but anything else keying off that flag
+  (`WorkItemTable`'s "context" badge, the start-session suppression on context rows) will
+  show fewer context rows after the change. That is the intended consequence; do not
+  compensate for it.
+- **Interpolation.** Escaping is a doubled single quote and nothing else. Do not build the
+  WIQL by f-string at the call site: keep one helper so the escape can never be bypassed, and
+  keep the docstring honest about it.
+- **Iteration-path mismatch.** DevOps returns the *full* path
+  (`widgets\2026 Q3.3`) from `get_current_iteration_path()`, while `System.IterationPath` on
+  items is also the full path — `UNDER` is prefix-semantic, so this works; but the test
+  fixtures currently mix `"widgets\\Sprint 1"` and `"Sprint 1"`, which will make a naive test
+  pass for the wrong reason.
+- **`owner_display_name` can be cleared.** A `connectionData` call that succeeds but reports
+  no display name overwrites the stored value with `NULL` (only a raised `AzureDevOpsError`
+  preserves it) — the exact same shape as `current_iteration` today, kept deliberately
+  consistent; @Me then matches nothing for that source until the next good sync.
+- **Contract drift.** `openapi.json` and the generated client are committed and CI diffs
+  them; hand-editing either, or regenerating against a backend that has not run
+  `alembic upgrade head`, fails the `contract` job.
