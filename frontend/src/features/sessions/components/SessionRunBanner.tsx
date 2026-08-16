@@ -3,6 +3,7 @@ import { Card } from '~/components/ui/card';
 import { Badge } from '~/components/ui/badge';
 import { runForSessionQueryAtom } from '../queries';
 import { factoryRunTitle, runOutcomeMeta } from '../runs';
+import { RerunRunButton } from './RerunRunButton';
 import { ResumeRunButton } from './ResumeRunButton';
 
 /**
@@ -33,7 +34,10 @@ export function SessionRunBanner({ sessionId }: { sessionId: string }) {
       {run.resumable ? (
         <ResumeRunButton run={run} />
       ) : (
-        <span className="shrink-0 text-xs text-muted-foreground">{run.resume_hint}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs text-muted-foreground">{run.resume_hint}</span>
+          {run.outcome === 'done' ? null : <RerunRunButton run={run} />}
+        </div>
       )}
     </Card>
   );

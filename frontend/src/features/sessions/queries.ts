@@ -82,9 +82,13 @@ export const updateSettingsMutationAtom = atomWithMutation((get) => ({
   },
 }));
 
-export const launchSessionMutationAtom = atomWithMutation(() => ({
+const FACTORY_RUNS_QUERY_KEY = ['factoryRuns'];
+
+export const launchSessionMutationAtom = atomWithMutation((get) => ({
   mutationFn: (body: LaunchRequest): Promise<SessionLaunchRead> =>
     api.launcher.launchSession(body).then((r) => r.data),
+  // The new run writes its own run dir, which the runs list reads.
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY }),
 }));
 
 const SESSION_LAUNCHES_QUERY_KEY = ['sessionLaunches'];
@@ -98,8 +102,6 @@ export const sessionLaunchesQueryAtom = atomWithQuery(() => ({
   refetchInterval: 5000,
   refetchIntervalInBackground: true,
 }));
-
-const FACTORY_RUNS_QUERY_KEY = ['factoryRuns'];
 
 /** Every project's runs, read from the run dirs themselves — runs launched
  * from a terminal show up too, not just the ones this UI started. */

@@ -32,16 +32,23 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
   };
 }
 
-async function mockRun(page: Page, run: FactoryRun | null): Promise<{ resumes: string[] }> {
+async function mockRun(
+  page: Page,
+  run: FactoryRun | null,
+): Promise<{ resumes: string[]; launches: string[] }> {
   const resumes: string[] = [];
-  await page.route('**/api/v1/launcher/runs**', async (route) => {
+  const launches: string[] = [];
+  await page.route('**/api/v1/launcher/**', async (route) => {
     const request = route.request();
     if (request.method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
       return;
     }
     let body: unknown = run;
-    if (request.url().endsWith('/resume')) {
+    if (request.url().endsWith('/launch')) {
+      launches.push(request.postData() ?? '');
+      body = { id: 1, project_path: 'p', request_text: 'r', mode: 'autonomous', launched_at: '2026-08-16T00:00:00Z', pid: 1, run_id: null, launched: true };
+    } else if (request.url().endsWith('/resume')) {
       resumes.push(request.postData() ?? '');
       body = { run_id: 'aaaa1111', resumed: true, pid: 4242 };
     }
@@ -52,7 +59,7 @@ async function mockRun(page: Page, run: FactoryRun | null): Promise<{ resumes: s
       body: JSON.stringify(body),
     });
   });
-  return { resumes };
+  return { resumes, launches };
 }
 
 function mountBanner(mount: Parameters<Parameters<typeof test>[1]>[0]['mount']) {
@@ -102,4 +109,21 @@ test('a completed run explains itself instead of offering Resume', async ({ moun
   await expect(page.getByText('done', { exact: true })).toBeVisible();
   await expect(page.getByText('completed and approved — nothing to resume')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Resume run/ })).toHaveCount(0);
+});
+
+test('a run that moved on offers the rerun from the session page too', async ({ mount, page }) => {
+  const { launches } = await mockRun(
+    page,
+    factoryRun({
+      resumable: false,
+      resume_hint: "'factory/aaaa1111' has moved on since this run left it",
+    }),
+  );
+  await mountBanner(mount);
+
+  await page.getByRole('button', { name: 'Run aaaa1111 again' }).click();
+  await page.getByRole('button', { name: 'Start it' }).click();
+
+  await expect.poll(() => launches.length).toBe(1);
+  expect(JSON.parse(launches[0]).request_text).toContain('Add a context-growth series');
 });

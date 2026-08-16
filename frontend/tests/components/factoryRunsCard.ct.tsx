@@ -30,16 +30,23 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
   };
 }
 
-async function mockRuns(page: Page, runs: FactoryRun[]): Promise<{ resumes: string[] }> {
+async function mockRuns(
+  page: Page,
+  runs: FactoryRun[],
+): Promise<{ resumes: string[]; launches: string[] }> {
   const resumes: string[] = [];
-  await page.route('**/api/v1/launcher/runs**', async (route) => {
+  const launches: string[] = [];
+  await page.route('**/api/v1/launcher/**', async (route) => {
     const request = route.request();
     if (request.method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
       return;
     }
     let body: unknown = runs;
-    if (request.url().endsWith('/resume')) {
+    if (request.url().endsWith('/launch')) {
+      launches.push(request.postData() ?? '');
+      body = { id: 1, project_path: 'p', request_text: 'r', mode: 'autonomous', launched_at: '2026-08-16T00:00:00Z', pid: 4242, run_id: null, launched: true };
+    } else if (request.url().endsWith('/resume')) {
       resumes.push(request.postData() ?? '');
       body = { run_id: 'aaaa1111', resumed: true, pid: 4242 };
     }
@@ -50,7 +57,7 @@ async function mockRuns(page: Page, runs: FactoryRun[]): Promise<{ resumes: stri
       body: JSON.stringify(body),
     });
   });
-  return { resumes };
+  return { resumes, launches };
 }
 
 function mountCard(mount: Parameters<Parameters<typeof test>[1]>[0]['mount']) {
@@ -156,6 +163,62 @@ test('with only completed runs the card folds them all away behind the toggle', 
   await expect(page.getByText('done', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Show 1 completed run' }).click();
   await expect(page.getByText('done', { exact: true })).toBeVisible();
+});
+
+test('a run nothing can resume offers to run the request again', async ({ mount, page }) => {
+  const { launches } = await mockRuns(page, [
+    factoryRun({
+      run_id: 'moved111',
+      outcome: 'stopped',
+      resumable: false,
+      resume_hint: "'factory/moved111' has moved on since this run left it",
+    }),
+  ]);
+  await mountCard(mount);
+
+  await expect(page.getByRole('button', { name: /^Resume run/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Run moved111 again' }).click();
+
+  // Starting a run spends money, so it asks first.
+  await expect(page.getByText('Start this request as a new run?')).toBeVisible();
+  expect(launches).toHaveLength(0);
+  await page.getByRole('button', { name: 'Start it' }).click();
+
+  await expect.poll(() => launches.length).toBe(1);
+  expect(JSON.parse(launches[0])).toEqual({
+    project_path: '/Users/dev/Projects/masterwork',
+    request_text: 'Add a context-growth series to the observability\n\nDETAILS…',
+    mode: 'autonomous',
+  });
+});
+
+test('cancelling the confirm starts nothing', async ({ mount, page }) => {
+  const { launches } = await mockRuns(page, [
+    factoryRun({ resumable: false, resume_hint: 'the branch it worked on is gone' }),
+  ]);
+  await mountCard(mount);
+
+  await page.getByRole('button', { name: 'Run aaaa1111 again' }).click();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByText('Start this request as a new run?')).toHaveCount(0);
+  expect(launches).toHaveLength(0);
+});
+
+test('a completed run is not offered a rerun — it wanted nothing', async ({ mount, page }) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'done5555',
+      outcome: 'done',
+      accepted: true,
+      resumable: false,
+      resume_hint: 'completed and approved — nothing to resume',
+    }),
+  ]);
+  await mountCard(mount);
+
+  await page.getByRole('button', { name: 'Show 1 completed run' }).click();
+  await expect(page.getByText('done', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
 });
 
 test('Resume posts the run and reports success', async ({ mount, page }) => {
