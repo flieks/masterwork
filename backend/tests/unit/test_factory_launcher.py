@@ -173,3 +173,35 @@ def test_workflow_is_appended_only_when_asked_for(monkeypatch: pytest.MonkeyPatc
 
     factory_launcher.spawn_factory_run(**common, workflow="scout")
     assert seen[1][-3:] == ["--workflow", "scout", "do it"]
+
+
+def test_the_injected_spawner_takes_every_argument_the_service_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tests override this dependency with a fake, so the real wrapper is the
+    one thing no other test touches — and a kwarg added to the service without
+    it lands as an unhandled TypeError (a 500 with no CORS headers, which a
+    browser reports as 'cannot reach the backend')."""
+    from app.api.deps import get_launch_spawner
+
+    seen: dict[str, object] = {}
+
+    def fake_run(**kwargs: object) -> int:
+        seen.update(kwargs)
+        return 7
+
+    monkeypatch.setattr(factory_launcher, "spawn_factory_run", fake_run)
+
+    pid = get_launch_spawner()(
+        project_path=Path("/proj"),
+        request_text="do it",
+        log_path=Path("/tmp/x.log"),
+        run_id="abc123",
+        interview=True,
+        workflow="scout",
+    )
+
+    assert pid == 7
+    assert seen["workflow"] == "scout"
+    assert seen["run_id"] == "abc123"
+    assert seen["interview"] is True

@@ -61,6 +61,7 @@ class LaunchSpawner(Protocol):
         log_path: Path,
         run_id: str | None = None,
         interview: bool = False,
+        workflow: str | None = None,
     ) -> int: ...
 
 
@@ -145,6 +146,7 @@ def get_launch_spawner() -> LaunchSpawner:
         log_path: Path,
         run_id: str | None = None,
         interview: bool = False,
+        workflow: str | None = None,
     ) -> int:
         return factory_launcher.spawn_factory_run(
             repo_root=settings.masterwork_repo_root,
@@ -154,6 +156,7 @@ def get_launch_spawner() -> LaunchSpawner:
             log_path=log_path,
             run_id=run_id,
             interview=interview,
+            workflow=workflow,
         )
 
     return _spawn
