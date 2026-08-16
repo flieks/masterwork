@@ -17,7 +17,7 @@ const SHOWN = 8;
  * newer run's business now — both fold away rather than crowding the list.
  */
 function isOpen(run: FactoryRun): boolean {
-  return run.outcome !== 'done' && run.superseded_by === null;
+  return run.outcome !== 'done' && run.superseded_by === null && !run.dismissed;
 }
 
 /**
@@ -42,7 +42,7 @@ export function FactoryRunsCard() {
         <CardTitle>Factory runs</CardTitle>
         <CardDescription>
           {open.length === 0
-            ? 'Nothing needs a decision — every run either finished or has been started again.'
+            ? 'Nothing needs a decision — every run finished, was started again, or was dismissed.'
             : "The run dirs' own records; a stopped or failed run resumes from its last committed stage."}
         </CardDescription>
       </CardHeader>

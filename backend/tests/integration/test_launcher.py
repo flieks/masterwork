@@ -1147,3 +1147,64 @@ async def test_runs_of_different_requests_do_not_supersede_each_other(
 
     runs = (await client.get("/api/v1/launcher/runs")).json()
     assert all(r["superseded_by"] is None for r in runs)
+
+
+# --- dismissing a run out of the list --------------------------------------
+
+
+async def test_dismiss_marks_a_run_and_restore_brings_it_back(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "aaaa1111", state="stopped")
+    body = {"project_path": str(alpha), "run_id": "aaaa1111"}
+
+    r = await client.post("/api/v1/launcher/runs/dismiss", json=body)
+    assert r.status_code == 200
+    assert r.json()["dismissed"] is True
+    assert (await client.get("/api/v1/launcher/runs")).json()[0]["dismissed"] is True
+
+    # Dismissing twice is not an error — the row is already there.
+    assert (await client.post("/api/v1/launcher/runs/dismiss", json=body)).status_code == 200
+
+    r = await client.post("/api/v1/launcher/runs/restore", json=body)
+    assert r.status_code == 200
+    assert r.json()["dismissed"] is False
+    assert (await client.get("/api/v1/launcher/runs")).json()[0]["dismissed"] is False
+
+
+async def test_dismissing_leaves_the_run_dir_untouched(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    # The factory owns those files; a dismissal is masterwork's own note.
+    alpha = seeded_projects / "alpha"
+    run_dir = _write_run_record(runs_root, alpha, "aaaa1111", state="stopped")
+    before = sorted(p.name for p in run_dir.iterdir())
+    record_before = (run_dir / "run.json").read_text()
+
+    await client.post(
+        "/api/v1/launcher/runs/dismiss",
+        json={"project_path": str(alpha), "run_id": "aaaa1111"},
+    )
+
+    assert sorted(p.name for p in run_dir.iterdir()) == before
+    assert (run_dir / "run.json").read_text() == record_before
+
+
+async def test_dismiss_rejects_an_unknown_run_and_an_outside_project(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path, tmp_path: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    r = await client.post(
+        "/api/v1/launcher/runs/dismiss",
+        json={"project_path": str(alpha), "run_id": "nope0000"},
+    )
+    assert r.status_code == 404
+
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    r = await client.post(
+        "/api/v1/launcher/runs/dismiss",
+        json={"project_path": str(outside), "run_id": "aaaa1111"},
+    )
+    assert r.status_code == 400

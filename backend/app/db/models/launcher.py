@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Integer, String, Text, func
+from sqlalchemy import Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -33,3 +33,22 @@ class SessionLaunch(Base):
     # Only interview launches carry one — the factory run id, server-generated
     # at launch time so it is on the row before the child is even spawned.
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class DismissedRun(Base):
+    """A factory run the user has waved away, so the runs list stops offering it.
+
+    Masterwork's own bookkeeping, not the factory's: the run dir stays exactly
+    as the factory wrote it, and a dismissal is undone by deleting this row.
+    """
+
+    __tablename__ = "dismissed_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_path: Mapped[str] = mapped_column(Text)
+    run_id: Mapped[str] = mapped_column(String(64))
+    dismissed_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("project_path", "run_id", name="uq_dismissed_runs_project_run"),
+    )

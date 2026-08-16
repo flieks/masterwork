@@ -2808,3 +2808,46 @@ instead of a second "Run again" on a request already running again.
   a `NOT ACCEPTED` verdict. A run that dies on arrival is no longer reported as
   started.
 - **DB**: none.
+
+# API Contract v1.34 — dismissing a run out of the list
+
+Additive on top of v1.33. The runs list is a working list, not an archive: a
+run that nobody will act on has to be able to leave it.
+
+## Changed schema
+
+`FactoryRun` gains one field:
+
+```
+dismissed: boolean   // the user waved this run away; out of the way, not gone
+```
+
+## New schema and endpoints
+
+```
+FactoryRunDismissRequest { project_path: string, run_id: string }
+```
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| POST `/api/v1/launcher/runs/dismiss` | `dismissFactoryRun` | `FactoryRunDismissRequest` | `FactoryRun` (400 outside projects_root, 404 unknown run) |
+| POST `/api/v1/launcher/runs/restore` | `restoreFactoryRun` | `FactoryRunDismissRequest` | `FactoryRun` |
+
+## Behavior
+
+- **The run dir is never written to.** A dismissal is masterwork's own note in
+  its own table, so the factory's records stay exactly as it wrote them and a
+  dismissal is undone by deleting a row. Dismissing twice is not an error.
+- **Frontend**: every open row carries a × that dismisses it; dismissed runs
+  fold in with the done and superseded ones behind "Show N handled runs",
+  where each offers "Bring back".
+- **DB**: one new table, additive:
+  ```
+  dismissed_runs
+    id            int pk
+    project_path  text
+    run_id        varchar(64)
+    dismissed_at  timestamptz
+    unique (project_path, run_id)
+  ```
+  Alembic migration `0024_dismissed_runs` on `0023_coding_context_samples`.

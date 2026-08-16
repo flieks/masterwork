@@ -25,6 +25,7 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
     ended_at: '2026-08-15T10:14:17+00:00',
     resumable: true,
     resume_hint: null,
+    dismissed: false,
     superseded_by: null,
     session_ids: [],
     ...overrides,
@@ -33,8 +34,9 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
 
 async function mockRuns(
   page: Page,
-  runs: FactoryRun[],
+  initial: FactoryRun[],
 ): Promise<{ resumes: string[]; launches: string[] }> {
+  let runs = initial;
   const resumes: string[] = [];
   const launches: string[] = [];
   await page.route('**/api/v1/launcher/**', async (route) => {
@@ -44,7 +46,11 @@ async function mockRuns(
       return;
     }
     let body: unknown = runs;
-    if (request.url().endsWith('/launch')) {
+    if (request.url().endsWith('/dismiss') || request.url().endsWith('/restore')) {
+      const dismissed = request.url().endsWith('/dismiss');
+      runs = runs.map((r) => ({ ...r, dismissed }));
+      body = runs[0];
+    } else if (request.url().endsWith('/launch')) {
       launches.push(request.postData() ?? '');
       body = { id: 1, project_path: 'p', request_text: 'r', mode: 'autonomous', launched_at: '2026-08-16T00:00:00Z', pid: 4242, run_id: null, launched: true };
     } else if (request.url().endsWith('/resume')) {
@@ -296,4 +302,24 @@ test('the rerun button cannot be pressed a second time', async ({ mount, page })
   await expect(page.getByRole('button', { name: 'Started' })).toBeDisabled();
   await expect(page.getByRole('button', { name: /Run .* again/ })).toHaveCount(0);
   expect(launches).toHaveLength(1);
+});
+
+test('dismissing a run drops it from the list and offers it back', async ({ mount, page }) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'noise111',
+      outcome: 'failed',
+      resumable: false,
+      resume_hint: "the branch it worked on ('factory/noise111') is gone",
+    }),
+  ]);
+  await mountCard(mount);
+
+  await page.getByRole('button', { name: 'Dismiss run noise111' }).click();
+
+  // Out of the way, not gone: it waits behind the toggle with a way back.
+  await expect(page.getByText(/Nothing needs a decision/)).toBeVisible();
+  await page.getByRole('button', { name: 'Show 1 handled run' }).click();
+  await expect(page.getByRole('button', { name: 'Bring back' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
 });

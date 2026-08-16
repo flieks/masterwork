@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { FactoryRun } from '~/api/generated';
 import { sessionDetailPath } from '../runs';
+import { DismissRunButton } from './DismissRunButton';
 import { RerunRunButton } from './RerunRunButton';
 import { ResumeRunButton } from './ResumeRunButton';
 
@@ -17,7 +18,17 @@ function canRerun(run: FactoryRun): boolean {
 }
 
 export function RunActions({ run }: { run: FactoryRun }) {
-  if (run.resumable) return <ResumeRunButton run={run} />;
+  // A dismissed run is only ever seen in the folded-away view, where the one
+  // thing to offer is putting it back.
+  if (run.dismissed) return <DismissRunButton run={run} dismissed={false} />;
+  if (run.resumable) {
+    return (
+      <div className="flex shrink-0 items-center gap-1">
+        <ResumeRunButton run={run} />
+        <DismissRunButton run={run} dismissed />
+      </div>
+    );
+  }
 
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -32,6 +43,7 @@ export function RunActions({ run }: { run: FactoryRun }) {
       ) : canRerun(run) ? (
         <RerunRunButton run={run} />
       ) : null}
+      <DismissRunButton run={run} dismissed />
     </div>
   );
 }

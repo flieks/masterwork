@@ -323,6 +323,7 @@ def _run_to_schema(
     *,
     run_dir: Path | None = None,
     tips: dict[str, str] | None = None,
+    dismissed: bool = False,
 ) -> schemas.FactoryRun | None:
     """None for a record without a usable run_id — nothing to act on."""
     run_id = record.get("run_id")
@@ -356,6 +357,7 @@ def _run_to_schema(
         ended_at=str(record["ended"]) if isinstance(record.get("ended"), str) else None,
         resumable=hint is None,
         resume_hint=hint,
+        dismissed=dismissed,
         session_ids=factory_runs.read_session_ids(run_dir) if run_dir else [],
     )
 
@@ -388,6 +390,7 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
     runs: list[schemas.FactoryRun] = []
     seen: set[tuple[str, str]] = set()
     branch_tips: dict[Path, dict[str, str] | None] = {}
+    waved_away = await launcher_repo.list_dismissed_runs(db)
     for runs_root in _runs_roots(root):
         for run_dir in runs_root.iterdir():
             if not run_dir.is_dir():
@@ -400,13 +403,46 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
                 continue
             if project not in branch_tips:  # one git call per project, not per run
                 branch_tips[project] = await _branch_tips(project)
-            run = _run_to_schema(project, record, run_dir=run_dir, tips=branch_tips[project])
+            run = _run_to_schema(
+                project,
+                record,
+                run_dir=run_dir,
+                tips=branch_tips[project],
+                dismissed=(str(project), str(record.get("run_id"))) in waved_away,
+            )
             if run is not None and (run.project_path, run.run_id) not in seen:
                 seen.add((run.project_path, run.run_id))
                 runs.append(run)
     runs.sort(key=lambda r: r.started_at or "", reverse=True)
     _mark_superseded(runs)
     return runs
+
+
+async def set_dismissed(
+    db: AsyncSession, body: schemas.FactoryRunDismissRequest, *, dismissed: bool
+) -> schemas.FactoryRun:
+    """Wave a run away, or bring it back. The run dir is never touched — this
+    is masterwork's own note that the run wants nothing from anyone."""
+    root = await _projects_root(db)
+    resolved = resolve_within_roots(Path(body.project_path), [root])
+    if resolved is None or not resolved.is_dir():
+        raise ProjectPathOutsideRootError(
+            f"project_path must be a directory under {root}, got: {body.project_path}"
+        )
+    run_dir = factory_runs.run_dir_for(resolved, body.run_id)
+    record = factory_runs.read_run_record(run_dir)
+    if record is None:
+        raise RunNotFoundError(f"no run '{body.run_id}' recorded for {resolved.name}")
+
+    if dismissed:
+        await launcher_repo.dismiss_run(db, project_path=str(resolved), run_id=body.run_id)
+    else:
+        await launcher_repo.restore_run(db, project_path=str(resolved), run_id=body.run_id)
+
+    run = _run_to_schema(resolved, record, run_dir=run_dir, dismissed=dismissed)
+    if run is None:
+        raise RunNotFoundError(f"run '{body.run_id}' has an unreadable record")
+    return run
 
 
 def _mark_superseded(runs: list[schemas.FactoryRun]) -> None:

@@ -128,6 +128,9 @@ class FactoryRun(BaseModel):
     resume_hint: str | None = Field(
         None, description="Why a resume is not offered; null when `resumable` is true."
     )
+    dismissed: bool = Field(
+        False, description="The user waved this run away; it is out of the way, not gone."
+    )
     superseded_by: str | None = Field(
         None,
         description="Run id of a newer run of this same request, when one exists.",
@@ -138,6 +141,11 @@ class FactoryRun(BaseModel):
 
 
 class FactoryRunResumeRequest(BaseModel):
+    project_path: str = Field(..., description="Absolute path; must resolve under projects_root.")
+    run_id: str
+
+
+class FactoryRunDismissRequest(BaseModel):
     project_path: str = Field(..., description="Absolute path; must resolve under projects_root.")
     run_id: str
 

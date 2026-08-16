@@ -108,6 +108,30 @@ async def resume_factory_run(
     return await service.resume_run(db, body, resume_spawner)
 
 
+@router.post(
+    "/launcher/runs/dismiss",
+    response_model=schemas.FactoryRun,
+    operation_id="dismissFactoryRun",
+)
+async def dismiss_factory_run(
+    body: schemas.FactoryRunDismissRequest,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.FactoryRun:
+    return await service.set_dismissed(db, body, dismissed=True)
+
+
+@router.post(
+    "/launcher/runs/restore",
+    response_model=schemas.FactoryRun,
+    operation_id="restoreFactoryRun",
+)
+async def restore_factory_run(
+    body: schemas.FactoryRunDismissRequest,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.FactoryRun:
+    return await service.set_dismissed(db, body, dismissed=False)
+
+
 @router.get(
     "/launcher/launches",
     response_model=list[schemas.SessionLaunchListItem],

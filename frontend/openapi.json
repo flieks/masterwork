@@ -3262,6 +3262,88 @@
                     }
                 }
             }
+        },
+        "/api/v1/launcher/runs/dismiss": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Dismiss Factory Run",
+                "operationId": "dismissFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRun"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/restore": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Restore Factory Run",
+                "operationId": "restoreFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRun"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -9105,6 +9187,12 @@
                         "title": "Resume Hint",
                         "description": "Why a resume is not offered; null when `resumable` is true."
                     },
+                    "dismissed": {
+                        "type": "boolean",
+                        "title": "Dismissed",
+                        "description": "The user waved this run away; it is out of the way, not gone.",
+                        "default": false
+                    },
                     "superseded_by": {
                         "anyOf": [
                             {
@@ -9204,6 +9292,25 @@
                 ],
                 "title": "RunOutcome",
                 "description": "What actually happened, which run.json's `state` alone does not say: a\nrejected run and an approved one both end up `state=\"finished\"`."
+            },
+            "FactoryRunDismissRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "run_id"
+                ],
+                "title": "FactoryRunDismissRequest"
             }
         }
     }

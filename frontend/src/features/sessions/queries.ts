@@ -10,6 +10,7 @@ import type {
   CodingSessionDetail,
   ContextSeries,
   FactoryRun,
+  FactoryRunDismissRequest,
   FactoryRunResumeRead,
   FactoryRunResumeRequest,
   InterviewAnswersRequest,
@@ -126,6 +127,26 @@ export const runForSessionQueryAtom = atomFamily((sessionId: string) =>
       (await api.launcher.getRunForSession(sessionId)).data,
   })),
 );
+
+/** Waves a run out of the list, or brings it back. */
+export const dismissFactoryRunMutationAtom = atomWithMutation((get) => ({
+  mutationFn: ({
+    body,
+    dismissed,
+  }: {
+    body: FactoryRunDismissRequest;
+    dismissed: boolean;
+  }): Promise<FactoryRun> =>
+    (dismissed
+      ? api.launcher.dismissFactoryRun(body)
+      : api.launcher.restoreFactoryRun(body)
+    ).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: ['runForSession'] });
+  },
+}));
 
 export const resumeFactoryRunMutationAtom = atomWithMutation((get) => ({
   mutationFn: (body: FactoryRunResumeRequest): Promise<FactoryRunResumeRead> =>

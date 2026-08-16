@@ -6758,6 +6758,7 @@ export interface FactoryRun {
     'ended_at': string | null;
     'resumable': boolean;
     'resume_hint'?: string | null;
+    'dismissed'?: boolean;
     'superseded_by'?: string | null;
     'session_ids'?: Array<string>;
 }
@@ -6771,6 +6772,15 @@ export const RunOutcome = {
 } as const;
 
 export type RunOutcome = typeof RunOutcome[keyof typeof RunOutcome];
+/**
+ *
+ * @export
+ * @interface FactoryRunDismissRequest
+ */
+export interface FactoryRunDismissRequest {
+    'project_path': string;
+    'run_id': string;
+}
 /**
  *
  * @export
@@ -6968,6 +6978,74 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        dismissFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            assertParamExists('dismissFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
+            const localVarPath = `/api/v1/launcher/runs/dismiss`;
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunDismissRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         *
+         * @summary Restore Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        restoreFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            assertParamExists('restoreFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
+            const localVarPath = `/api/v1/launcher/runs/restore`;
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunDismissRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -7218,6 +7296,32 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['LauncherApi.getRunForSession']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         *
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.dismissFactoryRun(factoryRunDismissRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.dismissFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         *
+         * @summary Restore Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.restoreFactoryRun(factoryRunDismissRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.restoreFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
         async listFactoryRuns(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FactoryRun>>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listFactoryRuns(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
@@ -7341,6 +7445,26 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
         getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun | null> {
             return localVarFp.getRunForSession(sessionId, options).then((request) => request(axios, basePath));
         },
+        /**
+         *
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Restore Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.restoreFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
+        },
         listFactoryRuns(options?: RawAxiosRequestConfig): AxiosPromise<Array<FactoryRun>> {
             return localVarFp.listFactoryRuns(options).then((request) => request(axios, basePath));
         },
@@ -7459,6 +7583,30 @@ export class LauncherApi extends BaseAPI {
      */
     public getRunForSession(sessionId: string, options?: RawAxiosRequestConfig) {
         return LauncherApiFp(this.configuration).getRunForSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Dismiss Factory Run
+     * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     *
+     * @summary Restore Factory Run
+     * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).restoreFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     public listFactoryRuns(options?: RawAxiosRequestConfig) {

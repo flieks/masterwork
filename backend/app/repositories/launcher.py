@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.launcher import SessionLaunch
+from app.db.models.launcher import DismissedRun, SessionLaunch
 
 DEFAULT_LIST_LIMIT = 20
 
@@ -45,3 +45,30 @@ async def list_launches(db: AsyncSession, limit: int = DEFAULT_LIST_LIMIT) -> li
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def list_dismissed_runs(db: AsyncSession) -> set[tuple[str, str]]:
+    """Every (project_path, run_id) the user has waved away."""
+    result = await db.execute(select(DismissedRun.project_path, DismissedRun.run_id))
+    return {(row[0], row[1]) for row in result.all()}
+
+
+async def dismiss_run(db: AsyncSession, *, project_path: str, run_id: str) -> None:
+    """Idempotent: dismissing an already-dismissed run changes nothing."""
+    existing = await db.execute(
+        select(DismissedRun).where(
+            DismissedRun.project_path == project_path, DismissedRun.run_id == run_id
+        )
+    )
+    if existing.scalar_one_or_none() is None:
+        db.add(DismissedRun(project_path=project_path, run_id=run_id))
+        await db.commit()
+
+
+async def restore_run(db: AsyncSession, *, project_path: str, run_id: str) -> None:
+    await db.execute(
+        delete(DismissedRun).where(
+            DismissedRun.project_path == project_path, DismissedRun.run_id == run_id
+        )
+    )
+    await db.commit()
