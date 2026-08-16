@@ -198,10 +198,11 @@ async def launch(
         # nowhere to surface that — caught here, synchronously, instead.
         raise ProjectPathOutsideRootError(f"project_path is not a git repository: {resolved}")
 
-    # Only an interview launch gets a run id — an autonomous launch keeps
-    # run_id=None and its argv byte-for-byte identical to before.
+    # Every launch gets its run id up front, so the answer names the run it
+    # started and the UI can link straight to it. An interview launch always
+    # needed this; the rest were left guessing which run was theirs.
     is_interview = body.mode == schemas.LaunchMode.INTERVIEW
-    run_id = factory_runs.new_run_id() if is_interview else None
+    run_id = factory_runs.new_run_id()
 
     launch_row = await launcher_repo.create_launch(
         db,

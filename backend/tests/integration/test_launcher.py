@@ -283,14 +283,14 @@ async def test_launch_writes_row_and_spawns_with_expected_argv(
     assert body["launched"] is True
     assert body["pid"] == 4242
     assert body["mode"] == "autonomous"
-    assert body["run_id"] is None  # autonomous launches never get one
+    assert body["run_id"], "a launch names the run it started, so the UI can link to it"
 
     assert len(fake_spawner.calls) == 1
     call = fake_spawner.calls[0]
     assert call["project_path"] == alpha
     assert call["request_text"] == "add a widget"
     assert call["log_path"].name == f"{body['id']}.log"
-    assert call["run_id"] is None
+    assert call["run_id"] == body["run_id"]  # the id the answer named
     assert call["interview"] is False
 
     async with session_factory() as db:
@@ -298,7 +298,7 @@ async def test_launch_writes_row_and_spawns_with_expected_argv(
         assert row is not None
         assert row.project_path == str(alpha)
         assert row.pid == 4242
-        assert row.run_id is None
+        assert row.run_id == body["run_id"]  # the row remembers which run it started
 
 
 async def test_launch_interview_mode_stores_and_returns_it(
@@ -604,7 +604,8 @@ async def test_an_autonomous_launch_reports_not_interview(
     assert state.status_code == 200
     body = state.json()
     assert body["state"] == "not_interview"
-    assert body["run_id"] is None
+    # It has a run id like any launch; what makes it not-interview is the mode.
+    assert body["run_id"]
     assert body["questions"] == []
 
 

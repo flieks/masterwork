@@ -2881,3 +2881,26 @@ rejected by the schema (422) rather than handed to the factory.
   labels any non-`full` run with its preset, so a check is never mistaken for a
   build.
 - **DB**: none — the workflow is already recorded in the run's own `run.json`.
+
+# API Contract v1.36 — every launch names the run it started
+
+Corrects v1.26's "only an interview launch gets a run id".
+
+`launchSession` now generates a run id for **every** launch and passes it as
+`--run-id`, so `SessionLaunchRead.run_id` is always set and the caller knows
+which run its click produced. Before, an autonomous launch answered
+`run_id: null` and the UI had no way to point at the run it had just started —
+the reason a started rerun or check could only say "Started" and leave the user
+guessing. Interview launches are unaffected; they always worked this way.
+
+The `--run-id` flag is the same one `factory/run.py` already accepted, so
+nothing about the factory changes. What changes is that a plain autonomous
+launch's argv now carries it too.
+
+**Frontend**: once the started run reports itself in `listFactoryRuns`, the
+button that started it turns into a link to that run's session page, where its
+stages, events and the agent's own output already stream in. Until then it
+stays an inert label, so the link never opens a page with nothing on it.
+
+**DB**: none — `session_launches.run_id` already existed and is simply always
+populated now.

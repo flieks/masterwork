@@ -17,6 +17,7 @@ import { Button } from '~/components/ui/button';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { launchSessionMutationAtom } from '../queries';
+import { StartedRunLink } from './StartedRunLink';
 
 /**
  * Starts the run's request over as a new run — the way out for a run nothing
@@ -25,31 +26,25 @@ import { launchSessionMutationAtom } from '../queries';
  */
 export function RerunRunButton({ run }: { run: FactoryRun }) {
   const [{ mutateAsync: launch, isPending }] = useAtom(launchSessionMutationAtom);
-  // Holds until the refetched run carries `superseded_by` and this button
-  // is replaced by the link to the new run — no window for a second click.
-  const [started, setStarted] = useState(false);
+  // Holds until the refetched run carries `superseded_by` and this button is
+  // replaced by the link to the new run — no window for a second click.
+  const [startedRunId, setStartedRunId] = useState<string | null>(null);
 
   async function rerun() {
     try {
-      await launch({
+      const started = await launch({
         project_path: run.project_path,
         request_text: run.request_text,
         mode: run.interview ? 'interview' : 'autonomous',
       });
-      setStarted(true);
+      setStartedRunId(started.run_id ?? null);
       toast.success('New run started', { description: 'It picks up from planning, uncapped.' });
     } catch (err) {
       toast.error('Could not start the run', { description: apiErrorMessage(err) });
     }
   }
 
-  if (started) {
-    return (
-      <Button size="sm" variant="outline" className="shrink-0" disabled>
-        Started
-      </Button>
-    );
-  }
+  if (startedRunId) return <StartedRunLink runId={startedRunId} label="Started" />;
 
   return (
     <AlertDialog>

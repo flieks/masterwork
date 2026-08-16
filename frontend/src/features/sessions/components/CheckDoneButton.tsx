@@ -17,6 +17,7 @@ import { Button } from '~/components/ui/button';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { launchSessionMutationAtom } from '../queries';
+import { StartedRunLink } from './StartedRunLink';
 
 /** The scout stage answers questions about a repo; this is the question. */
 function isItDoneQuestion(run: FactoryRun): string {
@@ -34,16 +35,16 @@ function isItDoneQuestion(run: FactoryRun): string {
  */
 export function CheckDoneButton({ run }: { run: FactoryRun }) {
   const [{ mutateAsync: launch, isPending }] = useAtom(launchSessionMutationAtom);
-  const [asked, setAsked] = useState(false);
+  const [startedRunId, setStartedRunId] = useState<string | null>(null);
 
   async function check() {
     try {
-      await launch({
+      const started = await launch({
         project_path: run.project_path,
         request_text: isItDoneQuestion(run),
         workflow: 'scout',
       });
-      setAsked(true);
+      setStartedRunId(started.run_id ?? null);
       toast.success('Checking whether this is already done', {
         description: 'One read-only pass; its findings land on the new run.',
       });
@@ -52,13 +53,7 @@ export function CheckDoneButton({ run }: { run: FactoryRun }) {
     }
   }
 
-  if (asked) {
-    return (
-      <Button size="sm" variant="ghost" className="shrink-0 text-xs" disabled>
-        Checking…
-      </Button>
-    );
-  }
+  if (startedRunId) return <StartedRunLink runId={startedRunId} label="Checking" />;
 
   return (
     <AlertDialog>

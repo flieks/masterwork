@@ -36,7 +36,7 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
 async function mockRuns(
   page: Page,
   initial: FactoryRun[],
-): Promise<{ resumes: string[]; launches: string[] }> {
+): Promise<{ resumes: string[]; launches: string[]; setRuns: (next: FactoryRun[]) => void }> {
   let runs = initial;
   const resumes: string[] = [];
   const launches: string[] = [];
@@ -53,7 +53,7 @@ async function mockRuns(
       body = runs[0];
     } else if (request.url().endsWith('/launch')) {
       launches.push(request.postData() ?? '');
-      body = { id: 1, project_path: 'p', request_text: 'r', mode: 'autonomous', launched_at: '2026-08-16T00:00:00Z', pid: 4242, run_id: null, launched: true };
+      body = { id: 1, project_path: 'p', request_text: 'r', mode: 'autonomous', launched_at: '2026-08-16T00:00:00Z', pid: 4242, run_id: 'fresh777', launched: true };
     } else if (request.url().endsWith('/resume')) {
       resumes.push(request.postData() ?? '');
       body = { run_id: 'aaaa1111', resumed: true, pid: 4242 };
@@ -65,7 +65,7 @@ async function mockRuns(
       body: JSON.stringify(body),
     });
   });
-  return { resumes, launches };
+  return { resumes, launches, setRuns: (next: FactoryRun[]) => (runs = next) };
 }
 
 function mountCard(mount: Parameters<Parameters<typeof test>[1]>[0]['mount']) {
@@ -300,7 +300,7 @@ test('the rerun button cannot be pressed a second time', async ({ mount, page })
   await page.getByRole('button', { name: 'Start it' }).click();
 
   // It reads "Started" and refuses further clicks until the data catches up.
-  await expect(page.getByRole('button', { name: 'Started' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Started' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Run .* again/ })).toHaveCount(0);
   expect(launches).toHaveLength(1);
 });
@@ -364,4 +364,34 @@ test('a scout run says so, so a check is not mistaken for a build', async ({ mou
   await mountCard(mount);
 
   await expect(page.getByText(/scout111 · scout/)).toBeVisible();
+});
+
+test('once the started run reports itself, the button becomes a way into it', async ({
+  mount,
+  page,
+}) => {
+  const started = factoryRun({ run_id: 'fresh777', outcome: 'running', workflow: 'scout' });
+  const stuck = factoryRun({
+    run_id: 'stuck111',
+    outcome: 'failed',
+    resumable: false,
+    resume_hint: 'the branch it worked on is gone',
+  });
+  const { setRuns } = await mockRuns(page, [stuck]);
+  await mountCard(mount);
+
+  await page.getByRole('button', { name: 'Check whether run stuck111 is already done' }).click();
+  await page.getByRole('button', { name: 'Check it' }).click();
+
+  // Until the run reports itself there is nowhere to go yet.
+  await expect(page.getByRole('button', { name: 'Checking' })).toBeDisabled();
+
+  // The next poll carries it — the row that started it stays where it was.
+  setRuns([started, stuck]);
+
+  await expect(page.getByRole('link', { name: 'Checking →' })).toHaveAttribute(
+    'href',
+    '/sessions/factory-fresh777',
+    { timeout: 10_000 },
+  );
 });
