@@ -2904,3 +2904,47 @@ stays an inert label, so the link never opens a page with nothing on it.
 
 **DB**: none — `session_launches.run_id` already existed and is simply always
 populated now.
+
+---
+
+# API Contract v1.37 — the work sync covers the sprint, not just @Me
+
+Corrects v1.24's "read-only inbound only" sync, which only ever pulled items
+`[System.AssignedTo] = @Me`: the work page never saw a teammate's item, so the
+frontend's "Everyone" assignee filter had nothing to add over "@Me".
+
+**`sync_source`** now resolves the team's current iteration path first
+(`current_iteration`, unchanged as a field, just fetched earlier). When one
+resolves, it queries the whole sprint —
+`[System.IterationPath] UNDER '<path>' AND [System.State] NOT IN
+('Closed','Removed','Done')`, every assignee — instead of `DEFAULT_WIQL`.
+`DEFAULT_WIQL` (`[System.AssignedTo] = @Me`) is now only the fallback for when
+no sprint covers today (or the iteration lookup fails); an operator's
+`source.query_wiql` still overrides both, unchanged. The iteration path is
+interpolated into the sprint WIQL with its single quotes doubled — the one
+external-data interpolation the module allows, since DevOps' own sprint-lookup
+API is the source, not user input.
+
+**New field**, `WorkSource.owner_display_name: string | null` — the PAT
+owner's DevOps display name, read from `GET {org_url}/_apis/connectionData`
+(`authenticatedUser.providerDisplayName`) and refreshed on every sync,
+best-effort like `current_iteration`: a failed lookup keeps the source's last
+known value. Not settable — it has no place on `WorkSourceCreateRequest`,
+only ever derived from the PAT.
+
+```
+WorkSource {
+  ...                             // unchanged fields, see v1.24
+  owner_display_name: string | null // PAT owner's display name; refreshed on sync
+}
+```
+
+**Frontend**: `ASSIGNEE_ME` in `features/work/tree.ts` no longer means
+"`!item.pulled_as_parent`" — it means `item.assigned_to` equals the item's
+source's `owner_display_name`. `filterWorkItemTree` takes that name per
+source id as a third argument (`OwnerNames`, keyed by `source_id`); a source
+with no `owner_display_name` yet matches nobody under "@Me". The sprint
+dropdown, search box, and tree building are unchanged.
+
+**DB**: `work_sources.owner_display_name`, nullable text, added by Alembic
+migration `0025_work_source_owner`.
