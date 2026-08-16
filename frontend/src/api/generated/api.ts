@@ -6758,6 +6758,7 @@ export interface FactoryRun {
     'ended_at': string | null;
     'resumable': boolean;
     'resume_hint'?: string | null;
+    'superseded_by'?: string | null;
     'session_ids'?: Array<string>;
 }
 

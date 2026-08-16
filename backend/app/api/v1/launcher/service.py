@@ -35,23 +35,39 @@ from app.core.exceptions import (
 from app.db.models.launcher import MODE_INTERVIEW, SessionLaunch
 from app.providers.base import resolve_within_roots
 from app.repositories import launcher as launcher_repo
-from app.services import factory_runs
+from app.services import factory_launcher, factory_runs
 
 _MAX_NAME_LEN = 100
 
 # How long a resumed run gets to refuse itself before the caller is told it started.
 RESUME_SETTLE_SECONDS = 2.0
 
-# factory/run.py prints every refusal to stderr with this prefix.
+# How factory/run.py says no: a refusal before it starts, or a run that ended
+# without being accepted. Either inside the settle window means it died at once.
 _ERROR_PREFIX = "error: "
+_NOT_ACCEPTED = "NOT ACCEPTED"
 
 
 def _refusal_in(log_text: str) -> str | None:
-    """The factory's own refusal line, if the resume it just spawned wrote one."""
+    """The factory's own words, if the run it just spawned already gave up."""
     for line in log_text.splitlines():
         if line.startswith(_ERROR_PREFIX):
             return line[len(_ERROR_PREFIX) :].strip()
+        if line.startswith(_NOT_ACCEPTED):
+            said = line[len(_NOT_ACCEPTED) :].lstrip(" —-").strip()
+            return said or "the run ended without being accepted"
     return None
+
+
+def _require_agent_cli() -> None:
+    """A missing CLI kills the run in under a second, long after this endpoint
+    has reported success — so it is refused here instead."""
+    if factory_launcher.find_agent_cli() is None:
+        raise LaunchFailedError(
+            f"the '{factory_launcher.AGENT_CLI}' CLI is not on the backend's PATH, "
+            "so a run would die immediately — install it or start the backend "
+            "from a shell that can reach it"
+        )
 
 
 def _validate_project_name(name: str) -> str:
@@ -194,7 +210,9 @@ async def launch(
         mode=body.mode.value,
         run_id=run_id,
     )
+    _require_agent_cli()
     log_path = _log_path(launch_row.id)
+    written_before = log_path.stat().st_size if log_path.is_file() else 0
     try:
         pid = spawner(
             project_path=resolved,
@@ -209,6 +227,11 @@ async def launch(
 
     await launcher_repo.set_pid(db, launch_row, pid)
     await db.commit()
+
+    await asyncio.sleep(RESUME_SETTLE_SECONDS)
+    refusal = _refusal_in(factory_runs.read_log_since(log_path, written_before))
+    if refusal is not None:
+        raise LaunchFailedError(refusal)
     return schemas.SessionLaunchRead(
         id=launch_row.id,
         project_path=launch_row.project_path,
@@ -382,7 +405,24 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
                 seen.add((run.project_path, run.run_id))
                 runs.append(run)
     runs.sort(key=lambda r: r.started_at or "", reverse=True)
+    _mark_superseded(runs)
     return runs
+
+
+def _mark_superseded(runs: list[schemas.FactoryRun]) -> None:
+    """Point a run at the newer run of its own request, if someone started one.
+
+    Same project, same request text, later start — which is exactly what the
+    rerun button produces, and the only signal there is: the factory records
+    no lineage between runs.
+    """
+    newest: dict[tuple[str, str], str] = {}
+    for run in runs:  # newest first, so the first of each pair wins
+        key = (run.project_path, run.request_text)
+        if key in newest:
+            run.superseded_by = newest[key]
+        else:
+            newest[key] = run.run_id
 
 
 async def find_run_for_session(db: AsyncSession, session_id: str) -> schemas.FactoryRun | None:
@@ -420,6 +460,7 @@ async def resume_run(
     if not run.resumable:
         raise RunNotResumableError(f"run '{body.run_id}' cannot be resumed: {run.resume_hint}")
 
+    _require_agent_cli()
     log_path = app_settings.masterwork_home / "launches" / f"run-{body.run_id}.log"
     written_before = log_path.stat().st_size if log_path.is_file() else 0
     try:

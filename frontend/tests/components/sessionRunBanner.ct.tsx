@@ -27,6 +27,7 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
     ended_at: '2026-08-15T10:14:17+00:00',
     resumable: true,
     resume_hint: null,
+    superseded_by: null,
     session_ids: [SESSION_ID],
     ...overrides,
   };

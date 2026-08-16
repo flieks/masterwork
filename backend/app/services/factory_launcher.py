@@ -8,8 +8,37 @@ the same way any other factory run does, via MASTERWORK_FACTORY_RUN_ID
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
+
+AGENT_CLI = "claude"
+
+# A backend started from a desktop app or a launchd plist inherits a minimal
+# PATH, while the agent CLI is installed per-user. The factory resolves it by
+# name, so these are added to the child's PATH rather than guessed at here.
+_EXTRA_PATH_DIRS = (
+    Path.home() / ".local" / "bin",
+    Path.home() / ".claude" / "local",
+    Path("/opt/homebrew/bin"),
+    Path("/usr/local/bin"),
+)
+
+
+def _child_path() -> str:
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    for extra in _EXTRA_PATH_DIRS:
+        if extra.is_dir() and str(extra) not in parts:
+            parts.append(str(extra))
+    return os.pathsep.join(parts)
+
+
+def find_agent_cli() -> str | None:
+    """Where the child will find `claude`, or None when it would not — the
+    factory dies in under a second without it, and a detached run has nowhere
+    to say so."""
+    return shutil.which(AGENT_CLI, path=_child_path())
 
 # Live child handles, reaped opportunistically on each new launch so a
 # long-lived backend never accumulates zombies — nothing ever wait()s them.
@@ -76,10 +105,12 @@ def spawn_factory_resume(
 def _spawn(argv: list[str], project_path: Path, log_path: Path) -> int:
     _reap()
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PATH": _child_path()}
     with log_path.open("ab") as log:
         proc = subprocess.Popen(
             argv,
             cwd=str(project_path),
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=subprocess.STDOUT,

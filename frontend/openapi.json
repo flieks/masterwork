@@ -9105,6 +9105,18 @@
                         "title": "Resume Hint",
                         "description": "Why a resume is not offered; null when `resumable` is true."
                     },
+                    "superseded_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Superseded By",
+                        "description": "Run id of a newer run of this same request, when one exists."
+                    },
                     "session_ids": {
                         "items": {
                             "type": "string"

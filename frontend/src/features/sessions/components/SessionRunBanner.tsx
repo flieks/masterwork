@@ -3,8 +3,7 @@ import { Card } from '~/components/ui/card';
 import { Badge } from '~/components/ui/badge';
 import { runForSessionQueryAtom } from '../queries';
 import { factoryRunTitle, runOutcomeMeta } from '../runs';
-import { RerunRunButton } from './RerunRunButton';
-import { ResumeRunButton } from './ResumeRunButton';
+import { RunActions } from './RunActions';
 
 /**
  * The factory run this session was a stage of, with its Resume button — so a
@@ -31,14 +30,7 @@ export function SessionRunBanner({ sessionId }: { sessionId: string }) {
           {run.reason ? ` · ${run.reason}` : ''}
         </p>
       </div>
-      {run.resumable ? (
-        <ResumeRunButton run={run} />
-      ) : (
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs text-muted-foreground">{run.resume_hint}</span>
-          {run.outcome === 'done' ? null : <RerunRunButton run={run} />}
-        </div>
-      )}
+      <RunActions run={run} />
     </Card>
   );
 }

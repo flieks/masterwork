@@ -25,6 +25,7 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
     ended_at: '2026-08-15T10:14:17+00:00',
     resumable: true,
     resume_hint: null,
+    superseded_by: null,
     session_ids: [],
     ...overrides,
   };
@@ -190,6 +191,28 @@ test('a run nothing can resume offers to run the request again', async ({ mount,
     request_text: 'Add a context-growth series to the observability\n\nDETAILS…',
     mode: 'autonomous',
   });
+});
+
+test('a request already running again points there instead of offering a second rerun', async ({
+  mount,
+  page,
+}) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'old11111',
+      outcome: 'stopped',
+      resumable: false,
+      resume_hint: "'factory/old11111' has moved on since this run left it",
+      superseded_by: 'new22222',
+    }),
+  ]);
+  await mountCard(mount);
+
+  await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Running again as new22222' })).toHaveAttribute(
+    'href',
+    '/sessions/factory-new22222',
+  );
 });
 
 test('cancelling the confirm starts nothing', async ({ mount, page }) => {

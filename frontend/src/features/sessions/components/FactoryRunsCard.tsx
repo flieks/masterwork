@@ -7,8 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/com
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { factoryRunTitle, runOutcomeMeta, sessionDetailPath } from '../runs';
 import { factoryRunsQueryAtom } from '../queries';
-import { RerunRunButton } from './RerunRunButton';
-import { ResumeRunButton } from './ResumeRunButton';
+import { RunActions } from './RunActions';
 
 const SHOWN = 8;
 
@@ -84,15 +83,7 @@ function RunRow({ run }: { run: FactoryRun }) {
           {run.reason ? ` · ${run.reason}` : ''}
         </p>
       </Link>
-      {run.resumable ? (
-        <ResumeRunButton run={run} />
-      ) : (
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Says why instead of leaving a blank where a button would be. */}
-          <span className="text-xs text-muted-foreground">{run.resume_hint}</span>
-          {run.outcome === 'done' ? null : <RerunRunButton run={run} />}
-        </div>
-      )}
+      <RunActions run={run} />
     </div>
   );
 }

@@ -1068,3 +1068,82 @@ async def test_a_resume_that_refuses_itself_is_reported_not_celebrated(
 
     assert r.status_code == 502
     assert r.json()["detail"] == "something the backend cannot foresee"
+
+
+# --- a doomed spawn, and a request someone already re-ran ------------------
+
+
+async def test_launch_refuses_when_the_agent_cli_is_missing(
+    client: AsyncClient,
+    seeded_projects: Path,
+    fake_spawner: _FakeSpawner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Without the CLI the factory dies in under a second, long after a naive
+    # endpoint has already reported success.
+    monkeypatch.setattr(launcher_service.factory_launcher, "find_agent_cli", lambda: None)
+
+    r = await client.post(
+        "/api/v1/launcher/launch",
+        json={"project_path": str(seeded_projects / "alpha"), "request_text": "build it"},
+    )
+    assert r.status_code == 502
+    assert "not on the backend's PATH" in r.json()["detail"]
+    assert fake_spawner.calls == []
+
+
+async def test_launch_reports_a_run_that_died_on_arrival(
+    client: AsyncClient, seeded_projects: Path
+) -> None:
+    def dying_spawner(
+        *,
+        project_path: Path,
+        request_text: str,
+        log_path: Path,
+        run_id: str | None = None,
+        interview: bool = False,
+    ) -> int:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("ab") as log:
+            log.write(b"NOT ACCEPTED - could not run the agent CLI (0 turns, $0.0000)\n")
+        return 7001
+
+    app.dependency_overrides[get_launch_spawner] = lambda: dying_spawner
+    try:
+        r = await client.post(
+            "/api/v1/launcher/launch",
+            json={"project_path": str(seeded_projects / "alpha"), "request_text": "build it"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_launch_spawner, None)
+
+    assert r.status_code == 502
+    assert "could not run the agent CLI" in r.json()["detail"]
+
+
+async def test_a_rerun_supersedes_the_run_it_repeats(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    request = "request for old11111"  # what _write_run_record writes for that id
+    _write_run_record(runs_root, alpha, "old11111", state="stopped", started="2026-08-15T09:00:00Z")
+    new_dir = _write_run_record(runs_root, alpha, "new22222", started="2026-08-16T09:00:00Z")
+    record = json.loads((new_dir / "run.json").read_text())
+    record["request"] = request  # the rerun sends the old run's text verbatim
+    (new_dir / "run.json").write_text(json.dumps(record), encoding="utf-8")
+
+    runs = {r["run_id"]: r for r in (await client.get("/api/v1/launcher/runs")).json()}
+    assert runs["old11111"]["superseded_by"] == "new22222"
+    # The newer one is nobody's repeat.
+    assert runs["new22222"]["superseded_by"] is None
+
+
+async def test_runs_of_different_requests_do_not_supersede_each_other(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "aaa11111", started="2026-08-15T09:00:00Z")
+    _write_run_record(runs_root, alpha, "bbb22222", started="2026-08-16T09:00:00Z")
+
+    runs = (await client.get("/api/v1/launcher/runs")).json()
+    assert all(r["superseded_by"] is None for r in runs)

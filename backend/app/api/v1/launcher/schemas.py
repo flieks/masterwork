@@ -128,6 +128,10 @@ class FactoryRun(BaseModel):
     resume_hint: str | None = Field(
         None, description="Why a resume is not offered; null when `resumable` is true."
     )
+    superseded_by: str | None = Field(
+        None,
+        description="Run id of a newer run of this same request, when one exists.",
+    )
     session_ids: list[str] = Field(
         default_factory=list, description="Coding sessions this run's stages reported."
     )

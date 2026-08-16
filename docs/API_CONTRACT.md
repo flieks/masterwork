@@ -2776,3 +2776,35 @@ Fixes two wrong answers v1.31 gave. No new endpoints, no schema changes.
   read in `coding/service.py:FACTORY_SESSION_PREFIX`), which is the page the
   runs grid links to; only the stage session ids from telemetry were matched
   before, so that page showed no banner.
+
+# API Contract v1.33 — superseded runs, and a spawn that cannot silently die
+
+Additive on top of v1.32.
+
+## Changed schema
+
+`FactoryRun` gains one field:
+
+```
+superseded_by: string | null   // run id of a newer run of this same request
+```
+
+Same project, same `request_text`, later `started_at`. That is the only signal
+available — the factory records no lineage between runs — and it is exactly
+what the rerun button produces. The frontend offers a link to the newer run
+instead of a second "Run again" on a request already running again.
+
+## Behavior
+
+- **`launchSession` and `resumeFactoryRun` refuse when the agent CLI is
+  missing** (502): a backend started outside a login shell inherits a PATH
+  without `claude`, and the factory then dies about a second after both
+  endpoints have already answered "launched". The child is now spawned with a
+  PATH extended by the usual per-user install dirs (`~/.local/bin`,
+  `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`), and a CLI that
+  still cannot be found is reported instead of spawned.
+- **Both endpoints read the child's log back** after a short settle and raise
+  502 with the factory's own words if it already gave up — an `error:` line or
+  a `NOT ACCEPTED` verdict. A run that dies on arrival is no longer reported as
+  started.
+- **DB**: none.
