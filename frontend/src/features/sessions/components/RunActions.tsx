@@ -7,10 +7,10 @@ import { RerunRunButton } from './RerunRunButton';
 import { ResumeRunButton } from './ResumeRunButton';
 
 /**
- * What a run row offers: Resume when the factory would accept one, otherwise
- * the reason it would not — plus a way forward. A request someone already
- * re-ran points at that newer run instead of offering a second rerun, so two
- * runs of one request are never started by accident.
+ * What a run row offers, buttons only — the reason a run cannot resume rides
+ * on the row's own meta line, where it does not squeeze the title. A request
+ * someone already re-ran points at that newer run instead of offering a second
+ * rerun, so two runs of one request are never started by accident.
  */
 /** Only a run that stopped short wants running again — a live one is busy,
  * and a done one got what it came for. */
@@ -32,8 +32,7 @@ export function RunActions({ run }: { run: FactoryRun }) {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <span className="text-xs text-muted-foreground">{run.resume_hint}</span>
+    <div className="flex shrink-0 items-center gap-1">
       {run.superseded_by ? (
         <Link
           to={sessionDetailPath(`factory-${run.superseded_by}`)}

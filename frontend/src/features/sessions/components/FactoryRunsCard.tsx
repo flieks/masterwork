@@ -88,6 +88,7 @@ function RunRow({ run }: { run: FactoryRun }) {
             <span title={absoluteDateTime(run.started_at)}> · {relativeTime(run.started_at)}</span>
           ) : null}
           {run.reason ? ` · ${run.reason}` : ''}
+          {run.resume_hint ? ` · ${run.resume_hint}` : ''}
         </p>
       </Link>
       <RunActions run={run} />

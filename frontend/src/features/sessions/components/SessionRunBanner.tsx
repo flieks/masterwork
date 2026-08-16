@@ -28,6 +28,7 @@ export function SessionRunBanner({ sessionId }: { sessionId: string }) {
         <p className="truncate text-xs text-muted-foreground">
           Factory run {run.run_id}
           {run.reason ? ` · ${run.reason}` : ''}
+          {run.resume_hint ? ` · ${run.resume_hint}` : ''}
         </p>
       </div>
       <RunActions run={run} />
