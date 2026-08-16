@@ -49,7 +49,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_coding_context_samples_session_seq", table_name="coding_context_samples"
-    )
+    op.drop_index("ix_coding_context_samples_session_seq", table_name="coding_context_samples")
     op.drop_table("coding_context_samples")
