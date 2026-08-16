@@ -211,6 +211,36 @@ def read_log_since(path: Path, offset: int) -> str:
         return ""
 
 
+def read_summary(run_dir: Path, *, limit: int = 4000) -> str | None:
+    """What the run's last finished stage actually concluded.
+
+    The factory reports each stage's verdict as the `detail` of its `phase_end`
+    telemetry event. For a scout run that verdict IS the answer it was asked
+    for, and without this it never leaves the run dir.
+    """
+    summary = ""
+    path = run_dir / TELEMETRY_FILENAME
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict) or entry.get("event") != "phase_end":
+                    continue
+                # The "run" phase closes the whole run; a stage's own phase_end
+                # is the one carrying a verdict.
+                if entry.get("phase") in (None, "run"):
+                    continue
+                detail = entry.get("detail")
+                if isinstance(detail, str) and detail.strip():
+                    summary = detail.strip()
+    except OSError:
+        return None
+    return summary[:limit] if summary else None
+
+
 def pid_alive(pid: object) -> bool:
     if not isinstance(pid, int) or pid <= 0:
         return False

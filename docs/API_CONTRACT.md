@@ -2948,3 +2948,38 @@ dropdown, search box, and tree building are unchanged.
 
 **DB**: `work_sources.owner_display_name`, nullable text, added by Alembic
 migration `0025_work_source_owner`.
+
+# API Contract v1.38 — a check that reports back
+
+Additive on top of v1.37. v1.35 could start a `scout` check but nothing came
+back from it: the verdict stayed in the run dir, and the run being checked
+never learned a check existed — so the button offered to ask the same question
+again.
+
+## Changed and new schemas
+
+```
+LaunchRequest.checks_run_id?: string | null   // the run this launch exists to check
+FactoryRun.summary: string | null             // what this run's last stage concluded
+FactoryRun.check: FactoryRunCheck | null      // the newest check started for this run
+
+FactoryRunCheck { run_id: string, outcome: RunOutcome, summary: string | null }
+```
+
+## Behavior
+
+- **`summary` is the run's own verdict**, read from the `detail` of the last
+  stage `phase_end` in its telemetry (the closing `run` phase is bookkeeping and
+  is skipped). For a `scout` run that verdict *is* the answer it was asked for.
+- **The link between a check and its subject is recorded, not inferred.** A
+  check asks a question about a run, so the two never share their request text
+  and no matching heuristic could tie them together; `checks_run_id` is stored
+  on the launch row that started the check.
+- **Frontend**: a run with a check shows that check's first sentence, linking to
+  its session, in place of the "Check if done" button — a run already checked is
+  never checked twice. While the check runs it reads "Checking whether this
+  landed anyway…". A run's own page prints its `summary` in full under the
+  banner, which is where a read-only run's whole result now lives.
+- **DB**: `session_launches.checks_run_id`, nullable, Alembic
+  `0026_launch_checks_run` on `0025_work_source_owner` — rebased onto the head
+  the work-source owner migration created rather than opening a second head.

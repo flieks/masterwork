@@ -17,21 +17,30 @@ export function SessionRunBanner({ sessionId }: { sessionId: string }) {
 
   const meta = runOutcomeMeta(run);
   return (
-    <Card className="flex items-center gap-3 p-3">
-      <Badge variant={meta.variant} className="w-20 justify-center">
-        {meta.label}
-      </Badge>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm" title={run.request_text}>
-          {factoryRunTitle(run)}
-        </p>
-        <p className="truncate text-xs text-muted-foreground">
-          Factory run {run.run_id}
-          {run.reason ? ` · ${run.reason}` : ''}
-          {run.resume_hint ? ` · ${run.resume_hint}` : ''}
-        </p>
+    <Card className="flex flex-col gap-2 p-3">
+      <div className="flex items-center gap-3">
+        <Badge variant={meta.variant} className="w-20 justify-center">
+          {meta.label}
+        </Badge>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm" title={run.request_text}>
+            {factoryRunTitle(run)}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            Factory run {run.run_id}
+            {run.reason ? ` · ${run.reason}` : ''}
+            {run.resume_hint ? ` · ${run.resume_hint}` : ''}
+          </p>
+        </div>
+        <RunActions run={run} />
       </div>
-      <RunActions run={run} />
+      {/* A read-only run's whole point is what it concluded — printing the
+          badge and hiding the answer would say nothing. */}
+      {run.summary ? (
+        <p className="whitespace-pre-wrap border-t pt-2 text-sm text-muted-foreground">
+          {run.summary}
+        </p>
+      ) : null}
     </Card>
   );
 }

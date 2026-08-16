@@ -210,6 +210,7 @@ async def launch(
         request_text=body.request_text,
         mode=body.mode.value,
         run_id=run_id,
+        checks_run_id=body.checks_run_id,
     )
     _require_agent_cli()
     log_path = _log_path(launch_row.id)
@@ -363,6 +364,7 @@ def _run_to_schema(
         resumable=hint is None,
         resume_hint=hint,
         dismissed=dismissed,
+        summary=factory_runs.read_summary(run_dir) if run_dir else None,
         session_ids=factory_runs.read_session_ids(run_dir) if run_dir else [],
     )
 
@@ -420,6 +422,7 @@ async def list_factory_runs(db: AsyncSession) -> list[schemas.FactoryRun]:
                 runs.append(run)
     runs.sort(key=lambda r: r.started_at or "", reverse=True)
     _mark_superseded(runs)
+    _attach_checks(runs, await launcher_repo.list_checks(db))
     return runs
 
 
@@ -448,6 +451,25 @@ async def set_dismissed(
     if run is None:
         raise RunNotFoundError(f"run '{body.run_id}' has an unreadable record")
     return run
+
+
+def _attach_checks(runs: list[schemas.FactoryRun], checks: dict[tuple[str, str], str]) -> None:
+    """Point a run at the check someone started for it, with what it concluded.
+
+    The link is recorded at launch time, not guessed from the request text: a
+    check asks a question about a run, so the two never share their wording.
+    """
+    by_id = {(run.project_path, run.run_id): run for run in runs}
+    for (project_path, checked_id), check_id in checks.items():
+        checked = by_id.get((project_path, checked_id))
+        checker = by_id.get((project_path, check_id))
+        if checked is None or checker is None:
+            continue
+        checked.check = schemas.FactoryRunCheck(
+            run_id=checker.run_id,
+            outcome=checker.outcome,
+            summary=checker.summary,
+        )
 
 
 def _mark_superseded(runs: list[schemas.FactoryRun]) -> None:

@@ -43,6 +43,10 @@ class LaunchRequest(BaseModel):
     request_text: str = Field(
         ..., min_length=1, description="What to build — handed to the factory as-is."
     )
+    checks_run_id: str | None = Field(
+        None,
+        description="Run id this launch exists to check; ties a scout run to its subject.",
+    )
     mode: LaunchMode = Field(
         LaunchMode.AUTONOMOUS,
         description=(
@@ -122,6 +126,14 @@ class RunOutcome(StrEnum):
     STOPPED = "stopped"
 
 
+class FactoryRunCheck(BaseModel):
+    """A read-only run started to answer whether another run's work landed."""
+
+    run_id: str
+    outcome: RunOutcome
+    summary: str | None = Field(None, description="What it concluded; null while it runs.")
+
+
 class FactoryRun(BaseModel):
     """One run.json under a project's runs root — the factory's ground truth,
     independent of whether the run was launched from this UI or a terminal."""
@@ -151,6 +163,12 @@ class FactoryRun(BaseModel):
     superseded_by: str | None = Field(
         None,
         description="Run id of a newer run of this same request, when one exists.",
+    )
+    summary: str | None = Field(
+        None, description="What this run's last stage concluded, from its own telemetry."
+    )
+    check: FactoryRunCheck | None = Field(
+        None, description="The newest check started for this run, if any."
     )
     session_ids: list[str] = Field(
         default_factory=list, description="Coding sessions this run's stages reported."

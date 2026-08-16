@@ -6633,6 +6633,18 @@
                         "title": "Request Text",
                         "description": "What to build — handed to the factory as-is."
                     },
+                    "checks_run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Checks Run Id",
+                        "description": "Run id this launch exists to check; ties a scout run to its subject."
+                    },
                     "mode": {
                         "$ref": "#/components/schemas/LaunchMode",
                         "description": "'autonomous' never asks; 'interview' pauses after planning to ask about weak assumptions before building.",
@@ -9241,6 +9253,29 @@
                         "title": "Superseded By",
                         "description": "Run id of a newer run of this same request, when one exists."
                     },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "What this run's last stage concluded, from its own telemetry."
+                    },
+                    "check": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FactoryRunCheck"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "The newest check started for this run, if any."
+                    },
                     "session_ids": {
                         "items": {
                             "type": "string"
@@ -9360,6 +9395,36 @@
                 ],
                 "title": "LaunchWorkflow",
                 "description": "The factory's stage presets (factory/adw/workflows.py). `scout` is the\ncheap one: a single read-only stage that reads the repo and reports."
+            },
+            "FactoryRunCheck": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "outcome": {
+                        "$ref": "#/components/schemas/RunOutcome"
+                    },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "What it concluded; null while it runs."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "outcome"
+                ],
+                "title": "FactoryRunCheck",
+                "description": "A read-only run started to answer whether another run's work landed."
             }
         }
     }

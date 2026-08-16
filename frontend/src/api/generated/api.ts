@@ -2426,6 +2426,12 @@ export interface LaunchRequest {
      * @type {LaunchMode}
      * @memberof LaunchRequest
      */
+    /**
+     * Run id this launch exists to check; ties a scout run to its subject.
+     * @type {string}
+     * @memberof LaunchRequest
+     */
+    'checks_run_id'?: string | null;
     'mode'?: LaunchMode;
     /**
      * Which stages run. Omitted means the factory's own default (full).
@@ -6784,6 +6790,8 @@ export interface FactoryRun {
     'resume_hint'?: string | null;
     'dismissed'?: boolean;
     'superseded_by'?: string | null;
+    'summary'?: string | null;
+    'check'?: FactoryRunCheck | null;
     'session_ids'?: Array<string>;
 }
 
@@ -6796,6 +6804,16 @@ export const RunOutcome = {
 } as const;
 
 export type RunOutcome = typeof RunOutcome[keyof typeof RunOutcome];
+/**
+ * A read-only run started to answer whether another run's work landed.
+ * @export
+ * @interface FactoryRunCheck
+ */
+export interface FactoryRunCheck {
+    'run_id': string;
+    'outcome': RunOutcome;
+    'summary'?: string | null;
+}
 /**
  *
  * @export

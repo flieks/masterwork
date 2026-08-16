@@ -43,6 +43,7 @@ export function CheckDoneButton({ run }: { run: FactoryRun }) {
         project_path: run.project_path,
         request_text: isItDoneQuestion(run),
         workflow: 'scout',
+        checks_run_id: run.run_id,
       });
       setStartedRunId(started.run_id ?? null);
       toast.success('Checking whether this is already done', {

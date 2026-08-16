@@ -28,6 +28,8 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
     resume_hint: null,
     dismissed: false,
     superseded_by: null,
+    summary: null,
+    check: null,
     session_ids: [],
     ...overrides,
   };
@@ -394,4 +396,47 @@ test('once the started run reports itself, the button becomes a way into it', as
     '/sessions/factory-fresh777',
     { timeout: 10_000 },
   );
+});
+
+test('a checked run shows what the check concluded instead of offering another', async ({
+  mount,
+  page,
+}) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'stuck111',
+      outcome: 'failed',
+      resumable: false,
+      resume_hint: 'the branch it worked on is gone',
+      check: {
+        run_id: 'check999',
+        outcome: 'done',
+        summary: 'Everything in the request is already implemented. Files: interview.py, run.py.',
+      },
+    }),
+  ]);
+  await mountCard(mount);
+
+  // The verdict, not a second invitation to ask the same question.
+  await expect(page.getByRole('button', { name: /Check whether/ })).toHaveCount(0);
+  const verdict = page.getByRole('link', {
+    name: 'Everything in the request is already implemented.',
+  });
+  await expect(verdict).toHaveAttribute('href', '/sessions/factory-check999');
+});
+
+test('a check still running says so, and still cannot be started twice', async ({ mount, page }) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'stuck111',
+      outcome: 'failed',
+      resumable: false,
+      resume_hint: 'the branch it worked on is gone',
+      check: { run_id: 'check999', outcome: 'running', summary: null },
+    }),
+  ]);
+  await mountCard(mount);
+
+  await expect(page.getByText('Checking whether this landed anyway…')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Check whether/ })).toHaveCount(0);
 });

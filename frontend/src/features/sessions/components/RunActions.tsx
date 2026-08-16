@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { FactoryRun } from '~/api/generated';
 import { sessionDetailPath } from '../runs';
 import { CheckDoneButton } from './CheckDoneButton';
+import { RunCheckResult } from './RunCheckResult';
 import { DismissRunButton } from './DismissRunButton';
 import { RerunRunButton } from './RerunRunButton';
 import { ResumeRunButton } from './ResumeRunButton';
@@ -42,7 +43,7 @@ export function RunActions({ run }: { run: FactoryRun }) {
         </Link>
       ) : canRerun(run) ? (
         <>
-          <CheckDoneButton run={run} />
+          {run.check ? <RunCheckResult check={run.check} /> : <CheckDoneButton run={run} />}
           <RerunRunButton run={run} />
         </>
       ) : null}

@@ -17,9 +17,14 @@ async def create_launch(
     request_text: str,
     mode: str,
     run_id: str | None = None,
+    checks_run_id: str | None = None,
 ) -> SessionLaunch:
     launch = SessionLaunch(
-        project_path=project_path, request_text=request_text, mode=mode, run_id=run_id
+        project_path=project_path,
+        request_text=request_text,
+        mode=mode,
+        run_id=run_id,
+        checks_run_id=checks_run_id,
     )
     db.add(launch)
     await db.flush()
@@ -72,3 +77,17 @@ async def restore_run(db: AsyncSession, *, project_path: str, run_id: str) -> No
         )
     )
     await db.commit()
+
+
+async def list_checks(db: AsyncSession) -> dict[tuple[str, str], str]:
+    """(project_path, checked run id) -> the newest check run started for it."""
+    result = await db.execute(
+        select(SessionLaunch)
+        .where(SessionLaunch.checks_run_id.is_not(None), SessionLaunch.run_id.is_not(None))
+        .order_by(SessionLaunch.launched_at.asc())
+    )
+    checks: dict[tuple[str, str], str] = {}
+    for row in result.scalars().all():
+        assert row.checks_run_id is not None and row.run_id is not None
+        checks[(row.project_path, row.checks_run_id)] = row.run_id  # last wins = newest
+    return checks

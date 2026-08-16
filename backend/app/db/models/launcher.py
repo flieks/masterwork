@@ -33,6 +33,9 @@ class SessionLaunch(Base):
     # Only interview launches carry one — the factory run id, server-generated
     # at launch time so it is on the row before the child is even spawned.
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Set when this launch exists to check another run — the only record that
+    # a check belongs to the run it was asked about.
+    checks_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class DismissedRun(Base):

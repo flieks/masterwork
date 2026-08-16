@@ -1256,3 +1256,93 @@ async def test_runs_report_the_workflow_they_ran(
     (run_dir / "run.json").write_text(json.dumps(record), encoding="utf-8")
 
     assert (await client.get("/api/v1/launcher/runs")).json()[0]["workflow"] == "scout"
+
+
+# --- a check, and the run it answers for -----------------------------------
+
+
+def _write_verdict(run_dir: Path, phase: str, detail: str) -> None:
+    """The factory reports a stage's verdict as its phase_end detail."""
+    with (run_dir / "telemetry.jsonl").open("a", encoding="utf-8") as log:
+        log.write(json.dumps({"event": "phase_start", "phase": "run", "detail": "noise"}) + "\n")
+        log.write(json.dumps({"event": "phase_end", "phase": phase, "detail": detail}) + "\n")
+        # The run's own closing line is bookkeeping, not a verdict.
+        log.write(json.dumps({"event": "phase_end", "phase": "run", "detail": "1 stage(s)"}) + "\n")
+
+
+async def test_a_run_reports_what_its_last_stage_concluded(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    run_dir = _write_run_record(runs_root, alpha, "scout111", state="finished", accepted=True)
+    _write_verdict(run_dir, "scout", "Everything in the request is already implemented.")
+
+    run = (await client.get("/api/v1/launcher/runs")).json()[0]
+    assert run["summary"] == "Everything in the request is already implemented."
+
+
+async def test_a_check_is_reported_on_the_run_it_was_started_for(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "stuck111", state="stopped")
+
+    r = await client.post(
+        "/api/v1/launcher/launch",
+        json={
+            "project_path": str(alpha),
+            "request_text": "Is this already implemented?",
+            "workflow": "scout",
+            "checks_run_id": "stuck111",
+        },
+    )
+    assert r.status_code == 200
+    check_run_id = r.json()["run_id"]
+
+    # The check's own run dir appears once the factory starts writing it.
+    check_dir = _write_run_record(runs_root, alpha, check_run_id, state="finished", accepted=True)
+    _write_verdict(check_dir, "scout", "Already implemented, end to end.")
+
+    runs = {run["run_id"]: run for run in (await client.get("/api/v1/launcher/runs")).json()}
+    check = runs["stuck111"]["check"]
+    assert check["run_id"] == check_run_id
+    assert check["outcome"] == "done"
+    assert check["summary"] == "Already implemented, end to end."
+    # The check itself is nobody's check.
+    assert runs[check_run_id]["check"] is None
+
+
+async def test_a_check_still_running_is_reported_without_a_verdict(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "stuck111", state="stopped")
+    r = await client.post(
+        "/api/v1/launcher/launch",
+        json={
+            "project_path": str(alpha),
+            "request_text": "Is this already implemented?",
+            "workflow": "scout",
+            "checks_run_id": "stuck111",
+        },
+    )
+    check_run_id = r.json()["run_id"]
+    _write_run_record(runs_root, alpha, check_run_id, state="running", pid=os.getpid())
+
+    runs = {run["run_id"]: run for run in (await client.get("/api/v1/launcher/runs")).json()}
+    assert runs["stuck111"]["check"]["outcome"] == "running"
+    assert runs["stuck111"]["check"]["summary"] is None
+
+
+async def test_a_launch_that_checks_nothing_leaves_every_run_unchecked(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "stuck111", state="stopped")
+    await client.post(
+        "/api/v1/launcher/launch",
+        json={"project_path": str(alpha), "request_text": "build something else"},
+    )
+
+    runs = {run["run_id"]: run for run in (await client.get("/api/v1/launcher/runs")).json()}
+    assert runs["stuck111"]["check"] is None
