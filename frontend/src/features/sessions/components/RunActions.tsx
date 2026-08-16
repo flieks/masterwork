@@ -10,6 +10,12 @@ import { ResumeRunButton } from './ResumeRunButton';
  * re-ran points at that newer run instead of offering a second rerun, so two
  * runs of one request are never started by accident.
  */
+/** Only a run that stopped short wants running again — a live one is busy,
+ * and a done one got what it came for. */
+function canRerun(run: FactoryRun): boolean {
+  return run.outcome === 'failed' || run.outcome === 'stopped';
+}
+
 export function RunActions({ run }: { run: FactoryRun }) {
   if (run.resumable) return <ResumeRunButton run={run} />;
 
@@ -23,9 +29,9 @@ export function RunActions({ run }: { run: FactoryRun }) {
         >
           Running again as {run.superseded_by}
         </Link>
-      ) : run.outcome === 'done' ? null : (
+      ) : canRerun(run) ? (
         <RerunRunButton run={run} />
-      )}
+      ) : null}
     </div>
   );
 }

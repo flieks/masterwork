@@ -87,8 +87,14 @@ const FACTORY_RUNS_QUERY_KEY = ['factoryRuns'];
 export const launchSessionMutationAtom = atomWithMutation((get) => ({
   mutationFn: (body: LaunchRequest): Promise<SessionLaunchRead> =>
     api.launcher.launchSession(body).then((r) => r.data),
-  // The new run writes its own run dir, which the runs list reads.
-  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY }),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    // The new run writes its own run dir, which the runs list reads.
+    queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
+    // A session's own banner reads a different key; without this it goes on
+    // offering the rerun it just started, inviting a second one.
+    queryClient.invalidateQueries({ queryKey: ['runForSession'] });
+  },
 }));
 
 const SESSION_LAUNCHES_QUERY_KEY = ['sessionLaunches'];

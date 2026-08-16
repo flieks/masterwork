@@ -262,3 +262,34 @@ test('with no runs recorded the card stays off the page', async ({ mount, page }
   const component = await mountCard(mount);
   await expect(component).toBeEmpty();
 });
+
+test('a running run is not offered a rerun — it is busy', async ({ mount, page }) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'live1111',
+      outcome: 'running',
+      state: 'running',
+      resumable: false,
+      resume_hint: 'still running',
+    }),
+  ]);
+  await mountCard(mount);
+
+  await expect(page.getByText('running', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
+});
+
+test('the rerun button cannot be pressed a second time', async ({ mount, page }) => {
+  const { launches } = await mockRuns(page, [
+    factoryRun({ resumable: false, resume_hint: 'the branch it worked on is gone' }),
+  ]);
+  await mountCard(mount);
+
+  await page.getByRole('button', { name: 'Run aaaa1111 again' }).click();
+  await page.getByRole('button', { name: 'Start it' }).click();
+
+  // It reads "Started" and refuses further clicks until the data catches up.
+  await expect(page.getByRole('button', { name: 'Started' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Run .* again/ })).toHaveCount(0);
+  expect(launches).toHaveLength(1);
+});
