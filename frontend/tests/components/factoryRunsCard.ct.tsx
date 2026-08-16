@@ -94,7 +94,7 @@ test('a stopped run shows its state, reason and a Resume button', async ({ mount
   await expect(page.getByRole('button', { name: 'Resume run aaaa1111' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume run bbbb2222' })).toHaveCount(0);
   await expect(page.getByText('done', { exact: true })).toHaveCount(0); // folded away
-  await page.getByRole('button', { name: /Show 1 completed run/ }).click();
+  await page.getByRole('button', { name: /Show 1 handled run/ }).click();
   await expect(page.getByText('done', { exact: true })).toBeVisible();
 });
 
@@ -162,7 +162,7 @@ test('with only completed runs the card folds them all away behind the toggle', 
 
   await expect(page.getByText(/Nothing needs a decision/)).toBeVisible();
   await expect(page.getByText('done', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show 1 completed run' }).click();
+  await page.getByRole('button', { name: 'Show 1 handled run' }).click();
   await expect(page.getByText('done', { exact: true })).toBeVisible();
 });
 
@@ -208,7 +208,11 @@ test('a request already running again points there instead of offering a second 
   ]);
   await mountCard(mount);
 
+  // Someone already restarted it, so it is that newer run's business now.
+  await expect(page.getByText(/Nothing needs a decision/)).toBeVisible();
   await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show 1 handled run' }).click();
   await expect(page.getByRole('link', { name: 'Running again as new22222' })).toHaveAttribute(
     'href',
     '/sessions/factory-new22222',
@@ -239,7 +243,7 @@ test('a completed run is not offered a rerun — it wanted nothing', async ({ mo
   ]);
   await mountCard(mount);
 
-  await page.getByRole('button', { name: 'Show 1 completed run' }).click();
+  await page.getByRole('button', { name: 'Show 1 handled run' }).click();
   await expect(page.getByText('done', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
 });

@@ -11,9 +11,13 @@ import { RunActions } from './RunActions';
 
 const SHOWN = 8;
 
-/** Runs worth looking at: a done run needs nothing from anyone. */
+/**
+ * Runs still worth a decision: the head of each request's chain, unfinished.
+ * A done run needs nothing, and a run someone already started again is that
+ * newer run's business now — both fold away rather than crowding the list.
+ */
 function isOpen(run: FactoryRun): boolean {
-  return run.outcome !== 'done';
+  return run.outcome !== 'done' && run.superseded_by === null;
 }
 
 /**
@@ -28,9 +32,9 @@ export function FactoryRunsCard() {
   if (isPending || isError || !data || data.length === 0) return null;
 
   const open = data.filter(isOpen);
-  const doneCount = data.length - open.length;
+  const handledCount = data.length - open.length;
   const shown = (showDone ? data : open).slice(0, SHOWN);
-  if (shown.length === 0 && doneCount === 0) return null;
+  if (shown.length === 0 && handledCount === 0) return null;
 
   return (
     <Card>
@@ -38,7 +42,7 @@ export function FactoryRunsCard() {
         <CardTitle>Factory runs</CardTitle>
         <CardDescription>
           {open.length === 0
-            ? 'Nothing needs a decision — every recorded run finished and was approved.'
+            ? 'Nothing needs a decision — every run either finished or has been started again.'
             : "The run dirs' own records; a stopped or failed run resumes from its last committed stage."}
         </CardDescription>
       </CardHeader>
@@ -46,13 +50,15 @@ export function FactoryRunsCard() {
         {shown.map((run) => (
           <RunRow key={`${run.project_path}:${run.run_id}`} run={run} />
         ))}
-        {doneCount > 0 ? (
+        {handledCount > 0 ? (
           <button
             type="button"
             onClick={() => setShowDone((prev) => !prev)}
             className="self-start pt-2 text-xs text-muted-foreground underline-offset-2 hover:underline"
           >
-            {showDone ? 'Hide completed runs' : `Show ${doneCount} completed run${doneCount === 1 ? '' : 's'}`}
+            {showDone
+              ? 'Hide handled runs'
+              : `Show ${handledCount} handled run${handledCount === 1 ? '' : 's'}`}
           </button>
         ) : null}
       </CardContent>
