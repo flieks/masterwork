@@ -28,14 +28,19 @@ interface EventTimelineProps {
   live?: boolean;
   /** Narrow the same cached stream to one phase — no extra request. */
   phaseId?: number;
+  /** Narrow the same cached stream to one tool — no extra request. */
+  toolName?: string;
 }
 
-export function EventTimeline({ sessionId, live = false, phaseId }: EventTimelineProps) {
+export function EventTimeline({ sessionId, live = false, phaseId, toolName }: EventTimelineProps) {
   const [{ data: all, isPending, isError, error }] = useAtom(
     codingSessionEventsQueryAtom(sessionId),
   );
-  const data =
-    all && phaseId !== undefined ? all.filter((event) => event.phase_id === phaseId) : all;
+  const data = all
+    ? all
+        .filter((event) => phaseId === undefined || event.phase_id === phaseId)
+        .filter((event) => toolName === undefined || event.tool_name === toolName)
+    : all;
 
   if (isPending || !data) {
     return (
@@ -63,11 +68,13 @@ export function EventTimeline({ sessionId, live = false, phaseId }: EventTimelin
         icon={<Radio className="size-8" />}
         title="No events yet"
         description={
-          phaseId !== undefined
-            ? 'This phase recorded no events of its own.'
-            : live
-              ? 'This session is open but has not fired a hook yet. New events appear here as they arrive.'
-              : 'This session recorded no events.'
+          toolName !== undefined
+            ? `No events for ${toolName}.`
+            : phaseId !== undefined
+              ? 'This phase recorded no events of its own.'
+              : live
+                ? 'This session is open but has not fired a hook yet. New events appear here as they arrive.'
+                : 'This session recorded no events.'
         }
       />
     );

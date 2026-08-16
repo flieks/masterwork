@@ -22,6 +22,7 @@ from app.db.models.coding import (
     CodingAgent,
     CodingAsset,
     CodingAssetUse,
+    CodingContextSample,
     CodingEnvelope,
     CodingEvent,
     CodingGateCheck,
@@ -893,6 +894,61 @@ async def clear_derived(db: AsyncSession, session_id: str) -> None:
     await db.execute(delete(CodingPhase).where(CodingPhase.session_id == session_id))
     await db.execute(delete(CodingAgent).where(CodingAgent.session_id == session_id))
     await db.flush()
+
+
+# --- context samples: reported, like evidence — never cleared by a backfill ---
+
+
+async def get_context_sample(
+    db: AsyncSession, session_id: str, message_id: str
+) -> CodingContextSample | None:
+    result = await db.execute(
+        select(CodingContextSample).where(
+            CodingContextSample.session_id == session_id,
+            CodingContextSample.message_id == message_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def add_context_sample(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    seq: int,
+    message_id: str,
+    is_sidechain: bool,
+    at: datetime,
+    total_tokens: int,
+    output_tokens: int | None,
+    tools: list[str] | None,
+) -> CodingContextSample:
+    sample = CodingContextSample(
+        session_id=session_id,
+        seq=seq,
+        message_id=message_id,
+        is_sidechain=is_sidechain,
+        at=at,
+        total_tokens=total_tokens,
+        output_tokens=output_tokens,
+        tools=tools,
+    )
+    db.add(sample)
+    await db.flush()
+    return sample
+
+
+async def context_samples_for_session(
+    db: AsyncSession, session_id: str
+) -> list[CodingContextSample]:
+    """Every sample of one session, ordered the way `delta_tokens` is recomputed
+    and the way the read side re-splits it into lanes."""
+    result = await db.execute(
+        select(CodingContextSample)
+        .where(CodingContextSample.session_id == session_id)
+        .order_by(CodingContextSample.seq, CodingContextSample.id)
+    )
+    return list(result.scalars().all())
 
 
 async def event_counts(db: AsyncSession, session_ids: list[str]) -> dict[str, tuple[int, int]]:

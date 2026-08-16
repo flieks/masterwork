@@ -24,6 +24,7 @@ from app.db.models.coding import (
     CodingAgent,
     CodingAsset,
     CodingAssetUse,
+    CodingContextSample,
     CodingEnvelope,
     CodingEvent,
     CodingGateCheck,
@@ -366,6 +367,57 @@ def coding_agent_to_lane(agent: CodingAgent) -> schemas.AgentLane:
         tokens_in=agent.tokens_in,
         tokens_out=agent.tokens_out,
         turns=agent.turns,
+    )
+
+
+def context_sample_to_schema(sample: CodingContextSample) -> schemas.ContextSample:
+    return schemas.ContextSample(
+        seq=sample.seq,
+        message_id=sample.message_id,
+        at=sample.at,
+        total_tokens=sample.total_tokens,
+        output_tokens=sample.output_tokens,
+        delta_tokens=sample.delta_tokens,
+        is_truncation=sample.delta_tokens is not None and sample.delta_tokens < 0,
+        tools=sample.tools or [],
+    )
+
+
+def _context_tool_rollup(samples: list[CodingContextSample]) -> list[schemas.ContextToolCost]:
+    """Sum each tool's share of positive growth. A multi-tool sample's delta
+    splits evenly across its tools, remainder to the first named, so the parts
+    always sum back to the delta exactly. Negative and zero deltas earn nothing
+    — a truncation is not something a tool earned."""
+    totals: dict[str, int] = {}
+    calls: dict[str, int] = {}
+    for sample in samples:
+        delta, tools = sample.delta_tokens, sample.tools or []
+        if delta is None or delta <= 0 or not tools:
+            continue
+        base, remainder = divmod(delta, len(tools))
+        for i, tool in enumerate(tools):
+            share = base + (1 if i < remainder else 0)
+            totals[tool] = totals.get(tool, 0) + share
+            calls[tool] = calls.get(tool, 0) + 1
+    ranked = sorted(totals, key=lambda t: (-totals[t], t))
+    return [schemas.ContextToolCost(tool=t, delta_tokens=totals[t], calls=calls[t]) for t in ranked]
+
+
+def context_series_to_schema(
+    session_id: str, samples: list[CodingContextSample]
+) -> schemas.ContextSeries:
+    """Sidechain samples are their own series — the header describes the main
+    lane alone, since folding a subagent's totals in would be a number nobody
+    could point at."""
+    main = [s for s in samples if not s.is_sidechain]
+    sidechain = [s for s in samples if s.is_sidechain]
+    return schemas.ContextSeries(
+        session_id=session_id,
+        baseline_tokens=main[0].total_tokens if main else None,
+        peak_tokens=max((s.total_tokens for s in main), default=None),
+        samples=[context_sample_to_schema(s) for s in main],
+        sidechain_samples=[context_sample_to_schema(s) for s in sidechain],
+        tools=_context_tool_rollup(main),
     )
 
 

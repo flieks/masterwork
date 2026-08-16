@@ -345,6 +345,19 @@ async def list_coding_session_events(
 
 
 @router.get(
+    "/coding-sessions/{session_id}/context",
+    response_model=schemas.ContextSeries,
+    operation_id="readSessionContextSeries",
+    summary="The context-growth curve: total tokens per turn, and which tool grew it",
+)
+async def read_session_context_series(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.ContextSeries:
+    return await service.get_context_series(db, session_id)
+
+
+@router.get(
     "/coding-sessions/{session_id}/media/{media_id}",
     response_class=FileResponse,
     operation_id="getCodingSessionMedia",

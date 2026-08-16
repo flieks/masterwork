@@ -107,6 +107,24 @@ class EnvelopeIn(BaseModel):
     )
 
 
+class ContextSampleIn(BaseModel):
+    """One context-usage sample as the forwarder reports it — one per deduped
+    assistant message id, in transcript order."""
+
+    seq: int = Field(..., description="Position in the deduped stream, chronological across lanes.")
+    message_id: str = Field(..., min_length=1)
+    at: datetime | None = Field(None, description="Falls back to the event's own time when absent.")
+    total_tokens: int = Field(
+        ..., description="input + cache_read + cache_creation tokens on this turn."
+    )
+    output_tokens: int | None = None
+    model: str | None = Field(None, description="Accepted but not stored — no column for it.")
+    is_sidechain: bool = Field(False, description="True for a subagent turn.")
+    tools: list[str] | None = Field(
+        None, description="Tool results that landed in context since the previous sample."
+    )
+
+
 class HookEventRequest(BaseModel):
     """One hook firing. Deliberately permissive: everything but `session_id` and
     `event_type` is optional, over-long values are truncated rather than
@@ -141,6 +159,9 @@ class HookEventRequest(BaseModel):
     )
     gate: GateIn | None = Field(
         None, description="The gate this event reports, and the note each check wrote."
+    )
+    context_samples: list[ContextSampleIn] | None = Field(
+        None, description="The context-usage curve since the previous Stop/SessionEnd."
     )
 
     @model_validator(mode="before")
@@ -440,6 +461,45 @@ class CodingEvent(BaseModel):
     duration_ms: int | None
     ended_at: datetime | None = Field(
         ..., description="When the reported work finished; span start is ended_at - duration_ms."
+    )
+
+
+class ContextSample(BaseModel):
+    """One turn's context usage, read back with its delta from the previous
+    sample on the same lane."""
+
+    seq: int
+    message_id: str
+    at: datetime
+    total_tokens: int
+    output_tokens: int | None
+    delta_tokens: int | None = Field(..., description="Null for the first sample of its lane.")
+    is_truncation: bool = Field(..., description="Derived: delta_tokens is not null and negative.")
+    tools: list[str] = Field(..., description="Tool results that landed since the previous sample.")
+
+
+class ContextToolCost(BaseModel):
+    """One tool's share of a session's context growth, main lane only."""
+
+    tool: str
+    delta_tokens: int = Field(..., description="Summed positive delta attributed to this tool.")
+    calls: int = Field(..., description="Samples this tool appeared in.")
+
+
+class ContextSeries(BaseModel):
+    """The context-growth curve for one session — main lane and sidechain kept apart."""
+
+    session_id: str
+    baseline_tokens: int | None = Field(
+        ..., description="The first main-lane sample's total — preamble plus first prompt."
+    )
+    peak_tokens: int | None = Field(..., description="The highest main-lane total reached.")
+    samples: list[ContextSample] = Field(..., description="Main lane, ordered by seq.")
+    sidechain_samples: list[ContextSample] = Field(
+        ..., description="Subagent turns, their own series — never interleaved with the main lane."
+    )
+    tools: list[ContextToolCost] = Field(
+        ..., description="Main-lane roll-up, summed delta descending then tool name."
     )
 
 

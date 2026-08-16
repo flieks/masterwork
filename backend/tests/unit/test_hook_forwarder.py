@@ -359,6 +359,203 @@ def test_a_transcript_that_is_not_there_reports_nothing(tmp_path: Path) -> None:
     assert forwarder.transcript_usage(str(tmp_path / "gone.jsonl")) == {}
 
 
+def _assistant_line(
+    message_id: str,
+    *,
+    usage: dict[str, object] | None = None,
+    content: list[dict[str, object]] | None = None,
+    model: str = "claude-opus-5",
+    is_sidechain: bool = False,
+    timestamp: str | None = None,
+) -> str:
+    """One assistant transcript line, with the pieces `context_samples()` reads."""
+    message: dict[str, object] = {"id": message_id, "model": model}
+    if usage is not None:
+        message["usage"] = usage
+    if content is not None:
+        message["content"] = content
+    record: dict[str, object] = {"type": "assistant", "message": message}
+    if is_sidechain:
+        record["isSidechain"] = True
+    if timestamp is not None:
+        record["timestamp"] = timestamp
+    return json.dumps(record)
+
+
+def _user_line(tool_results: list[tuple[str, str]], *, is_sidechain: bool = False) -> str:
+    """One user transcript line carrying `tool_result` blocks."""
+    content = [
+        {"type": "tool_result", "tool_use_id": use_id, "content": text}
+        for use_id, text in tool_results
+    ]
+    record: dict[str, object] = {"type": "user", "message": {"content": content}}
+    if is_sidechain:
+        record["isSidechain"] = True
+    return json.dumps(record)
+
+
+def _tool_use_block(use_id: str, name: str) -> dict[str, object]:
+    return {"type": "tool_use", "id": use_id, "name": name}
+
+
+def test_context_samples_dedupe_gates_creation_not_tool_collection(tmp_path: Path) -> None:
+    """One API response spans two lines sharing a message id: the second line's
+    tool_use must still be resolved even though it creates no second sample."""
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                _assistant_line("msg_1", usage={"input_tokens": 100, "output_tokens": 10}),
+                _assistant_line(
+                    "msg_1",
+                    usage={"input_tokens": 100, "output_tokens": 10},
+                    content=[_tool_use_block("call_1", "Read")],
+                ),
+                _user_line([("call_1", "file contents")]),
+                _assistant_line("msg_2", usage={"input_tokens": 150, "output_tokens": 20}),
+            ]
+        )
+    )
+    samples = forwarder.context_samples(str(transcript))
+    assert [s["message_id"] for s in samples] == ["msg_1", "msg_2"]
+    assert samples[0]["tools"] == []
+    assert samples[1]["tools"] == ["Read"]
+
+
+def test_context_samples_keep_sidechain_tool_results_off_the_main_lane(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                _assistant_line(
+                    "msg_1",
+                    usage={"input_tokens": 100, "output_tokens": 10},
+                    content=[_tool_use_block("call_1", "Task")],
+                ),
+                _assistant_line(
+                    "sub_1",
+                    usage={"input_tokens": 50, "output_tokens": 5},
+                    content=[_tool_use_block("call_2", "Read")],
+                    is_sidechain=True,
+                ),
+                _user_line([("call_2", "sub result")], is_sidechain=True),
+                _assistant_line(
+                    "sub_2", usage={"input_tokens": 60, "output_tokens": 5}, is_sidechain=True
+                ),
+                _user_line([("call_1", "main result")]),
+                _assistant_line("msg_2", usage={"input_tokens": 200, "output_tokens": 15}),
+            ]
+        )
+    )
+    samples = forwarder.context_samples(str(transcript))
+    by_id = {s["message_id"]: s for s in samples}
+    assert by_id["msg_1"]["is_sidechain"] is False
+    assert by_id["sub_1"]["is_sidechain"] is True
+    assert by_id["msg_1"]["tools"] == []
+    assert by_id["sub_1"]["tools"] == []
+    # Each lane's tool_result attaches only to its own next sample.
+    assert by_id["sub_2"]["tools"] == ["Read"]
+    assert by_id["msg_2"]["tools"] == ["Task"]
+
+
+def test_context_samples_report_a_truncation_verbatim(tmp_path: Path) -> None:
+    """A context truncation drops the total mid-session — the forwarder never
+    clamps a negative step, since the sign is the signal."""
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                _assistant_line("msg_1", usage={"input_tokens": 9000, "output_tokens": 10}),
+                _assistant_line("msg_2", usage={"input_tokens": 1430, "output_tokens": 10}),
+            ]
+        )
+    )
+    samples = forwarder.context_samples(str(transcript))
+    assert [s["total_tokens"] for s in samples] == [9000, 1430]
+
+
+def test_context_samples_resolve_several_tool_results_in_one_turn(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                _assistant_line(
+                    "msg_1",
+                    usage={"input_tokens": 100, "output_tokens": 10},
+                    content=[
+                        _tool_use_block("call_1", "Read"),
+                        _tool_use_block("call_2", "Glob"),
+                        _tool_use_block("call_3", "Grep"),
+                    ],
+                ),
+                _user_line(
+                    [
+                        ("call_1", "a"),
+                        ("call_2", "b"),
+                        ("call_9", "unresolvable — never invented"),
+                        ("call_3", "c"),
+                    ]
+                ),
+                _assistant_line("msg_2", usage={"input_tokens": 130, "output_tokens": 5}),
+            ]
+        )
+    )
+    samples = forwarder.context_samples(str(transcript))
+    assert samples[1]["tools"] == ["Read", "Glob", "Grep"]
+
+
+def test_context_samples_no_usage_emits_nothing_and_keeps_pending_tools(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                _assistant_line(
+                    "msg_1",
+                    usage={"input_tokens": 100, "output_tokens": 10},
+                    content=[_tool_use_block("call_1", "Read")],
+                ),
+                _user_line([("call_1", "result")]),
+                _assistant_line("msg_no_usage", usage=None),
+                _assistant_line("msg_2", usage={"input_tokens": 150, "output_tokens": 12}),
+            ]
+        )
+    )
+    samples = forwarder.context_samples(str(transcript))
+    assert [s["message_id"] for s in samples] == ["msg_1", "msg_2"]
+    assert samples[1]["tools"] == ["Read"]
+
+
+def test_context_samples_missing_transcript_reports_nothing(tmp_path: Path) -> None:
+    assert forwarder.context_samples(str(tmp_path / "gone.jsonl")) == []
+
+
+def test_stop_carries_context_samples_when_the_transcript_has_them(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        _assistant_line("msg_1", usage={"input_tokens": 100, "output_tokens": 10})
+    )
+    body = forwarder.build_body(
+        {"session_id": "s1", "hook_event_name": "Stop", "transcript_path": str(transcript)}
+    )
+    assert body is not None
+    assert body["context_samples"][0]["message_id"] == "msg_1"
+
+
+def test_stop_carries_no_context_samples_key_when_the_transcript_is_unreadable(
+    tmp_path: Path,
+) -> None:
+    """The autonomous hook payload stays byte-for-byte what it was without this."""
+    body = forwarder.build_body(
+        {
+            "session_id": "s1",
+            "hook_event_name": "Stop",
+            "transcript_path": str(tmp_path / "gone.jsonl"),
+        }
+    )
+    assert body is not None
+    assert "context_samples" not in body
+
+
 def test_stop_carries_the_totals_and_other_events_do_not(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     transcript.write_text(

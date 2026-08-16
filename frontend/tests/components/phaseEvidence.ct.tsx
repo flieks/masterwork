@@ -6,6 +6,7 @@ import { TestProviders } from './harness/TestProviders';
 import {
   DOCUMENT_GATE_CHECKS,
   FAILED_PARSE_ATTEMPTS,
+  contextSeries,
   envelopeAttempt,
   factoryRun,
   gateCheck,
@@ -27,7 +28,12 @@ async function mockRun(page: Page, run: CodingSessionDetail): Promise<void> {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
       return;
     }
-    const body = new URL(route.request().url()).pathname.endsWith('/events') ? [] : run;
+    const pathname = new URL(route.request().url()).pathname;
+    const body = pathname.endsWith('/events')
+      ? []
+      : pathname.endsWith('/context')
+        ? contextSeries({ session_id: run.id })
+        : run;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
