@@ -20,6 +20,9 @@ class WorkSource(BaseModel):
     current_iteration: str | None = Field(
         ..., description="The team's current sprint (iteration path), refreshed on sync."
     )
+    owner_display_name: str | None = Field(
+        ..., description="Display name of the PAT owner, refreshed on sync; what @Me matches."
+    )
     last_sync_at: datetime | None
     created_at: datetime
     updated_at: datetime

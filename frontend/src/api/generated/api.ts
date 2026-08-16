@@ -4243,7 +4243,13 @@ export interface WorkSource {
      */
     'current_iteration': string | null;
     /**
-     * 
+     *
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'owner_display_name': string | null;
+    /**
+     *
      * @type {string}
      * @memberof WorkSource
      */

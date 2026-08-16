@@ -8989,6 +8989,18 @@
                         "title": "Current Iteration",
                         "description": "The team's current sprint (iteration path), refreshed on sync."
                     },
+                    "owner_display_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Owner Display Name",
+                        "description": "Display name of the PAT owner, refreshed on sync; what @Me matches."
+                    },
                     "last_sync_at": {
                         "anyOf": [
                             {
@@ -9022,6 +9034,7 @@
                     "query_wiql",
                     "secret_ref",
                     "current_iteration",
+                    "owner_display_name",
                     "last_sync_at",
                     "created_at",
                     "updated_at"

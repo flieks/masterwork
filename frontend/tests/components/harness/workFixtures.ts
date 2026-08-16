@@ -5,6 +5,10 @@ export const SOURCE_ID = '6f3b2c1a-0d4e-4a9b-8c77-1f2e3d4c5b6a';
 export const SPRINT_33 = 'widgets\\2026 Q3.3';
 export const SPRINT_34 = 'widgets\\2026 Q3.4';
 
+// The PAT owner @Me matches against, and someone else's name for contrast.
+export const OWNER_NAME = 'Alex Doe';
+export const OTHER_ASSIGNEE = 'Sam Owner';
+
 /** A registered Azure DevOps project in whichever state a test needs. */
 export function workSource(overrides: Partial<WorkSource> = {}): WorkSource {
   return {
@@ -16,6 +20,7 @@ export function workSource(overrides: Partial<WorkSource> = {}): WorkSource {
     query_wiql: null,
     secret_ref: 'AZURE_DEVOPS_PAT',
     current_iteration: null,
+    owner_display_name: OWNER_NAME,
     last_sync_at: '2026-08-13T09:15:00Z',
     created_at: '2026-08-01T08:00:00Z',
     updated_at: '2026-08-13T09:15:00Z',
@@ -37,13 +42,29 @@ export function workItem(overrides: Partial<WorkItem> = {}): WorkItem {
     acceptance_md: '- Retry is disabled while a run is in flight',
     state: 'Active',
     iteration: SPRINT_33,
-    assigned_to: 'Alex Doe',
+    assigned_to: OWNER_NAME,
     priority: 2,
     tags: ['ingest'],
     external_changed_at: '2026-08-12T14:00:00Z',
     synced_at: '2026-08-13T09:15:00Z',
     ...overrides,
   };
+}
+
+/**
+ * A sprint item the widened WIQL returns directly — not a `pulled_as_parent`
+ * context row — but assigned to someone else, not the source's PAT owner.
+ */
+export function othersSprintItem(overrides: Partial<WorkItem> = {}): WorkItem {
+  return workItem({
+    id: 4,
+    external_id: 4900,
+    item_type: 'Feature',
+    title: 'Ingest reliability',
+    assigned_to: OTHER_ASSIGNEE,
+    pulled_as_parent: false,
+    ...overrides,
+  });
 }
 
 /**

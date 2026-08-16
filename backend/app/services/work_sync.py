@@ -2,9 +2,14 @@
 
 The WIQL/batch payload is untrusted external data: it is stored verbatim in
 `raw`, rendered as markdown into `description_md`/`acceptance_md`, and never
-executed, `eval`'d, or interpolated into a shell command or a WIQL string.
-The only WIQL sent to DevOps is `DEFAULT_WIQL` or the operator-entered
-`source.query_wiql` — no item field is ever concatenated into a query.
+executed, `eval`'d, or interpolated into a shell command. The WIQL sent to
+DevOps is `DEFAULT_WIQL`, the sprint-scoped query built from the team's own
+current iteration path, or the operator-entered `source.query_wiql` — no
+*work-item field* is ever concatenated into a query. The iteration path is
+the one interpolation that is allowed: it is external data, but it comes from
+DevOps' own sprint-lookup API rather than user input, is escaped by doubling
+its single quotes (the WIQL string-literal escape), and WIQL has no comment
+or statement-separator syntax to break out of a literal with.
 """
 
 from __future__ import annotations
@@ -27,6 +32,18 @@ DEFAULT_WIQL = (
     "AND [System.State] NOT IN ('Closed','Removed','Done') "
     "ORDER BY [System.ChangedDate] DESC"
 )
+
+SPRINT_WIQL = (
+    "SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER '{path}' "
+    "AND [System.State] NOT IN ('Closed','Removed','Done') "
+    "ORDER BY [System.ChangedDate] DESC"
+)
+
+
+def _sprint_wiql(path: str) -> str:
+    """WIQL string literals escape a quote by doubling it."""
+    return SPRINT_WIQL.format(path=path.replace("'", "''"))
+
 
 FIELDS = (
     "System.Title",
@@ -143,12 +160,26 @@ async def _upsert_payload(
 async def sync_source(
     db: AsyncSession, source: WorkSource, client: AzureDevOpsClient
 ) -> SyncCounts:
-    """Run the source's WIQL (or the default), batch-fetch, and upsert every
+    """Resolve the current sprint and PAT owner (both best-effort), then run
+    the operator's WIQL if set, else the whole current sprint if one resolved,
+    else the default assigned-to-me query; batch-fetch, and upsert every
     returned item on (source_id, external_id). Parents referenced but not
     returned by the WIQL (stories owned by others) are fetched in a second
     pass and flagged `pulled_as_parent` so the UI can group under them."""
     now = datetime.now(tz=UTC)
-    wiql = source.query_wiql or DEFAULT_WIQL
+
+    # Both best-effort: a failed lookup keeps the source's last known value.
+    with contextlib.suppress(AzureDevOpsError):
+        source.current_iteration = await client.get_current_iteration_path()
+    with contextlib.suppress(AzureDevOpsError):
+        source.owner_display_name = await client.get_authenticated_user_display_name()
+
+    if source.query_wiql:
+        wiql = source.query_wiql
+    elif source.current_iteration:
+        wiql = _sprint_wiql(source.current_iteration)
+    else:
+        wiql = DEFAULT_WIQL
     ids = await client.query_work_item_ids(wiql)
     payloads = await client.get_work_items_batch(ids, FIELDS)
 
@@ -183,10 +214,6 @@ async def sync_source(
             inserted += 1
         else:
             updated += 1
-
-    # Sprint lookup is best-effort; on failure keep the last known value.
-    with contextlib.suppress(AzureDevOpsError):
-        source.current_iteration = await client.get_current_iteration_path()
 
     source.last_sync_at = now
     await db.flush()

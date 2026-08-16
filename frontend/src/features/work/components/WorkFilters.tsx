@@ -49,7 +49,7 @@ export function WorkFilters({
         className={SELECT_CLASS}
       >
         <option value="">Everyone</option>
-        {/* Matches the rows the source's own (assigned-to-me) query returned. */}
+        {/* Matches assigned_to against the item's source owner_display_name. */}
         <option value={ASSIGNEE_ME}>@Me</option>
         {assignees.map((name) => (
           <option key={name} value={name}>

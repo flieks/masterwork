@@ -3,6 +3,7 @@ import type { WorkItem, WorkSource } from '~/api/generated';
 import { WorkBacklogPage } from '~/features/work/components/WorkBacklogPage';
 import { TestProviders } from './harness/TestProviders';
 import {
+  othersSprintItem,
   SOURCE_ID,
   SPRINT_33,
   SPRINT_34,
@@ -319,26 +320,46 @@ test('the active sprint is preselected and flagged in the dropdown', async ({ mo
   await expect(page.getByLabel('6 work items')).toBeVisible();
 });
 
-test('@Me drops the rows pulled only as context for someone else', async ({ mount, page }) => {
-  await mockWork(page, {
-    items: [
-      workItem(),
-      workItem({
-        id: 4,
-        external_id: 4900,
-        pulled_as_parent: true,
-        item_type: 'Feature',
-        title: CONTEXT_FEATURE,
-        assigned_to: 'Sam Owner',
-      }),
-    ],
-  });
+test('@Me drops rows assigned to someone else, not just pulled_as_parent context rows', async ({
+  mount,
+  page,
+}) => {
+  // othersSprintItem is a first-class sprint row (pulled_as_parent: false) —
+  // proves @Me now matches on identity, not the old context-row trick.
+  await mockWork(page, { items: [workItem(), othersSprintItem()] });
   await mountPage(mount);
 
   await expect(page.getByLabel('2 work items')).toBeVisible();
   await page.getByLabel('Assignee').selectOption('@Me');
   await expect(page.getByText(CONTEXT_FEATURE)).toHaveCount(0);
   await expect(page.getByText(STORY)).toBeVisible();
+  await expect(page.getByLabel('1 work items')).toBeVisible();
+});
+
+test('@Me matches nothing once the source has no owner_display_name yet', async ({
+  mount,
+  page,
+}) => {
+  await mockWork(page, {
+    sources: [workSource({ owner_display_name: null })],
+    items: [workItem()],
+  });
+  await mountPage(mount);
+
+  await page.getByLabel('Assignee').selectOption('@Me');
+  await expect(page.getByText('No work item matches these filters')).toBeVisible();
+});
+
+test("Everyone lists another person's sprint item that @Me hides", async ({ mount, page }) => {
+  await mockWork(page, { items: [workItem(), othersSprintItem()] });
+  await mountPage(mount);
+
+  // Everyone (the default) sees both rows in the shared sprint.
+  await expect(page.getByText(CONTEXT_FEATURE)).toBeVisible();
+  await expect(page.getByLabel('2 work items')).toBeVisible();
+
+  await page.getByLabel('Assignee').selectOption('@Me');
+  await expect(page.getByText(CONTEXT_FEATURE)).toHaveCount(0);
   await expect(page.getByLabel('1 work items')).toBeVisible();
 });
 

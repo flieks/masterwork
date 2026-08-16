@@ -20,6 +20,7 @@ export {
   hasActiveFilters,
   sprintLabel,
   sprintOptions,
+  type OwnerNames,
   type WorkItemFilters,
   type WorkItemNode,
 } from './tree';

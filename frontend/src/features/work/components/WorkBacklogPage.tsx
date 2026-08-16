@@ -20,6 +20,7 @@ import {
   workFilterSelectionAtom,
   workItemsQueryAtom,
   workSourcesQueryAtom,
+  type OwnerNames,
   type WorkItemFilters,
 } from '../queries';
 import { NewWorkSourceForm } from './NewWorkSourceForm';
@@ -72,7 +73,14 @@ export function WorkBacklogPage() {
     setSelection({ iteration: next.iteration, assignee: next.assignee });
   }
   const tree = useMemo(() => buildWorkItemTree(loaded), [loaded]);
-  const visible = useMemo(() => filterWorkItemTree(tree, filters), [tree, filters]);
+  const owners = useMemo<OwnerNames>(
+    () => Object.fromEntries((sources.data ?? []).map((s) => [s.id, s.owner_display_name])),
+    [sources.data],
+  );
+  const visible = useMemo(
+    () => filterWorkItemTree(tree, filters, owners),
+    [tree, filters, owners],
+  );
   const filtered = hasActiveFilters(filters);
 
   async function startItem(item: WorkItem) {

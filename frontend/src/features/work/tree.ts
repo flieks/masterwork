@@ -12,11 +12,13 @@ export interface WorkItemNode {
 }
 
 /**
- * Assignee filter sentinel: items the source's own query returned. The default
- * WIQL is assigned-to-me, so this is "@Me" without needing identity matching —
- * `pulled_as_parent` rows are exactly the ones owned by someone else.
+ * Assignee filter sentinel: matches items whose `assigned_to` equals the
+ * owning source's `owner_display_name` (the PAT owner's DevOps identity).
  */
 export const ASSIGNEE_ME = '@Me';
+
+/** `owner_display_name` per work-source id; a source with no owner yet matches nobody. */
+export type OwnerNames = Record<string, string | null>;
 
 export interface WorkItemFilters {
   /** The full iteration string, or null for every sprint. */
@@ -76,6 +78,7 @@ export function buildWorkItemTree(items: WorkItem[]): WorkItemNode[] {
 export function filterWorkItemTree(
   nodes: WorkItemNode[],
   filters: WorkItemFilters,
+  owners: OwnerNames,
 ): WorkItemNode[] {
   if (!hasActiveFilters(filters)) return nodes;
   const query = filters.query.trim().toLowerCase();
@@ -86,7 +89,7 @@ export function filterWorkItemTree(
       .filter((child): child is WorkItemNode => child !== null);
     const matches =
       (filters.iteration === null || node.item.iteration === filters.iteration) &&
-      matchesAssignee(node.item, filters.assignee) &&
+      matchesAssignee(node.item, filters.assignee, owners) &&
       (query === '' || node.item.title.toLowerCase().includes(query));
     if (!matches && children.length === 0) return null;
     return { item: node.item, children };
@@ -95,9 +98,12 @@ export function filterWorkItemTree(
   return nodes.map(prune).filter((node): node is WorkItemNode => node !== null);
 }
 
-function matchesAssignee(item: WorkItem, assignee: string | null): boolean {
+function matchesAssignee(item: WorkItem, assignee: string | null, owners: OwnerNames): boolean {
   if (assignee === null) return true;
-  if (assignee === ASSIGNEE_ME) return !item.pulled_as_parent;
+  if (assignee === ASSIGNEE_ME) {
+    const owner = owners[item.source_id];
+    return !!owner && item.assigned_to === owner;
+  }
   return item.assigned_to === assignee;
 }
 

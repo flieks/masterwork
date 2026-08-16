@@ -21,6 +21,7 @@ def work_source_to_schema(source: WorkSource) -> schemas.WorkSource:
         query_wiql=source.query_wiql,
         secret_ref=source.secret_ref,
         current_iteration=source.current_iteration,
+        owner_display_name=source.owner_display_name,
         last_sync_at=source.last_sync_at,
         created_at=source.created_at,
         updated_at=source.updated_at,

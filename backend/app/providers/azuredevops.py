@@ -98,6 +98,15 @@ class AzureDevOpsClient:
         path = values[0].get("path") if values else None
         return path if isinstance(path, str) and path else None
 
+    async def get_authenticated_user_display_name(self) -> str | None:
+        """The PAT owner's display name, or None when the org does not report one."""
+        url = f"{self._org_url}/_apis/connectionData?api-version={API_VERSION}"
+        async with self._client() as client:
+            response = await client.get(url)
+        user = _read_json(response).get("authenticatedUser")
+        name = user.get("providerDisplayName") if isinstance(user, dict) else None
+        return name if isinstance(name, str) and name else None
+
     async def list_active_prs(self) -> list[dict[str, Any]]:
         url = (
             f"{self._org_url}/{self._project}/_apis/git/pullrequests"

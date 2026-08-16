@@ -57,6 +57,8 @@ class WorkSource(Base):
     )
     # The team's current iteration path (DevOps $timeframe=current), refreshed on sync.
     current_iteration: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # The PAT owner's DevOps display name, refreshed on sync; what "@Me" matches on.
+    owner_display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_sync_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

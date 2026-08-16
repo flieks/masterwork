@@ -11,10 +11,18 @@ class _FakeDevOpsClient:
     """Records the WIQL it was asked, returns no ids — sync_source then makes
     no repository call at all, so this needs no real AsyncSession."""
 
-    def __init__(self, current_iteration: str | None = None, iteration_fails: bool = False) -> None:
+    def __init__(
+        self,
+        current_iteration: str | None = None,
+        iteration_fails: bool = False,
+        owner_name: str | None = None,
+        owner_fails: bool = False,
+    ) -> None:
         self.wiql: str | None = None
         self._current_iteration = current_iteration
         self._iteration_fails = iteration_fails
+        self._owner_name = owner_name
+        self._owner_fails = owner_fails
 
     async def query_work_item_ids(self, wiql: str) -> list[int]:
         self.wiql = wiql
@@ -27,6 +35,11 @@ class _FakeDevOpsClient:
         if self._iteration_fails:
             raise AzureDevOpsError("boom")
         return self._current_iteration
+
+    async def get_authenticated_user_display_name(self) -> str | None:
+        if self._owner_fails:
+            raise AzureDevOpsError("boom")
+        return self._owner_name
 
 
 class _FakeDB:
@@ -65,6 +78,45 @@ async def test_sync_keeps_the_last_known_iteration_when_the_lookup_fails() -> No
     client = _FakeDevOpsClient(iteration_fails=True)
     await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
     assert source.current_iteration == "widgets\\2026 Q3.1"
+
+
+async def test_sync_uses_the_sprint_wiql_when_current_iteration_resolves() -> None:
+    client = _FakeDevOpsClient(current_iteration="widgets\\Sprint 1")
+    await work_sync.sync_source(_FakeDB(), _source(), client)  # type: ignore[arg-type]
+    assert client.wiql == (
+        "SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER 'widgets\\Sprint 1' "
+        "AND [System.State] NOT IN ('Closed','Removed','Done') ORDER BY [System.ChangedDate] DESC"
+    )
+    assert "@Me" not in client.wiql
+
+
+async def test_sync_escapes_single_quotes_in_the_iteration_path() -> None:
+    client = _FakeDevOpsClient(current_iteration="widgets\\O'Brien Sprint")
+    await work_sync.sync_source(_FakeDB(), _source(), client)  # type: ignore[arg-type]
+    assert "UNDER 'widgets\\O''Brien Sprint'" in client.wiql
+    assert "AND [System.State] NOT IN ('Closed','Removed','Done')" in client.wiql
+
+
+async def test_sync_query_wiql_wins_even_when_an_iteration_resolves() -> None:
+    custom = "SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'"
+    client = _FakeDevOpsClient(current_iteration="widgets\\Sprint 1")
+    source = _source(query_wiql=custom)
+    await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
+    assert client.wiql == custom
+
+
+async def test_sync_stores_the_owner_display_name_on_the_source() -> None:
+    source = _source()
+    client = _FakeDevOpsClient(owner_name="Felix De Lille")
+    await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
+    assert source.owner_display_name == "Felix De Lille"
+
+
+async def test_sync_keeps_the_last_known_owner_when_the_lookup_fails() -> None:
+    source = _source(owner_display_name="Felix De Lille")
+    client = _FakeDevOpsClient(owner_fails=True)
+    await work_sync.sync_source(_FakeDB(), source, client)  # type: ignore[arg-type]
+    assert source.owner_display_name == "Felix De Lille"
 
 
 def test_parse_assigned_to_keeps_the_display_name_only() -> None:
