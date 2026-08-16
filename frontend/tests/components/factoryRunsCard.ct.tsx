@@ -17,6 +17,7 @@ function factoryRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
     outcome: 'stopped',
     state: 'stopped',
     request_text: 'Add a context-growth series to the observability\n\nDETAILS…',
+    workflow: 'full',
     branch: 'factory/aaaa1111',
     reason: 'cost cap reached: $32.95 of $25 budget',
     interview: false,
@@ -322,4 +323,45 @@ test('dismissing a run drops it from the list and offers it back', async ({ moun
   await page.getByRole('button', { name: 'Show 1 handled run' }).click();
   await expect(page.getByRole('button', { name: 'Bring back' })).toBeVisible();
   await expect(page.getByRole('button', { name: /again/ })).toHaveCount(0);
+});
+
+test('a stuck run can be asked whether the work landed anyway, read-only', async ({
+  mount,
+  page,
+}) => {
+  const { launches } = await mockRuns(page, [
+    factoryRun({
+      run_id: 'stuck111',
+      outcome: 'failed',
+      resumable: false,
+      resume_hint: "the branch it worked on ('factory/stuck111') is gone",
+    }),
+  ]);
+  await mountCard(mount);
+
+  await page.getByRole('button', { name: 'Check whether run stuck111 is already done' }).click();
+  await expect(page.getByText('Check whether this work already landed?')).toBeVisible();
+  await page.getByRole('button', { name: 'Check it' }).click();
+
+  await expect.poll(() => launches.length).toBe(1);
+  const sent = JSON.parse(launches[0]);
+  // One read-only stage, and the question carries the original request.
+  expect(sent.workflow).toBe('scout');
+  expect(sent.request_text).toContain('already implemented in this repository');
+  expect(sent.request_text).toContain('Add a context-growth series to the observability');
+});
+
+test('a scout run says so, so a check is not mistaken for a build', async ({ mount, page }) => {
+  await mockRuns(page, [
+    factoryRun({
+      run_id: 'scout111',
+      outcome: 'failed',
+      workflow: 'scout',
+      resumable: false,
+      resume_hint: 'the branch it worked on is gone',
+    }),
+  ]);
+  await mountCard(mount);
+
+  await expect(page.getByText(/scout111 · scout/)).toBeVisible();
 });

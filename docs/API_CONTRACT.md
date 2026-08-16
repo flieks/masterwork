@@ -2851,3 +2851,33 @@ FactoryRunDismissRequest { project_path: string, run_id: string }
     unique (project_path, run_id)
   ```
   Alembic migration `0024_dismissed_runs` on `0023_coding_context_samples`.
+
+# API Contract v1.35 — launching a chosen workflow, and the cheap "is it done?" check
+
+Additive on top of v1.34.
+
+## Changed schemas
+
+```
+LaunchRequest.workflow?: "full" | "plan_build" | "build_test" | "build_review" | "document" | "scout"
+FactoryRun.workflow: string | null   // the preset the run recorded, e.g. "scout"
+```
+
+`workflow` is optional and omitted by default, so a plain autonomous launch's
+argv is unchanged to the byte: `--workflow` is appended only when asked for,
+the same rule `--run-id` and `--interview` already follow. An unknown preset is
+rejected by the schema (422) rather than handed to the factory.
+
+## Behavior
+
+- **`scout` is the cheap one.** It is a single read-only stage
+  (`factory/adw/workflows.py`) on a small model, whose role forbids writing
+  files or proposing a plan: it reads the repo and reports `findings` plus a
+  `summary`. That makes "is this already implemented?" answerable for a
+  fraction of a plan-and-build rerun.
+- **Frontend**: a stuck run offers "Check if done" beside "Run again". It
+  launches the same project with `workflow: "scout"` and a request that asks
+  whether the original request's work already landed, quoting it. The runs list
+  labels any non-`full` run with its preset, so a check is never mistaken for a
+  build.
+- **DB**: none — the workflow is already recorded in the run's own `run.json`.

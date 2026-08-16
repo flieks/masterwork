@@ -2427,6 +2427,12 @@ export interface LaunchRequest {
      * @memberof LaunchRequest
      */
     'mode'?: LaunchMode;
+    /**
+     * Which stages run. Omitted means the factory's own default (full).
+     * @type {LaunchWorkflow}
+     * @memberof LaunchRequest
+     */
+    'workflow'?: LaunchWorkflow | null;
 }
 
 
@@ -2435,6 +2441,17 @@ export interface LaunchRequest {
  * @export
  * @interface LauncherProject
  */
+export const LaunchWorkflow = {
+    Full: 'full',
+    PlanBuild: 'plan_build',
+    BuildTest: 'build_test',
+    BuildReview: 'build_review',
+    Document: 'document',
+    Scout: 'scout'
+} as const;
+
+export type LaunchWorkflow = typeof LaunchWorkflow[keyof typeof LaunchWorkflow];
+
 export interface LauncherProject {
     /**
      * 
@@ -6750,6 +6767,7 @@ export interface FactoryRun {
     'outcome': RunOutcome;
     'state': string;
     'request_text': string;
+    'workflow'?: string | null;
     'branch': string | null;
     'reason'?: string | null;
     'interview': boolean;

@@ -58,13 +58,14 @@ def spawn_factory_run(
     log_path: Path,
     run_id: str | None = None,
     interview: bool = False,
+    workflow: str | None = None,
 ) -> int:
     """Launch `python_bin factory/run.py --repo project_path request_text`,
     detached from this process and never awaited. Returns the child pid.
 
     argv is a list, never a shell string — request_text is untrusted and must
-    never be interpreted. `--run-id`/`--interview` are appended only when set,
-    so an autonomous launch's argv is unchanged to the byte.
+    never be interpreted. `--run-id`/`--interview`/`--workflow` are appended
+    only when set, so a plain autonomous launch's argv is unchanged to the byte.
     """
     argv = [
         python_bin,
@@ -76,6 +77,8 @@ def spawn_factory_run(
         argv += ["--run-id", run_id]
     if interview:
         argv.append("--interview")
+    if workflow is not None:
+        argv += ["--workflow", workflow]
     argv.append(request_text)
     return _spawn(argv, project_path, log_path)
 

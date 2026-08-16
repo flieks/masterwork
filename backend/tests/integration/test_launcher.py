@@ -35,6 +35,7 @@ class _FakeSpawner:
         log_path: Path,
         run_id: str | None = None,
         interview: bool = False,
+        workflow: str | None = None,
     ) -> int:
         self.calls.append(
             {
@@ -43,6 +44,7 @@ class _FakeSpawner:
                 "log_path": log_path,
                 "run_id": run_id,
                 "interview": interview,
+                "workflow": workflow,
             }
         )
         return 4242 + len(self.calls) - 1
@@ -1102,6 +1104,7 @@ async def test_launch_reports_a_run_that_died_on_arrival(
         log_path: Path,
         run_id: str | None = None,
         interview: bool = False,
+        workflow: str | None = None,
     ) -> int:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("ab") as log:
@@ -1208,3 +1211,47 @@ async def test_dismiss_rejects_an_unknown_run_and_an_outside_project(
         json={"project_path": str(outside), "run_id": "aaaa1111"},
     )
     assert r.status_code == 400
+
+
+async def test_launch_passes_a_workflow_through_and_omits_it_by_default(
+    client: AsyncClient, seeded_projects: Path, fake_spawner: _FakeSpawner
+) -> None:
+    alpha = seeded_projects / "alpha"
+    await client.post(
+        "/api/v1/launcher/launch",
+        json={"project_path": str(alpha), "request_text": "is this done?", "workflow": "scout"},
+    )
+    assert fake_spawner.calls[0]["workflow"] == "scout"
+
+    await client.post(
+        "/api/v1/launcher/launch",
+        json={"project_path": str(alpha), "request_text": "build it"},
+    )
+    assert fake_spawner.calls[1]["workflow"] is None
+
+
+async def test_launch_rejects_a_workflow_the_factory_does_not_have(
+    client: AsyncClient, seeded_projects: Path, fake_spawner: _FakeSpawner
+) -> None:
+    r = await client.post(
+        "/api/v1/launcher/launch",
+        json={
+            "project_path": str(seeded_projects / "alpha"),
+            "request_text": "x",
+            "workflow": "sabotage",
+        },
+    )
+    assert r.status_code == 422
+    assert fake_spawner.calls == []
+
+
+async def test_runs_report_the_workflow_they_ran(
+    client: AsyncClient, seeded_projects: Path, runs_root: Path
+) -> None:
+    alpha = seeded_projects / "alpha"
+    run_dir = _write_run_record(runs_root, alpha, "scout111", state="finished", accepted=True)
+    record = json.loads((run_dir / "run.json").read_text())
+    record["workflow_name"] = "scout"
+    (run_dir / "run.json").write_text(json.dumps(record), encoding="utf-8")
+
+    assert (await client.get("/api/v1/launcher/runs")).json()[0]["workflow"] == "scout"

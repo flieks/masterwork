@@ -148,3 +148,28 @@ def test_reaps_finished_children_before_spawning_the_next(
     )
 
     assert finished not in factory_launcher._children
+
+
+def test_workflow_is_appended_only_when_asked_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plain launch's argv must stay byte-for-byte what it always was."""
+    seen: list[list[str]] = []
+
+    def fake_spawn(argv: list[str], project_path: Path, log_path: Path) -> int:
+        seen.append(argv)
+        return 1
+
+    monkeypatch.setattr(factory_launcher, "_spawn", fake_spawn)
+    common = {
+        "repo_root": Path("/repo"),
+        "python_bin": "python3",
+        "project_path": Path("/proj"),
+        "request_text": "do it",
+        "log_path": Path("/tmp/x.log"),
+    }
+
+    factory_launcher.spawn_factory_run(**common)
+    assert "--workflow" not in seen[0]
+    assert seen[0][-1] == "do it"
+
+    factory_launcher.spawn_factory_run(**common, workflow="scout")
+    assert seen[1][-3:] == ["--workflow", "scout", "do it"]

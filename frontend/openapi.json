@@ -6637,6 +6637,17 @@
                         "$ref": "#/components/schemas/LaunchMode",
                         "description": "'autonomous' never asks; 'interview' pauses after planning to ask about weak assumptions before building.",
                         "default": "autonomous"
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/LaunchWorkflow"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Which stages run. Omitted means the factory's own default (full)."
                     }
                 },
                 "type": "object",
@@ -9117,6 +9128,18 @@
                         "type": "string",
                         "title": "Request Text"
                     },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow",
+                        "description": "The preset the run used, e.g. \"scout\"."
+                    },
                     "branch": {
                         "anyOf": [
                             {
@@ -9311,6 +9334,19 @@
                     "run_id"
                 ],
                 "title": "FactoryRunDismissRequest"
+            },
+            "LaunchWorkflow": {
+                "type": "string",
+                "enum": [
+                    "full",
+                    "plan_build",
+                    "build_test",
+                    "build_review",
+                    "document",
+                    "scout"
+                ],
+                "title": "LaunchWorkflow",
+                "description": "The factory's stage presets (factory/adw/workflows.py). `scout` is the\ncheap one: a single read-only stage that reads the repo and reports."
             }
         }
     }

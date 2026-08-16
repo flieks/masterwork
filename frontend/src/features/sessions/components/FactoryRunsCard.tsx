@@ -83,6 +83,7 @@ function RunRow({ run }: { run: FactoryRun }) {
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {run.project_name} · {run.run_id}
+          {run.workflow && run.workflow !== 'full' ? ` · ${run.workflow}` : ''}
           {run.started_at ? (
             <span title={absoluteDateTime(run.started_at)}> · {relativeTime(run.started_at)}</span>
           ) : null}

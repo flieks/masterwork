@@ -13,6 +13,18 @@ class LaunchMode(StrEnum):
     INTERVIEW = "interview"
 
 
+class LaunchWorkflow(StrEnum):
+    """The factory's stage presets (factory/adw/workflows.py). `scout` is the
+    cheap one: a single read-only stage that reads the repo and reports."""
+
+    FULL = "full"
+    PLAN_BUILD = "plan_build"
+    BUILD_TEST = "build_test"
+    BUILD_REVIEW = "build_review"
+    DOCUMENT = "document"
+    SCOUT = "scout"
+
+
 class LauncherProject(BaseModel):
     name: str
     path: str = Field(..., description="Absolute path under projects_root.")
@@ -37,6 +49,10 @@ class LaunchRequest(BaseModel):
             "'autonomous' never asks; 'interview' pauses after planning to ask "
             "about weak assumptions before building."
         ),
+    )
+    workflow: LaunchWorkflow | None = Field(
+        None,
+        description="Which stages run. Omitted means the factory's own default (full).",
     )
 
 
@@ -116,6 +132,7 @@ class FactoryRun(BaseModel):
     outcome: RunOutcome = Field(..., description="Read this, not `state`.")
     state: str = Field(..., description="run.json's raw state, e.g. running/stopped/finished.")
     request_text: str
+    workflow: str | None = Field(None, description='The preset the run used, e.g. "scout".')
     branch: str | None
     reason: str | None = Field(None, description="Why the run ended, e.g. 'cost cap reached…'.")
     interview: bool

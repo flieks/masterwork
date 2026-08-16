@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { FactoryRun } from '~/api/generated';
 import { sessionDetailPath } from '../runs';
+import { CheckDoneButton } from './CheckDoneButton';
 import { DismissRunButton } from './DismissRunButton';
 import { RerunRunButton } from './RerunRunButton';
 import { ResumeRunButton } from './ResumeRunButton';
@@ -41,7 +42,10 @@ export function RunActions({ run }: { run: FactoryRun }) {
           Running again as {run.superseded_by}
         </Link>
       ) : canRerun(run) ? (
-        <RerunRunButton run={run} />
+        <>
+          <CheckDoneButton run={run} />
+          <RerunRunButton run={run} />
+        </>
       ) : null}
       <DismissRunButton run={run} dismissed />
     </div>

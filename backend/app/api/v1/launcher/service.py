@@ -220,6 +220,7 @@ async def launch(
             log_path=log_path,
             run_id=run_id,
             interview=is_interview,
+            workflow=body.workflow.value if body.workflow else None,
         )
     except OSError as exc:
         await db.rollback()
@@ -349,6 +350,9 @@ def _run_to_schema(
         outcome=_outcome(state_str, live=live, accepted=accepted),
         state=state_str,
         request_text=str(record.get("request") or ""),
+        workflow=(
+            str(record["workflow_name"]) if isinstance(record.get("workflow_name"), str) else None
+        ),
         branch=branch,
         reason=str(record["reason"]) if isinstance(record.get("reason"), str) else None,
         interview=record.get("interview") is True,
