@@ -346,16 +346,29 @@ class CodingSession(BaseModel):
     status: str = Field(
         ...,
         description=(
-            "running | success | failed | interrupted | abandoned. `abandoned` is derived, "
-            "never stored: an open run that has been silent for over 2 minutes. `running` "
-            "therefore only ever means genuinely live. `interrupted` is the opposite — only "
-            "ever stored, never derived: masterwork cannot tell a killed run from a lost "
-            "hook, so silence reports `abandoned` and only a producer says `interrupted`."
+            "running | waiting_input | success | failed | interrupted | abandoned. "
+            "`abandoned` is derived, never stored: an open run that has been silent for "
+            "over 2 minutes. `waiting_input` is derived too, and outranks it: the run said "
+            "it is blocked on a person, so its silence is explained. `running` therefore "
+            "only ever means genuinely live and unblocked. `interrupted` is the opposite — "
+            "only ever stored, never derived: masterwork cannot tell a killed run from a "
+            "lost hook, so silence reports `abandoned` and only a producer says "
+            "`interrupted`."
         ),
     )
     started_at: datetime = Field(..., description="First event seen for this session.")
     last_event_at: datetime
     ended_at: datetime | None = Field(..., description="Set by an event with ended=true.")
+    awaiting_input_since: datetime | None = Field(
+        ...,
+        description=(
+            "When the run last reported being blocked on a person — a permission prompt or "
+            "a question asked mid-turn. Cleared by the next event that proves work resumed, "
+            "but deliberately not by `SessionEnd`: a run that died with its question "
+            "unanswered keeps the timestamp, so `ended_at` plus this field is how that is "
+            "told apart from a run that simply finished."
+        ),
+    )
     stats: dict[str, Any] | None = Field(..., description="Merged free-form counters.")
     cost_usd: float | None
     tokens_total: int | None

@@ -607,11 +607,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include sessions that ended without running a tool — mostly the desktop app's discarded startup processes, hidden by default.",
+                            "description": "Include sessions that ended without running a tool \u2014 mostly the desktop app's discarded startup processes, hidden by default.",
                             "default": false,
                             "title": "Include Empty"
                         },
-                        "description": "Include sessions that ended without running a tool — mostly the desktop app's discarded startup processes, hidden by default."
+                        "description": "Include sessions that ended without running a tool \u2014 mostly the desktop app's discarded startup processes, hidden by default."
                     },
                     {
                         "name": "include_automated",
@@ -619,11 +619,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include sessions a `claude -p` one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.",
+                            "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default.",
                             "default": false,
                             "title": "Include Automated"
                         },
-                        "description": "Include sessions a `claude -p` one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default."
+                        "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default."
                     },
                     {
                         "name": "workflow",
@@ -638,10 +638,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "status",
@@ -656,10 +656,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.",
+                            "description": "Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.",
                             "title": "Status"
                         },
-                        "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it."
+                        "description": "Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it."
                     },
                     {
                         "name": "roots_only",
@@ -667,11 +667,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Hide runs that another run launched — a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards.",
+                            "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards.",
                             "default": false,
                             "title": "Roots Only"
                         },
-                        "description": "Hide runs that another run launched — a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards."
+                        "description": "Hide runs that another run launched \u2014 a pipeline's five headless stages collapse into their parent instead of showing as five orphan cards."
                     },
                     {
                         "name": "parent_session_id",
@@ -686,10 +686,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only the runs this one launched — the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts.",
+                            "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts.",
                             "title": "Parent Session Id"
                         },
-                        "description": "Keep only the runs this one launched — the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts."
+                        "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts."
                     }
                 ],
                 "responses": {
@@ -742,10 +742,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Count only the calls made at or after this instant, from the per-call log — so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals.",
+                            "description": "Count only the calls made at or after this instant, from the per-call log \u2014 so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals.",
                             "title": "Since"
                         },
-                        "description": "Count only the calls made at or after this instant, from the per-call log — so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals."
+                        "description": "Count only the calls made at or after this instant, from the per-call log \u2014 so `uses` is what happened inside the window, not an asset's whole history. Omit it for the all-time totals."
                     },
                     {
                         "name": "kind",
@@ -842,11 +842,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md — see the same flag on /coding-assets.",
+                            "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets.",
                             "default": false,
                             "title": "Include Inspection"
                         },
-                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md — see the same flag on /coding-assets."
+                        "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets."
                     }
                 ],
                 "responses": {
@@ -883,7 +883,7 @@
                     "coding"
                 ],
                 "summary": "Which gates fail, how often, and on which role",
-                "description": "Reads the v1.19 evidence rows, so it sees only the runs that reported or\nreplayed them — `/coding-analytics/roles` covers the rest from the counters.",
+                "description": "Reads the v1.19 evidence rows, so it sees only the runs that reported or\nreplayed them \u2014 `/coding-analytics/roles` covers the rest from the counters.",
                 "operationId": "listGateStats",
                 "parameters": [
                     {
@@ -918,10 +918,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1016,10 +1016,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1079,7 +1079,7 @@
                 "tags": [
                     "coding"
                 ],
-                "summary": "Cost, tokens, duration and outcome per run — the trend line",
+                "summary": "Cost, tokens, duration and outcome per run \u2014 the trend line",
                 "description": "Oldest first, so a client plots them left to right without re-sorting.",
                 "operationId": "listRunStats",
                 "parameters": [
@@ -1115,10 +1115,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1227,10 +1227,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow — \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1312,7 +1312,7 @@
                     "coding"
                 ],
                 "summary": "Rebuild one session's derived rows from its stored events",
-                "description": "Replay the stored stream through the current derivation.\n\nStages, lanes and assets are derived, so a fix to how they are derived does\nnothing for a run already recorded until its events are replayed. Idempotent:\nthe derived rows are dropped and rebuilt, never updated. The event stream\nitself is never touched — it is the record this rebuilds from.",
+                "description": "Replay the stored stream through the current derivation.\n\nStages, lanes and assets are derived, so a fix to how they are derived does\nnothing for a run already recorded until its events are replayed. Idempotent:\nthe derived rows are dropped and rebuilt, never updated. The event stream\nitself is never touched \u2014 it is the record this rebuilds from.",
                 "operationId": "backfillCodingSession",
                 "parameters": [
                     {
@@ -1510,7 +1510,7 @@
                     "coding"
                 ],
                 "summary": "Get Coding Session Media",
-                "description": "An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON — the UI points an <img> at this.",
+                "description": "An image the hook pulled out of a tool response before it was truncated, named by the `media_id` of an `image_ref` in an event payload. Bytes, not JSON \u2014 the UI points an <img> at this.",
                 "operationId": "getCodingSessionMedia",
                 "parameters": [
                     {
@@ -1802,6 +1802,205 @@
                 }
             }
         },
+        "/api/v1/launcher/runs": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Factory Runs",
+                "operationId": "listFactoryRuns",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/FactoryRun"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listfactoryruns"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/by-session/{session_id}": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Get Run For Session",
+                "description": "Null \u2014 not 404 \u2014 when the session came from anywhere but a factory run,\nwhich is the common case and not an error.",
+                "operationId": "getRunForSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "$ref": "#/components/schemas/FactoryRun"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ],
+                                    "title": "Response Getrunforsession"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/resume": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Resume Factory Run",
+                "operationId": "resumeFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunResumeRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRunResumeRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/dismiss": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Dismiss Factory Run",
+                "operationId": "dismissFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRun"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/restore": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Restore Factory Run",
+                "operationId": "restoreFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRun"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/launcher/launches": {
             "get": {
                 "tags": [
@@ -1888,14 +2087,14 @@
                     }
                 ],
                 "requestBody": {
+                    "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "$ref": "#/components/schemas/InterviewAnswersRequest"
                             }
                         }
-                    },
-                    "required": true
+                    }
                 },
                 "responses": {
                     "200": {
@@ -3145,205 +3344,6 @@
                     }
                 }
             }
-        },
-        "/api/v1/launcher/runs": {
-            "get": {
-                "tags": [
-                    "launcher"
-                ],
-                "summary": "List Factory Runs",
-                "operationId": "listFactoryRuns",
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "items": {
-                                        "$ref": "#/components/schemas/FactoryRun"
-                                    },
-                                    "type": "array",
-                                    "title": "Response Listfactoryruns"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/launcher/runs/resume": {
-            "post": {
-                "tags": [
-                    "launcher"
-                ],
-                "summary": "Resume Factory Run",
-                "operationId": "resumeFactoryRun",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/FactoryRunResumeRequest"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/FactoryRunResumeRead"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/launcher/runs/by-session/{session_id}": {
-            "get": {
-                "tags": [
-                    "launcher"
-                ],
-                "summary": "Get Run For Session",
-                "description": "Null — not 404 — when the session came from anywhere but a factory run,\nwhich is the common case and not an error.",
-                "operationId": "getRunForSession",
-                "parameters": [
-                    {
-                        "name": "session_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "Session Id"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "anyOf": [
-                                        {
-                                            "$ref": "#/components/schemas/FactoryRun"
-                                        },
-                                        {
-                                            "type": "null"
-                                        }
-                                    ],
-                                    "title": "Response Getrunforsession"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/launcher/runs/dismiss": {
-            "post": {
-                "tags": [
-                    "launcher"
-                ],
-                "summary": "Dismiss Factory Run",
-                "operationId": "dismissFactoryRun",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/FactoryRun"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/launcher/runs/restore": {
-            "post": {
-                "tags": [
-                    "launcher"
-                ],
-                "summary": "Restore Factory Run",
-                "operationId": "restoreFactoryRun",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/FactoryRun"
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     },
     "components": {
@@ -3618,7 +3618,7 @@
                             }
                         ],
                         "title": "Input",
-                        "description": "The call's arguments, truncated to 2 000 characters per key. Null when the signal carried none — a skill loaded by being read has no arguments."
+                        "description": "The call's arguments, truncated to 2 000 characters per key. Null when the signal carried none \u2014 a skill loaded by being read has no arguments."
                     }
                 },
                 "type": "object",
@@ -3689,7 +3689,7 @@
                             }
                         ],
                         "title": "Created At",
-                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) — an absent date rather than a wrong one."
+                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) \u2014 an absent date rather than a wrong one."
                     },
                     "updated_at": {
                         "type": "string",
@@ -3826,7 +3826,7 @@
                         },
                         "type": "array",
                         "title": "Calls",
-                        "description": "The individual calls, newest first. Capped across the whole response, so it can hold fewer entries than `uses` — and none at all for a run recorded before the log shipped, until it is backfilled."
+                        "description": "The individual calls, newest first. Capped across the whole response, so it can hold fewer entries than `uses` \u2014 and none at all for a run recorded before the log shipped, until it is backfilled."
                     }
                 },
                 "type": "object",
@@ -3903,7 +3903,7 @@
                             }
                         ],
                         "title": "Created At",
-                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) — an absent date rather than a wrong one."
+                        "description": "Filesystem birth time, never later than updated_at. Null where the platform records none (Linux) \u2014 an absent date rather than a wrong one."
                     },
                     "updated_at": {
                         "type": "string",
@@ -3959,7 +3959,7 @@
                     "asset_id": {
                         "type": "string",
                         "title": "Asset Id",
-                        "description": "\"claude:skill:<name>\" / \"claude:agent:<name>\" — links to the asset page."
+                        "description": "\"claude:skill:<name>\" / \"claude:agent:<name>\" \u2014 links to the asset page."
                     },
                     "lane": {
                         "anyOf": [
@@ -3971,7 +3971,7 @@
                             }
                         ],
                         "title": "Lane",
-                        "description": "The lane that used it; null when it had none — and always null for a use rolled up from a run this one launched, whose lane is its own and not one of these."
+                        "description": "The lane that used it; null when it had none \u2014 and always null for a use rolled up from a run this one launched, whose lane is its own and not one of these."
                     },
                     "uses": {
                         "type": "integer",
@@ -4348,7 +4348,7 @@
                     "last_used_at"
                 ],
                 "title": "CodingAssetUsage",
-                "description": "One asset's usage across every run — the flywheel view."
+                "description": "One asset's usage across every run \u2014 the flywheel view."
             },
             "CodingEvent": {
                 "properties": {
@@ -4512,7 +4512,7 @@
                             }
                         ],
                         "title": "Duration Ms",
-                        "description": "Reported, or started_at → ended_at."
+                        "description": "Reported, or started_at \u2192 ended_at."
                     },
                     "id": {
                         "type": "integer",
@@ -4721,7 +4721,7 @@
                             }
                         ],
                         "title": "Parent Session Id",
-                        "description": "The run that launched this one — a pipeline stage's parent."
+                        "description": "The run that launched this one \u2014 a pipeline stage's parent."
                     },
                     "child_count": {
                         "type": "integer",
@@ -4743,7 +4743,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
+                        "description": "running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -4768,6 +4768,19 @@
                         ],
                         "title": "Ended At",
                         "description": "Set by an event with ended=true."
+                    },
+                    "awaiting_input_since": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Awaiting Input Since",
+                        "description": "When the run last reported being blocked on a person \u2014 a permission prompt or a question asked mid-turn. Cleared by the next event that proves work resumed, but deliberately not by `SessionEnd`: a run that died with its question unanswered keeps the timestamp, so `ended_at` plus this field is how that is told apart from a run that simply finished."
                     },
                     "stats": {
                         "anyOf": [
@@ -4849,12 +4862,12 @@
                     "duration_seconds": {
                         "type": "number",
                         "title": "Duration Seconds",
-                        "description": "started_at → ended_at, or → last_event_at while still open."
+                        "description": "started_at \u2192 ended_at, or \u2192 last_event_at while still open."
                     },
                     "wall_ms": {
                         "type": "integer",
                         "title": "Wall Ms",
-                        "description": "duration_seconds in milliseconds — the clock on the wall."
+                        "description": "duration_seconds in milliseconds \u2014 the clock on the wall."
                     },
                     "active_ms": {
                         "type": "integer",
@@ -4903,6 +4916,7 @@
                     "started_at",
                     "last_event_at",
                     "ended_at",
+                    "awaiting_input_since",
                     "stats",
                     "cost_usd",
                     "tokens_total",
@@ -5006,7 +5020,7 @@
                             }
                         ],
                         "title": "Parent Session Id",
-                        "description": "The run that launched this one — a pipeline stage's parent."
+                        "description": "The run that launched this one \u2014 a pipeline stage's parent."
                     },
                     "child_count": {
                         "type": "integer",
@@ -5028,7 +5042,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
+                        "description": "running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -5053,6 +5067,19 @@
                         ],
                         "title": "Ended At",
                         "description": "Set by an event with ended=true."
+                    },
+                    "awaiting_input_since": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Awaiting Input Since",
+                        "description": "When the run last reported being blocked on a person \u2014 a permission prompt or a question asked mid-turn. Cleared by the next event that proves work resumed, but deliberately not by `SessionEnd`: a run that died with its question unanswered keeps the timestamp, so `ended_at` plus this field is how that is told apart from a run that simply finished."
                     },
                     "stats": {
                         "anyOf": [
@@ -5134,12 +5161,12 @@
                     "duration_seconds": {
                         "type": "number",
                         "title": "Duration Seconds",
-                        "description": "started_at → ended_at, or → last_event_at while still open."
+                        "description": "started_at \u2192 ended_at, or \u2192 last_event_at while still open."
                     },
                     "wall_ms": {
                         "type": "integer",
                         "title": "Wall Ms",
-                        "description": "duration_seconds in milliseconds — the clock on the wall."
+                        "description": "duration_seconds in milliseconds \u2014 the clock on the wall."
                     },
                     "active_ms": {
                         "type": "integer",
@@ -5204,6 +5231,7 @@
                     "started_at",
                     "last_event_at",
                     "ended_at",
+                    "awaiting_input_since",
                     "stats",
                     "cost_usd",
                     "tokens_total",
@@ -5222,7 +5250,7 @@
                     "gate_checks"
                 ],
                 "title": "CodingSessionDetail",
-                "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence — kept as sibling arrays keyed by `phase_id`."
+                "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence \u2014 kept as sibling arrays keyed by `phase_id`."
             },
             "ContextSample": {
                 "properties": {
@@ -5345,7 +5373,7 @@
                             }
                         ],
                         "title": "Model",
-                        "description": "Accepted but not stored — no column for it."
+                        "description": "Accepted but not stored \u2014 no column for it."
                     },
                     "is_sidechain": {
                         "type": "boolean",
@@ -5376,7 +5404,7 @@
                     "total_tokens"
                 ],
                 "title": "ContextSampleIn",
-                "description": "One context-usage sample as the forwarder reports it — one per deduped\nassistant message id, in transcript order."
+                "description": "One context-usage sample as the forwarder reports it \u2014 one per deduped\nassistant message id, in transcript order."
             },
             "ContextSeries": {
                 "properties": {
@@ -5394,7 +5422,7 @@
                             }
                         ],
                         "title": "Baseline Tokens",
-                        "description": "The first main-lane sample's total — preamble plus first prompt."
+                        "description": "The first main-lane sample's total \u2014 preamble plus first prompt."
                     },
                     "peak_tokens": {
                         "anyOf": [
@@ -5422,7 +5450,7 @@
                         },
                         "type": "array",
                         "title": "Sidechain Samples",
-                        "description": "Subagent turns, their own series — never interleaved with the main lane."
+                        "description": "Subagent turns, their own series \u2014 never interleaved with the main lane."
                     },
                     "tools": {
                         "items": {
@@ -5443,7 +5471,7 @@
                     "tools"
                 ],
                 "title": "ContextSeries",
-                "description": "The context-growth curve for one session — main lane and sidechain kept apart."
+                "description": "The context-growth curve for one session \u2014 main lane and sidechain kept apart."
             },
             "ContextToolCost": {
                 "properties": {
@@ -5635,7 +5663,7 @@
                             }
                         ],
                         "title": "Role",
-                        "description": "The role that produced it — plan, build, review, …"
+                        "description": "The role that produced it \u2014 plan, build, review, \u2026"
                     },
                     "attempt": {
                         "type": "integer",
@@ -5693,12 +5721,12 @@
                             }
                         ],
                         "title": "Raw Text",
-                        "description": "The reply it was read out of — often the only body a rejection has."
+                        "description": "The reply it was read out of \u2014 often the only body a rejection has."
                     },
                     "origin": {
                         "type": "string",
                         "title": "Origin",
-                        "description": "reported — the producer sent it, and only these can carry a body. recovered — a replay reconstructed the attempt from a gate line, so `body` is always null."
+                        "description": "reported \u2014 the producer sent it, and only these can carry a body. recovered \u2014 a replay reconstructed the attempt from a gate line, so `body` is always null."
                     },
                     "created_at": {
                         "type": "string",
@@ -5809,12 +5837,288 @@
                             }
                         ],
                         "title": "Raw Text",
-                        "description": "The reply the envelope was read out of — the only body a rejected attempt has. Truncated past 32 KB with a marker saying so."
+                        "description": "The reply the envelope was read out of \u2014 the only body a rejected attempt has. Truncated past 32 KB with a marker saying so."
                     }
                 },
                 "type": "object",
                 "title": "EnvelopeIn",
                 "description": "The envelope an agent returned on one attempt, as the runner read it."
+            },
+            "FactoryRun": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "The project the run worked on."
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "title": "Project Name"
+                    },
+                    "outcome": {
+                        "$ref": "#/components/schemas/RunOutcome",
+                        "description": "Read this, not `state`."
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State",
+                        "description": "run.json's raw state, e.g. running/stopped/finished."
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow",
+                        "description": "The preset the run used, e.g. \"scout\"."
+                    },
+                    "branch": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Branch"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason",
+                        "description": "Why the run ended, e.g. 'cost cap reached\u2026'."
+                    },
+                    "interview": {
+                        "type": "boolean",
+                        "title": "Interview"
+                    },
+                    "accepted": {
+                        "type": "boolean",
+                        "title": "Accepted"
+                    },
+                    "started_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Started At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At"
+                    },
+                    "resumable": {
+                        "type": "boolean",
+                        "title": "Resumable",
+                        "description": "True when a resume would be accepted: not live, not completed-accepted."
+                    },
+                    "resume_hint": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Resume Hint",
+                        "description": "Why a resume is not offered; null when `resumable` is true."
+                    },
+                    "dismissed": {
+                        "type": "boolean",
+                        "title": "Dismissed",
+                        "description": "The user waved this run away; it is out of the way, not gone.",
+                        "default": false
+                    },
+                    "superseded_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Superseded By",
+                        "description": "Run id of a newer run of this same request, when one exists."
+                    },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "What this run's last stage concluded, from its own telemetry."
+                    },
+                    "check": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FactoryRunCheck"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "The newest check started for this run, if any."
+                    },
+                    "session_ids": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Session Ids",
+                        "description": "Coding sessions this run's stages reported."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "project_path",
+                    "project_name",
+                    "outcome",
+                    "state",
+                    "request_text",
+                    "branch",
+                    "interview",
+                    "accepted",
+                    "started_at",
+                    "ended_at",
+                    "resumable"
+                ],
+                "title": "FactoryRun",
+                "description": "One run.json under a project's runs root \u2014 the factory's ground truth,\nindependent of whether the run was launched from this UI or a terminal."
+            },
+            "FactoryRunCheck": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "outcome": {
+                        "$ref": "#/components/schemas/RunOutcome"
+                    },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "What it concluded; null while it runs."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "outcome"
+                ],
+                "title": "FactoryRunCheck",
+                "description": "A read-only run started to answer whether another run's work landed."
+            },
+            "FactoryRunDismissRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "run_id"
+                ],
+                "title": "FactoryRunDismissRequest"
+            },
+            "FactoryRunResumeRead": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "resumed": {
+                        "type": "boolean",
+                        "title": "Resumed"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "resumed",
+                    "pid"
+                ],
+                "title": "FactoryRunResumeRead"
+            },
+            "FactoryRunResumeRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "run_id"
+                ],
+                "title": "FactoryRunResumeRequest"
             },
             "GateCheckIn": {
                 "properties": {
@@ -5828,7 +6132,7 @@
                             }
                         ],
                         "title": "Item",
-                        "description": "The thing checked — a path, a command."
+                        "description": "The thing checked \u2014 a path, a command."
                     },
                     "ok": {
                         "anyOf": [
@@ -5930,7 +6234,7 @@
                     "origin": {
                         "type": "string",
                         "title": "Origin",
-                        "description": "reported | recovered — see EnvelopeAttempt.origin."
+                        "description": "reported | recovered \u2014 see EnvelopeAttempt.origin."
                     },
                     "created_at": {
                         "type": "string",
@@ -6004,7 +6308,7 @@
                             }
                         ],
                         "title": "Name",
-                        "description": "The gate that ran — envelope, artifacts, changed_files, boundary, …"
+                        "description": "The gate that ran \u2014 envelope, artifacts, changed_files, boundary, \u2026"
                     },
                     "attempt": {
                         "anyOf": [
@@ -6072,7 +6376,7 @@
                 },
                 "type": "object",
                 "title": "GateIn",
-                "description": "One gate evaluation as the runner reports it.\n\nWith `checks`, one row per entry; without it, the block is itself the one\ncheck. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the\nminimal report is `{\"name\": \"changed_files\", \"note\": \"…\"}` on the event a\nrunner already sends."
+                "description": "One gate evaluation as the runner reports it.\n\nWith `checks`, one row per entry; without it, the block is itself the one\ncheck. `ok` falls back to the event type (`gate_pass` / `gate_fail`), so the\nminimal report is `{\"name\": \"changed_files\", \"note\": \"\u2026\"}` on the event a\nrunner already sends."
             },
             "GateRoleStat": {
                 "properties": {
@@ -6091,7 +6395,7 @@
                     "checks": {
                         "type": "integer",
                         "title": "Checks",
-                        "description": "Checks this pair ran — the rate's denominator."
+                        "description": "Checks this pair ran \u2014 the rate's denominator."
                     },
                     "failures": {
                         "type": "integer",
@@ -6131,7 +6435,7 @@
                     "gate": {
                         "type": "string",
                         "title": "Gate",
-                        "description": "envelope | artifacts | changed_files | boundary | …"
+                        "description": "envelope | artifacts | changed_files | boundary | \u2026"
                     },
                     "checks": {
                         "type": "integer",
@@ -6408,7 +6712,7 @@
                     "event_type"
                 ],
                 "title": "HookEventRequest",
-                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 — a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
+                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
             },
             "InstructionsDoc": {
                 "properties": {
@@ -6631,7 +6935,7 @@
                         "type": "string",
                         "minLength": 1,
                         "title": "Request Text",
-                        "description": "What to build — handed to the factory as-is."
+                        "description": "What to build \u2014 handed to the factory as-is."
                     },
                     "checks_run_id": {
                         "anyOf": [
@@ -6669,6 +6973,19 @@
                 ],
                 "title": "LaunchRequest"
             },
+            "LaunchWorkflow": {
+                "type": "string",
+                "enum": [
+                    "full",
+                    "plan_build",
+                    "build_test",
+                    "build_review",
+                    "document",
+                    "scout"
+                ],
+                "title": "LaunchWorkflow",
+                "description": "The factory's stage presets (factory/adw/workflows.py). `scout` is the\ncheap one: a single read-only stage that reads the repo and reports."
+            },
             "LauncherProject": {
                 "properties": {
                     "name": {
@@ -6698,7 +7015,7 @@
                     "name": {
                         "type": "string",
                         "title": "Name",
-                        "description": "Folder name — no path separators or traversal."
+                        "description": "Folder name \u2014 no path separators or traversal."
                     }
                 },
                 "type": "object",
@@ -6706,7 +7023,7 @@
                     "name"
                 ],
                 "title": "LauncherProjectCreateRequest",
-                "description": "Named apart from the unrelated `ProjectCreateRequest` (features/projects) —\nthis creates a plain folder under projects_root, not a masterwork Project."
+                "description": "Named apart from the unrelated `ProjectCreateRequest` (features/projects) \u2014\nthis creates a plain folder under projects_root, not a masterwork Project."
             },
             "MessageRole": {
                 "type": "string",
@@ -6729,7 +7046,7 @@
                             }
                         ],
                         "title": "Model",
-                        "description": "The model the lanes reported. Null is a real row rather than a gap, but it is not a model: it is every lane that named none — the pipeline's own `git` and `checks` lanes, which run no model at all and appear in every run, plus every agent lane recorded before the runner started sending one. Do not read it as a competitor to the named rows; a run appears under it and under its model both."
+                        "description": "The model the lanes reported. Null is a real row rather than a gap, but it is not a model: it is every lane that named none \u2014 the pipeline's own `git` and `checks` lanes, which run no model at all and appear in every run, plus every agent lane recorded before the runner started sending one. Do not read it as a competitor to the named rows; a run appears under it and under its model both."
                     },
                     "lanes": {
                         "type": "integer",
@@ -6754,7 +7071,7 @@
                             }
                         ],
                         "title": "Acceptance Rate",
-                        "description": "accepted_runs / runs. Read `runs` before believing it — a rate over two runs is noise, and masterwork will not hide it behind a threshold."
+                        "description": "accepted_runs / runs. Read `runs` before believing it \u2014 a rate over two runs is noise, and masterwork will not hide it behind a threshold."
                     },
                     "stages": {
                         "type": "integer",
@@ -6884,7 +7201,7 @@
                             "unavailable"
                         ],
                         "title": "State",
-                        "description": "connected: recording. outdated: wired to an older hook set or a missing script — connect repairs it. disconnected: nothing installed. unavailable: cannot be connected on this machine; `detail` says why."
+                        "description": "connected: recording. outdated: wired to an older hook set or a missing script \u2014 connect repairs it. disconnected: nothing installed. unavailable: cannot be connected on this machine; `detail` says why."
                     },
                     "detail": {
                         "type": "string",
@@ -6965,7 +7282,7 @@
                             }
                         ],
                         "title": "Name",
-                        "description": "Stage name — plan, build, review, …"
+                        "description": "Stage name \u2014 plan, build, review, \u2026"
                     },
                     "seq": {
                         "anyOf": [
@@ -7141,7 +7458,7 @@
                             }
                         ],
                         "title": "Duration Ms",
-                        "description": "Reported, or started_at → ended_at."
+                        "description": "Reported, or started_at \u2192 ended_at."
                     }
                 },
                 "type": "object",
@@ -7691,7 +8008,7 @@
                             }
                         ],
                         "title": "Role",
-                        "description": "Lane name — plan | build | review | document | checks | git for a pipeline run, \"main\" for a chat turn. Null when a stage recorded no lane."
+                        "description": "Lane name \u2014 plan | build | review | document | checks | git for a pipeline run, \"main\" for a chat turn. Null when a stage recorded no lane."
                     },
                     "runs": {
                         "type": "integer",
@@ -7701,7 +8018,7 @@
                     "stages": {
                         "type": "integer",
                         "title": "Stages",
-                        "description": "Stage rows — the denominator of every per-stage average."
+                        "description": "Stage rows \u2014 the denominator of every per-stage average."
                     },
                     "corrections": {
                         "type": "integer",
@@ -7788,7 +8105,7 @@
                     "gate_checks": {
                         "type": "integer",
                         "title": "Gate Checks",
-                        "description": "gates_passed + gates_failed summed off the stage counters, which every run has — not the v1.19 evidence rows, which only a reported or replayed run has."
+                        "description": "gates_passed + gates_failed summed off the stage counters, which every run has \u2014 not the v1.19 evidence rows, which only a reported or replayed run has."
                     },
                     "gate_failures": {
                         "type": "integer",
@@ -7855,6 +8172,18 @@
                 "title": "RoleStat",
                 "description": "One role across every run: what it costs, and how often it is sent back."
             },
+            "RunOutcome": {
+                "type": "string",
+                "enum": [
+                    "running",
+                    "waiting",
+                    "done",
+                    "failed",
+                    "stopped"
+                ],
+                "title": "RunOutcome",
+                "description": "What actually happened, which run.json's `state` alone does not say: a\nrejected run and an approved one both end up `state=\"finished\"`."
+            },
             "RunStat": {
                 "properties": {
                     "session_id": {
@@ -7915,7 +8244,7 @@
                     "accepted": {
                         "type": "boolean",
                         "title": "Accepted",
-                        "description": "status == success. The acceptance signal the model comparison averages — `abandoned` is silence, not a verdict, and counts as not accepted."
+                        "description": "status == success. The acceptance signal the model comparison averages \u2014 `abandoned` is silence, not a verdict, and counts as not accepted."
                     },
                     "started_at": {
                         "type": "string",
@@ -8006,7 +8335,7 @@
                     "gate_checks": {
                         "type": "integer",
                         "title": "Gate Checks",
-                        "description": "v1.19 evidence rows — 0 for a run that never reported or replayed any."
+                        "description": "v1.19 evidence rows \u2014 0 for a run that never reported or replayed any."
                     },
                     "gate_failures": {
                         "type": "integer",
@@ -8068,69 +8397,6 @@
                     "scenario"
                 ],
                 "title": "ScenarioGenerateResponse"
-            },
-            "SessionLaunchRead": {
-                "properties": {
-                    "id": {
-                        "type": "integer",
-                        "title": "Id"
-                    },
-                    "project_path": {
-                        "type": "string",
-                        "title": "Project Path"
-                    },
-                    "request_text": {
-                        "type": "string",
-                        "title": "Request Text"
-                    },
-                    "mode": {
-                        "$ref": "#/components/schemas/LaunchMode"
-                    },
-                    "launched_at": {
-                        "type": "string",
-                        "format": "date-time",
-                        "title": "Launched At"
-                    },
-                    "pid": {
-                        "anyOf": [
-                            {
-                                "type": "integer"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Pid"
-                    },
-                    "run_id": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Run Id",
-                        "description": "Set for interview launches only."
-                    },
-                    "launched": {
-                        "type": "boolean",
-                        "title": "Launched",
-                        "description": "True once the subprocess was spawned."
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "project_path",
-                    "request_text",
-                    "mode",
-                    "launched_at",
-                    "pid",
-                    "launched"
-                ],
-                "title": "SessionLaunchRead"
             },
             "SessionLaunchListItem": {
                 "properties": {
@@ -8205,6 +8471,69 @@
                     "launched"
                 ],
                 "title": "SessionLaunchListItem"
+            },
+            "SessionLaunchRead": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path"
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "mode": {
+                        "$ref": "#/components/schemas/LaunchMode"
+                    },
+                    "launched_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Launched At"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id",
+                        "description": "Set for interview launches only."
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "True once the subprocess was spawned."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "project_path",
+                    "request_text",
+                    "mode",
+                    "launched_at",
+                    "pid",
+                    "launched"
+                ],
+                "title": "SessionLaunchRead"
             },
             "Simulation": {
                 "properties": {
@@ -8464,7 +8793,7 @@
                     "asset_id"
                 ],
                 "title": "SimulationChange",
-                "description": "One change carried by a suggestion (same shape as ProposalChange).\n`link` adds an existing unlinked asset to the project — no file write."
+                "description": "One change carried by a suggestion (same shape as ProposalChange).\n`link` adds an existing unlinked asset to the project \u2014 no file write."
             },
             "SimulationChecklistItem": {
                 "properties": {
@@ -8912,7 +9241,7 @@
                     "launched": {
                         "type": "boolean",
                         "title": "Launched",
-                        "description": "Always false today — no reusable session-launch path exists yet."
+                        "description": "Always false today \u2014 no reusable session-launch path exists yet."
                     },
                     "session_id": {
                         "anyOf": [
@@ -8987,7 +9316,7 @@
                     "secret_ref": {
                         "type": "string",
                         "title": "Secret Ref",
-                        "description": "Env var naming the PAT — never the PAT itself."
+                        "description": "Env var naming the PAT \u2014 never the PAT itself."
                     },
                     "current_iteration": {
                         "anyOf": [
@@ -9124,307 +9453,6 @@
                     "updated"
                 ],
                 "title": "WorkSyncResult"
-            },
-            "FactoryRun": {
-                "properties": {
-                    "run_id": {
-                        "type": "string",
-                        "title": "Run Id"
-                    },
-                    "project_path": {
-                        "type": "string",
-                        "title": "Project Path",
-                        "description": "The project the run worked on."
-                    },
-                    "project_name": {
-                        "type": "string",
-                        "title": "Project Name"
-                    },
-                    "outcome": {
-                        "$ref": "#/components/schemas/RunOutcome",
-                        "description": "Read this, not `state`."
-                    },
-                    "state": {
-                        "type": "string",
-                        "title": "State",
-                        "description": "run.json's raw state, e.g. running/stopped/finished."
-                    },
-                    "request_text": {
-                        "type": "string",
-                        "title": "Request Text"
-                    },
-                    "workflow": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Workflow",
-                        "description": "The preset the run used, e.g. \"scout\"."
-                    },
-                    "branch": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Branch"
-                    },
-                    "reason": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Reason",
-                        "description": "Why the run ended, e.g. 'cost cap reached…'."
-                    },
-                    "interview": {
-                        "type": "boolean",
-                        "title": "Interview"
-                    },
-                    "accepted": {
-                        "type": "boolean",
-                        "title": "Accepted"
-                    },
-                    "started_at": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Started At"
-                    },
-                    "ended_at": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Ended At"
-                    },
-                    "resumable": {
-                        "type": "boolean",
-                        "title": "Resumable",
-                        "description": "True when a resume would be accepted: not live, not completed-accepted."
-                    },
-                    "resume_hint": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Resume Hint",
-                        "description": "Why a resume is not offered; null when `resumable` is true."
-                    },
-                    "dismissed": {
-                        "type": "boolean",
-                        "title": "Dismissed",
-                        "description": "The user waved this run away; it is out of the way, not gone.",
-                        "default": false
-                    },
-                    "superseded_by": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Superseded By",
-                        "description": "Run id of a newer run of this same request, when one exists."
-                    },
-                    "summary": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Summary",
-                        "description": "What this run's last stage concluded, from its own telemetry."
-                    },
-                    "check": {
-                        "anyOf": [
-                            {
-                                "$ref": "#/components/schemas/FactoryRunCheck"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "description": "The newest check started for this run, if any."
-                    },
-                    "session_ids": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "title": "Session Ids",
-                        "description": "Coding sessions this run's stages reported."
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "run_id",
-                    "project_path",
-                    "project_name",
-                    "outcome",
-                    "state",
-                    "request_text",
-                    "branch",
-                    "interview",
-                    "accepted",
-                    "started_at",
-                    "ended_at",
-                    "resumable"
-                ],
-                "title": "FactoryRun",
-                "description": "One run.json under a project's runs root — the factory's ground truth,\nindependent of whether the run was launched from this UI or a terminal."
-            },
-            "FactoryRunResumeRequest": {
-                "properties": {
-                    "project_path": {
-                        "type": "string",
-                        "title": "Project Path",
-                        "description": "Absolute path; must resolve under projects_root."
-                    },
-                    "run_id": {
-                        "type": "string",
-                        "title": "Run Id"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "project_path",
-                    "run_id"
-                ],
-                "title": "FactoryRunResumeRequest"
-            },
-            "FactoryRunResumeRead": {
-                "properties": {
-                    "run_id": {
-                        "type": "string",
-                        "title": "Run Id"
-                    },
-                    "resumed": {
-                        "type": "boolean",
-                        "title": "Resumed"
-                    },
-                    "pid": {
-                        "anyOf": [
-                            {
-                                "type": "integer"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Pid"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "run_id",
-                    "resumed",
-                    "pid"
-                ],
-                "title": "FactoryRunResumeRead"
-            },
-            "RunOutcome": {
-                "type": "string",
-                "enum": [
-                    "running",
-                    "waiting",
-                    "done",
-                    "failed",
-                    "stopped"
-                ],
-                "title": "RunOutcome",
-                "description": "What actually happened, which run.json's `state` alone does not say: a\nrejected run and an approved one both end up `state=\"finished\"`."
-            },
-            "FactoryRunDismissRequest": {
-                "properties": {
-                    "project_path": {
-                        "type": "string",
-                        "title": "Project Path",
-                        "description": "Absolute path; must resolve under projects_root."
-                    },
-                    "run_id": {
-                        "type": "string",
-                        "title": "Run Id"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "project_path",
-                    "run_id"
-                ],
-                "title": "FactoryRunDismissRequest"
-            },
-            "LaunchWorkflow": {
-                "type": "string",
-                "enum": [
-                    "full",
-                    "plan_build",
-                    "build_test",
-                    "build_review",
-                    "document",
-                    "scout"
-                ],
-                "title": "LaunchWorkflow",
-                "description": "The factory's stage presets (factory/adw/workflows.py). `scout` is the\ncheap one: a single read-only stage that reads the repo and reports."
-            },
-            "FactoryRunCheck": {
-                "properties": {
-                    "run_id": {
-                        "type": "string",
-                        "title": "Run Id"
-                    },
-                    "outcome": {
-                        "$ref": "#/components/schemas/RunOutcome"
-                    },
-                    "summary": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Summary",
-                        "description": "What it concluded; null while it runs."
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "run_id",
-                    "outcome"
-                ],
-                "title": "FactoryRunCheck",
-                "description": "A read-only run started to answer whether another run's work landed."
             }
         }
     }

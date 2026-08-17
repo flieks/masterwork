@@ -39,6 +39,19 @@ def test_session_end_marks_the_session_ended() -> None:
     assert body["payload"]["reason"] == "exit"
 
 
+def test_a_notification_carries_what_the_person_would_have_seen() -> None:
+    body = forwarder.build_body(
+        {
+            "session_id": "s1",
+            "hook_event_name": "Notification",
+            "message": "Claude needs your permission to use Bash",
+        }
+    )
+    assert body is not None
+    assert body["event_type"] == "Notification"
+    assert body["payload"]["message"] == "Claude needs your permission to use Bash"
+
+
 def test_huge_tool_payloads_collapse_instead_of_being_sent_whole() -> None:
     body = forwarder.build_body(
         {

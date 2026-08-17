@@ -1114,7 +1114,7 @@ export interface CodingSession {
      */
     'workflow': string | null;
     /**
-     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
+     * running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
      * @type {string}
      * @memberof CodingSession
      */
@@ -1137,6 +1137,12 @@ export interface CodingSession {
      * @memberof CodingSession
      */
     'ended_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'awaiting_input_since': string | null;
     /**
      * 
      * @type {{ [key: string]: any; }}
@@ -1295,7 +1301,7 @@ export interface CodingSessionDetail {
      */
     'workflow': string | null;
     /**
-     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
+     * running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
      * @type {string}
      * @memberof CodingSessionDetail
      */
@@ -1318,6 +1324,12 @@ export interface CodingSessionDetail {
      * @memberof CodingSessionDetail
      */
     'ended_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'awaiting_input_since': string | null;
     /**
      * 
      * @type {{ [key: string]: any; }}
@@ -1422,37 +1434,37 @@ export interface CodingSessionDetail {
  */
 export interface ContextSample {
     /**
-     *
+     * 
      * @type {number}
      * @memberof ContextSample
      */
     'seq': number;
     /**
-     *
+     * 
      * @type {string}
      * @memberof ContextSample
      */
     'message_id': string;
     /**
-     *
+     * 
      * @type {string}
      * @memberof ContextSample
      */
     'at': string;
     /**
-     *
+     * 
      * @type {number}
      * @memberof ContextSample
      */
     'total_tokens': number;
     /**
-     *
+     * 
      * @type {number}
      * @memberof ContextSample
      */
     'output_tokens': number | null;
     /**
-     * Null for the first sample of its lane.
+     * 
      * @type {number}
      * @memberof ContextSample
      */
@@ -1483,13 +1495,13 @@ export interface ContextSampleIn {
      */
     'seq': number;
     /**
-     *
+     * 
      * @type {string}
      * @memberof ContextSampleIn
      */
     'message_id': string;
     /**
-     * Falls back to the event\'s own time when absent.
+     * 
      * @type {string}
      * @memberof ContextSampleIn
      */
@@ -1501,13 +1513,13 @@ export interface ContextSampleIn {
      */
     'total_tokens': number;
     /**
-     *
+     * 
      * @type {number}
      * @memberof ContextSampleIn
      */
     'output_tokens'?: number | null;
     /**
-     * Accepted but not stored — no column for it.
+     * 
      * @type {string}
      * @memberof ContextSampleIn
      */
@@ -1519,7 +1531,7 @@ export interface ContextSampleIn {
      */
     'is_sidechain'?: boolean;
     /**
-     * Tool results that landed in context since the previous sample.
+     * 
      * @type {Array<string>}
      * @memberof ContextSampleIn
      */
@@ -1532,19 +1544,19 @@ export interface ContextSampleIn {
  */
 export interface ContextSeries {
     /**
-     *
+     * 
      * @type {string}
      * @memberof ContextSeries
      */
     'session_id': string;
     /**
-     * The first main-lane sample\'s total — preamble plus first prompt.
+     * 
      * @type {number}
      * @memberof ContextSeries
      */
     'baseline_tokens': number | null;
     /**
-     * The highest main-lane total reached.
+     * 
      * @type {number}
      * @memberof ContextSeries
      */
@@ -1575,7 +1587,7 @@ export interface ContextSeries {
  */
 export interface ContextToolCost {
     /**
-     *
+     * 
      * @type {string}
      * @memberof ContextToolCost
      */
@@ -1651,13 +1663,13 @@ export const CrossChangeSourceEnum = {
 export type CrossChangeSourceEnum = typeof CrossChangeSourceEnum[keyof typeof CrossChangeSourceEnum];
 
 /**
- *
+ * 
  * @export
  * @interface DirectoryEntry
  */
 export interface DirectoryEntry {
     /**
-     *
+     * 
      * @type {string}
      * @memberof DirectoryEntry
      */
@@ -1670,7 +1682,7 @@ export interface DirectoryEntry {
     'path': string;
 }
 /**
- *
+ * 
  * @export
  * @interface DirectoryListing
  */
@@ -1682,7 +1694,7 @@ export interface DirectoryListing {
      */
     'path': string;
     /**
-     * Absolute path of the parent, null at the filesystem root.
+     * 
      * @type {string}
      * @memberof DirectoryListing
      */
@@ -1827,6 +1839,225 @@ export interface EnvelopeIn {
      * @memberof EnvelopeIn
      */
     'raw_text'?: string | null;
+}
+/**
+ * One run.json under a project\'s runs root — the factory\'s ground truth, independent of whether the run was launched from this UI or a terminal.
+ * @export
+ * @interface FactoryRun
+ */
+export interface FactoryRun {
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'run_id': string;
+    /**
+     * The project the run worked on.
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'project_name': string;
+    /**
+     * Read this, not `state`.
+     * @type {RunOutcome}
+     * @memberof FactoryRun
+     */
+    'outcome': RunOutcome;
+    /**
+     * run.json\'s raw state, e.g. running/stopped/finished.
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'state': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'request_text': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'workflow'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'branch': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'reason'?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'interview': boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'accepted': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'started_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'ended_at': string | null;
+    /**
+     * True when a resume would be accepted: not live, not completed-accepted.
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'resumable': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'resume_hint'?: string | null;
+    /**
+     * The user waved this run away; it is out of the way, not gone.
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'dismissed'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'superseded_by'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'summary'?: string | null;
+    /**
+     * 
+     * @type {FactoryRunCheck}
+     * @memberof FactoryRun
+     */
+    'check'?: FactoryRunCheck | null;
+    /**
+     * Coding sessions this run\'s stages reported.
+     * @type {Array<string>}
+     * @memberof FactoryRun
+     */
+    'session_ids'?: Array<string>;
+}
+
+
+/**
+ * A read-only run started to answer whether another run\'s work landed.
+ * @export
+ * @interface FactoryRunCheck
+ */
+export interface FactoryRunCheck {
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunCheck
+     */
+    'run_id': string;
+    /**
+     * 
+     * @type {RunOutcome}
+     * @memberof FactoryRunCheck
+     */
+    'outcome': RunOutcome;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunCheck
+     */
+    'summary'?: string | null;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface FactoryRunDismissRequest
+ */
+export interface FactoryRunDismissRequest {
+    /**
+     * Absolute path; must resolve under projects_root.
+     * @type {string}
+     * @memberof FactoryRunDismissRequest
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunDismissRequest
+     */
+    'run_id': string;
+}
+/**
+ * 
+ * @export
+ * @interface FactoryRunResumeRead
+ */
+export interface FactoryRunResumeRead {
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunResumeRead
+     */
+    'run_id': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FactoryRunResumeRead
+     */
+    'resumed': boolean;
+    /**
+     * 
+     * @type {number}
+     * @memberof FactoryRunResumeRead
+     */
+    'pid': number | null;
+}
+/**
+ * 
+ * @export
+ * @interface FactoryRunResumeRequest
+ */
+export interface FactoryRunResumeRequest {
+    /**
+     * Absolute path; must resolve under projects_root.
+     * @type {string}
+     * @memberof FactoryRunResumeRequest
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunResumeRequest
+     */
+    'run_id': string;
 }
 /**
  * One item a gate checked. Any field it leaves out is taken from the gate block around it, so a gate with a single verdict needs no entry at all.
@@ -2202,7 +2433,7 @@ export interface HookEventRequest {
      */
     'gate'?: GateIn | null;
     /**
-     * The context-usage curve since the previous Stop/SessionEnd.
+     * 
      * @type {Array<ContextSampleIn>}
      * @memberof HookEventRequest
      */
@@ -2253,126 +2484,128 @@ export interface InstructionsUpdateRequest {
     'content': string;
 }
 /**
- *
+ * 
  * @export
  * @interface InterviewAnswer
  */
 export interface InterviewAnswer {
     /**
-     *
+     * 
      * @type {string}
      * @memberof InterviewAnswer
      */
     'id': string;
     /**
-     *
+     * 
      * @type {string}
      * @memberof InterviewAnswer
      */
     'answer': string;
 }
 /**
- *
+ * 
  * @export
  * @interface InterviewAnswersRequest
  */
 export interface InterviewAnswersRequest {
     /**
-     *
+     * 
      * @type {Array<InterviewAnswer>}
      * @memberof InterviewAnswersRequest
      */
     'answers': Array<InterviewAnswer>;
 }
 /**
- *
+ * 
  * @export
  * @interface InterviewQuestion
  */
 export interface InterviewQuestion {
     /**
-     *
+     * 
      * @type {string}
      * @memberof InterviewQuestion
      */
     'id': string;
     /**
-     *
+     * 
      * @type {string}
      * @memberof InterviewQuestion
      */
     'question': string;
 }
 /**
- *
+ * 
  * @export
  * @interface InterviewRead
  */
 export interface InterviewRead {
     /**
-     *
+     * 
      * @type {number}
      * @memberof InterviewRead
      */
     'launch_id': number;
     /**
-     *
+     * 
      * @type {string}
      * @memberof InterviewRead
      */
     'run_id': string | null;
     /**
-     *
+     * 
      * @type {InterviewState}
      * @memberof InterviewRead
      */
     'state': InterviewState;
     /**
-     * run.json\'s raw state, for debugging.
+     * 
      * @type {string}
      * @memberof InterviewRead
      */
     'run_state'?: string | null;
     /**
-     *
+     * 
      * @type {Array<InterviewQuestion>}
      * @memberof InterviewRead
      */
     'questions'?: Array<InterviewQuestion>;
 }
+
+
 /**
- *
+ * 
  * @export
  * @interface InterviewResumeRead
  */
 export interface InterviewResumeRead {
     /**
-     *
+     * 
      * @type {number}
      * @memberof InterviewResumeRead
      */
     'launch_id': number;
     /**
-     *
+     * 
      * @type {string}
      * @memberof InterviewResumeRead
      */
     'run_id': string;
     /**
-     *
+     * 
      * @type {boolean}
      * @memberof InterviewResumeRead
      */
     'resumed': boolean;
     /**
-     *
+     * 
      * @type {number}
      * @memberof InterviewResumeRead
      */
     'pid': number | null;
 }
 /**
- *
+ * 
  * @export
  * @enum {string}
  */
@@ -2390,7 +2623,7 @@ export type InterviewState = typeof InterviewState[keyof typeof InterviewState];
 
 
 /**
- *
+ * 
  * @export
  * @enum {string}
  */
@@ -2422,19 +2655,19 @@ export interface LaunchRequest {
      */
     'request_text': string;
     /**
-     * 'autonomous' never asks; 'interview' pauses after planning to ask about weak assumptions before building.
-     * @type {LaunchMode}
-     * @memberof LaunchRequest
-     */
-    /**
-     * Run id this launch exists to check; ties a scout run to its subject.
+     * 
      * @type {string}
      * @memberof LaunchRequest
      */
     'checks_run_id'?: string | null;
+    /**
+     * \'autonomous\' never asks; \'interview\' pauses after planning to ask about weak assumptions before building.
+     * @type {LaunchMode}
+     * @memberof LaunchRequest
+     */
     'mode'?: LaunchMode;
     /**
-     * Which stages run. Omitted means the factory's own default (full).
+     * 
      * @type {LaunchWorkflow}
      * @memberof LaunchRequest
      */
@@ -2443,10 +2676,11 @@ export interface LaunchRequest {
 
 
 /**
- * 
+ * The factory\'s stage presets (factory/adw/workflows.py). `scout` is the cheap one: a single read-only stage that reads the repo and reports.
  * @export
- * @interface LauncherProject
+ * @enum {string}
  */
+
 export const LaunchWorkflow = {
     Full: 'full',
     PlanBuild: 'plan_build',
@@ -2458,6 +2692,12 @@ export const LaunchWorkflow = {
 
 export type LaunchWorkflow = typeof LaunchWorkflow[keyof typeof LaunchWorkflow];
 
+
+/**
+ * 
+ * @export
+ * @interface LauncherProject
+ */
 export interface LauncherProject {
     /**
      * 
@@ -3339,6 +3579,23 @@ export interface RoleStat {
     'envelope_failure_rate': number | null;
 }
 /**
+ * What actually happened, which run.json\'s `state` alone does not say: a rejected run and an approved one both end up `state=\"finished\"`.
+ * @export
+ * @enum {string}
+ */
+
+export const RunOutcome = {
+    Running: 'running',
+    Waiting: 'waiting',
+    Done: 'done',
+    Failed: 'failed',
+    Stopped: 'stopped'
+} as const;
+
+export type RunOutcome = typeof RunOutcome[keyof typeof RunOutcome];
+
+
+/**
  * One run as a point on a trend line.
  * @export
  * @interface RunStat
@@ -3505,6 +3762,69 @@ export interface ScenarioGenerateResponse {
 /**
  * 
  * @export
+ * @interface SessionLaunchListItem
+ */
+export interface SessionLaunchListItem {
+    /**
+     * 
+     * @type {number}
+     * @memberof SessionLaunchListItem
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'request_text': string;
+    /**
+     * 
+     * @type {LaunchMode}
+     * @memberof SessionLaunchListItem
+     */
+    'mode': LaunchMode;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'launched_at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof SessionLaunchListItem
+     */
+    'pid': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'run_id'?: string | null;
+    /**
+     * True once the subprocess was spawned.
+     * @type {boolean}
+     * @memberof SessionLaunchListItem
+     */
+    'launched': boolean;
+    /**
+     * 
+     * @type {InterviewRead}
+     * @memberof SessionLaunchListItem
+     */
+    'interview'?: InterviewRead | null;
+}
+
+
+/**
+ * 
+ * @export
  * @interface SessionLaunchRead
  */
 export interface SessionLaunchRead {
@@ -3545,7 +3865,7 @@ export interface SessionLaunchRead {
      */
     'pid': number | null;
     /**
-     * Set for interview launches only.
+     * 
      * @type {string}
      * @memberof SessionLaunchRead
      */
@@ -3556,67 +3876,6 @@ export interface SessionLaunchRead {
      * @memberof SessionLaunchRead
      */
     'launched': boolean;
-}
-/**
- *
- * @export
- * @interface SessionLaunchListItem
- */
-export interface SessionLaunchListItem {
-    /**
-     *
-     * @type {number}
-     * @memberof SessionLaunchListItem
-     */
-    'id': number;
-    /**
-     *
-     * @type {string}
-     * @memberof SessionLaunchListItem
-     */
-    'project_path': string;
-    /**
-     *
-     * @type {string}
-     * @memberof SessionLaunchListItem
-     */
-    'request_text': string;
-    /**
-     *
-     * @type {LaunchMode}
-     * @memberof SessionLaunchListItem
-     */
-    'mode': LaunchMode;
-    /**
-     *
-     * @type {string}
-     * @memberof SessionLaunchListItem
-     */
-    'launched_at': string;
-    /**
-     *
-     * @type {number}
-     * @memberof SessionLaunchListItem
-     */
-    'pid': number | null;
-    /**
-     * Set for interview launches only.
-     * @type {string}
-     * @memberof SessionLaunchListItem
-     */
-    'run_id'?: string | null;
-    /**
-     * True once the subprocess was spawned.
-     * @type {boolean}
-     * @memberof SessionLaunchListItem
-     */
-    'launched': boolean;
-    /**
-     * Only for interview-mode launches; null for autonomous ones.
-     * @type {InterviewRead}
-     * @memberof SessionLaunchListItem
-     */
-    'interview'?: InterviewRead | null;
 }
 
 
@@ -4249,13 +4508,13 @@ export interface WorkSource {
      */
     'current_iteration': string | null;
     /**
-     *
+     * 
      * @type {string}
      * @memberof WorkSource
      */
     'owner_display_name': string | null;
     /**
-     *
+     * 
      * @type {string}
      * @memberof WorkSource
      */
@@ -5505,7 +5764,7 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+         * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
@@ -5770,7 +6029,7 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
             }
 
 
-
+    
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -5781,9 +6040,9 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
-         *
+         * 
          * @summary The context-growth curve: total tokens per turn, and which tool grew it
-         * @param {string} sessionId
+         * @param {string} sessionId 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -5804,7 +6063,7 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
             const localVarQueryParameter = {} as any;
 
 
-
+    
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -5929,7 +6188,7 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+         * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
@@ -6007,9 +6266,9 @@ export const CodingApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary The context-growth curve: total tokens per turn, and which tool grew it
-         * @param {string} sessionId
+         * @param {string} sessionId 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6113,7 +6372,7 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+         * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
@@ -6176,9 +6435,9 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary The context-growth curve: total tokens per turn, and which tool grew it
-         * @param {string} sessionId
+         * @param {string} sessionId 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -6293,7 +6552,7 @@ export class CodingApi extends BaseAPI {
      * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
      * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
      * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-     * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+     * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
      * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
      * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
      * @param {*} [options] Override http request option.
@@ -6366,9 +6625,9 @@ export class CodingApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary The context-growth curve: total tokens per turn, and which tool grew it
-     * @param {string} sessionId
+     * @param {string} sessionId 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
@@ -6767,86 +7026,10 @@ export class InstructionsApi extends BaseAPI {
  * LauncherApi - axios parameter creator
  * @export
  */
-/**
- * One run.json under a project's runs root — the factory's ground truth.
- * @export
- * @interface FactoryRun
- */
-export interface FactoryRun {
-    'run_id': string;
-    'project_path': string;
-    'project_name': string;
-    'outcome': RunOutcome;
-    'state': string;
-    'request_text': string;
-    'workflow'?: string | null;
-    'branch': string | null;
-    'reason'?: string | null;
-    'interview': boolean;
-    'accepted': boolean;
-    'started_at': string | null;
-    'ended_at': string | null;
-    'resumable': boolean;
-    'resume_hint'?: string | null;
-    'dismissed'?: boolean;
-    'superseded_by'?: string | null;
-    'summary'?: string | null;
-    'check'?: FactoryRunCheck | null;
-    'session_ids'?: Array<string>;
-}
-
-export const RunOutcome = {
-    Running: 'running',
-    Waiting: 'waiting',
-    Done: 'done',
-    Failed: 'failed',
-    Stopped: 'stopped'
-} as const;
-
-export type RunOutcome = typeof RunOutcome[keyof typeof RunOutcome];
-/**
- * A read-only run started to answer whether another run's work landed.
- * @export
- * @interface FactoryRunCheck
- */
-export interface FactoryRunCheck {
-    'run_id': string;
-    'outcome': RunOutcome;
-    'summary'?: string | null;
-}
-/**
- *
- * @export
- * @interface FactoryRunDismissRequest
- */
-export interface FactoryRunDismissRequest {
-    'project_path': string;
-    'run_id': string;
-}
-/**
- *
- * @export
- * @interface FactoryRunResumeRequest
- */
-export interface FactoryRunResumeRequest {
-    'project_path': string;
-    'run_id': string;
-}
-/**
- *
- * @export
- * @interface FactoryRunResumeRead
- */
-export interface FactoryRunResumeRead {
-    'run_id': string;
-    'resumed': boolean;
-    'pid': number | null;
-}
-
 export const LauncherApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         *
+         * 
          * @summary Browse Directories
          * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
          * @param {*} [options] Override http request option.
@@ -6869,6 +7052,8 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
                 localVarQueryParameter['path'] = path;
             }
 
+
+    
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -6879,7 +7064,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         *
+         * 
          * @summary Create Launcher Project
          * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
@@ -6908,6 +7093,110 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(launcherProjectCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        dismissFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'factoryRunDismissRequest' is not null or undefined
+            assertParamExists('dismissFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
+            const localVarPath = `/api/v1/launcher/runs/dismiss`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunDismissRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get Launch Interview
+         * @param {number} launchId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getLaunchInterview: async (launchId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchId' is not null or undefined
+            assertParamExists('getLaunchInterview', 'launchId', launchId)
+            const localVarPath = `/api/v1/launcher/launches/{launch_id}/interview`
+                .replace(`{${"launch_id"}}`, encodeURIComponent(String(launchId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+         * @summary Get Run For Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunForSession: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('getRunForSession', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/launcher/runs/by-session/{session_id}`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -6952,6 +7241,36 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
         },
         /**
          * 
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFactoryRuns: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/runs`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary List Launcher Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -6970,7 +7289,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -6981,29 +7300,13 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         *
+         * 
          * @summary List Session Launches
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        /**
-         *
-         * @summary List Factory Runs
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        /**
-         *
-         * @summary Get Run For Session
-         * @param {string} sessionId
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getRunForSession: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'sessionId' is not null or undefined
-            assertParamExists('getRunForSession', 'sessionId', sessionId)
-            const localVarPath = `/api/v1/launcher/runs/by-session/{session_id}`
-                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+        listSessionLaunches: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/launches`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -7016,44 +7319,10 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         *
-         * @summary Dismiss Factory Run
-         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        dismissFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            assertParamExists('dismissFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
-            const localVarPath = `/api/v1/launcher/runs/dismiss`;
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-
     
-            localVarHeaderParameter['Content-Type'] = 'application/json';
-
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunDismissRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -7061,15 +7330,17 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         *
+         * 
          * @summary Restore Factory Run
-         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         restoreFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'factoryRunDismissRequest' is not null or undefined
             assertParamExists('restoreFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
             const localVarPath = `/api/v1/launcher/runs/restore`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
             if (configuration) {
@@ -7094,34 +7365,10 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
                 options: localVarRequestOptions,
             };
         },
-        listFactoryRuns: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/api/v1/launcher/runs`;
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
         /**
-         *
+         * 
          * @summary Resume Factory Run
-         * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7154,69 +7401,11 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
                 options: localVarRequestOptions,
             };
         },
-        listSessionLaunches: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/api/v1/launcher/launches`;
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
         /**
-         *
-         * @summary Get Launch Interview
-         * @param {number} launchId
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getLaunchInterview: async (launchId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'launchId' is not null or undefined
-            assertParamExists('getLaunchInterview', 'launchId', launchId)
-            const localVarPath = `/api/v1/launcher/launches/{launch_id}/interview`
-                .replace(`{${"launch_id"}}`, encodeURIComponent(String(launchId)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         *
+         * 
          * @summary Submit Interview Answers
-         * @param {number} launchId
-         * @param {InterviewAnswersRequest} interviewAnswersRequest
+         * @param {number} launchId 
+         * @param {InterviewAnswersRequest} interviewAnswersRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7239,7 +7428,7 @@ export const LauncherApiAxiosParamCreator = function (configuration?: Configurat
             const localVarQueryParameter = {} as any;
 
 
-
+    
             localVarHeaderParameter['Content-Type'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -7263,7 +7452,7 @@ export const LauncherApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = LauncherApiAxiosParamCreator(configuration)
     return {
         /**
-         *
+         * 
          * @summary Browse Directories
          * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
          * @param {*} [options] Override http request option.
@@ -7276,7 +7465,7 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary Create Launcher Project
          * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
@@ -7286,6 +7475,45 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createLauncherProject(launcherProjectCreateRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['LauncherApi.createLauncherProject']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.dismissFactoryRun(factoryRunDismissRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.dismissFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Get Launch Interview
+         * @param {number} launchId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InterviewRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getLaunchInterview(launchId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getLaunchInterview']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+         * @summary Get Run For Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunForSession(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getRunForSession']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -7303,6 +7531,18 @@ export const LauncherApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listFactoryRuns(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FactoryRun>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listFactoryRuns(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listFactoryRuns']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary List Launcher Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -7314,47 +7554,21 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary List Session Launches
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        /**
-         *
-         * @summary List Factory Runs
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        /**
-         *
-         * @summary Get Run For Session
-         * @param {string} sessionId
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun | null>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunForSession(sessionId, options);
+        async listSessionLaunches(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SessionLaunchListItem>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listSessionLaunches(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getRunForSession']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listSessionLaunches']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
-         * @summary Dismiss Factory Run
-         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.dismissFactoryRun(factoryRunDismissRequest, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['LauncherApi.dismissFactoryRun']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         *
+         * 
          * @summary Restore Factory Run
-         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7364,16 +7578,10 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['LauncherApi.restoreFactoryRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
-        async listFactoryRuns(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FactoryRun>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listFactoryRuns(options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listFactoryRuns']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
         /**
-         *
+         * 
          * @summary Resume Factory Run
-         * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7383,30 +7591,11 @@ export const LauncherApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['LauncherApi.resumeFactoryRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
-        async listSessionLaunches(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SessionLaunchListItem>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listSessionLaunches(options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listSessionLaunches']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
         /**
-         *
-         * @summary Get Launch Interview
-         * @param {number} launchId
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InterviewRead>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getLaunchInterview(launchId, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getLaunchInterview']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         *
+         * 
          * @summary Submit Interview Answers
-         * @param {number} launchId
-         * @param {InterviewAnswersRequest} interviewAnswersRequest
+         * @param {number} launchId 
+         * @param {InterviewAnswersRequest} interviewAnswersRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7427,7 +7616,7 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
     const localVarFp = LauncherApiFp(configuration)
     return {
         /**
-         *
+         * 
          * @summary Browse Directories
          * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
          * @param {*} [options] Override http request option.
@@ -7437,7 +7626,7 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.browseDirectories(path, options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary Create Launcher Project
          * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
          * @param {*} [options] Override http request option.
@@ -7445,6 +7634,36 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
          */
         createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<LauncherProject> {
             return localVarFp.createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Get Launch Interview
+         * @param {number} launchId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): AxiosPromise<InterviewRead> {
+            return localVarFp.getLaunchInterview(launchId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+         * @summary Get Run For Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.getRunForSession(sessionId, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -7458,6 +7677,15 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
         },
         /**
          * 
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFactoryRuns(options?: RawAxiosRequestConfig): AxiosPromise<Array<FactoryRun>> {
+            return localVarFp.listFactoryRuns(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary List Launcher Projects
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -7466,78 +7694,39 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.listLauncherProjects(options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary List Session Launches
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        /**
-         *
-         * @summary List Factory Runs
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        /**
-         *
-         * @summary Get Run For Session
-         * @param {string} sessionId
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun | null> {
-            return localVarFp.getRunForSession(sessionId, options).then((request) => request(axios, basePath));
+        listSessionLaunches(options?: RawAxiosRequestConfig): AxiosPromise<Array<SessionLaunchListItem>> {
+            return localVarFp.listSessionLaunches(options).then((request) => request(axios, basePath));
         },
         /**
-         *
-         * @summary Dismiss Factory Run
-         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
-            return localVarFp.dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
-        },
-        /**
-         *
+         * 
          * @summary Restore Factory Run
-         * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
             return localVarFp.restoreFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
         },
-        listFactoryRuns(options?: RawAxiosRequestConfig): AxiosPromise<Array<FactoryRun>> {
-            return localVarFp.listFactoryRuns(options).then((request) => request(axios, basePath));
-        },
         /**
-         *
+         * 
          * @summary Resume Factory Run
-         * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
         resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRunResumeRead> {
             return localVarFp.resumeFactoryRun(factoryRunResumeRequest, options).then((request) => request(axios, basePath));
         },
-        listSessionLaunches(options?: RawAxiosRequestConfig): AxiosPromise<Array<SessionLaunchListItem>> {
-            return localVarFp.listSessionLaunches(options).then((request) => request(axios, basePath));
-        },
         /**
-         *
-         * @summary Get Launch Interview
-         * @param {number} launchId
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): AxiosPromise<InterviewRead> {
-            return localVarFp.getLaunchInterview(launchId, options).then((request) => request(axios, basePath));
-        },
-        /**
-         *
+         * 
          * @summary Submit Interview Answers
-         * @param {number} launchId
-         * @param {InterviewAnswersRequest} interviewAnswersRequest
+         * @param {number} launchId 
+         * @param {InterviewAnswersRequest} interviewAnswersRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -7555,7 +7744,7 @@ export const LauncherApiFactory = function (configuration?: Configuration, baseP
  */
 export class LauncherApi extends BaseAPI {
     /**
-     *
+     * 
      * @summary Browse Directories
      * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
      * @param {*} [options] Override http request option.
@@ -7567,15 +7756,51 @@ export class LauncherApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary Create Launcher Project
-     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest
+     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi
      */
     public createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig) {
         return LauncherApiFp(this.configuration).createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Dismiss Factory Run
+     * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Get Launch Interview
+     * @param {number} launchId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).getLaunchInterview(launchId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+     * @summary Get Run For Session
+     * @param {string} sessionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public getRunForSession(sessionId: string, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).getRunForSession(sessionId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -7592,6 +7817,17 @@ export class LauncherApi extends BaseAPI {
 
     /**
      * 
+     * @summary List Factory Runs
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listFactoryRuns(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listFactoryRuns(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary List Launcher Projects
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -7602,47 +7838,20 @@ export class LauncherApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary List Session Launches
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi
      */
-    /**
-     *
-     * @summary List Factory Runs
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof LauncherApi
-     */
-    /**
-     *
-     * @summary Get Run For Session
-     * @param {string} sessionId
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof LauncherApi
-     */
-    public getRunForSession(sessionId: string, options?: RawAxiosRequestConfig) {
-        return LauncherApiFp(this.configuration).getRunForSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    public listSessionLaunches(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listSessionLaunches(options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
-     *
-     * @summary Dismiss Factory Run
-     * @param {FactoryRunDismissRequest} factoryRunDismissRequest
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof LauncherApi
-     */
-    public dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig) {
-        return LauncherApiFp(this.configuration).dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     *
+     * 
      * @summary Restore Factory Run
-     * @param {FactoryRunDismissRequest} factoryRunDismissRequest
+     * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi
@@ -7651,14 +7860,10 @@ export class LauncherApi extends BaseAPI {
         return LauncherApiFp(this.configuration).restoreFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
-    public listFactoryRuns(options?: RawAxiosRequestConfig) {
-        return LauncherApiFp(this.configuration).listFactoryRuns(options).then((request) => request(this.axios, this.basePath));
-    }
-
     /**
-     *
+     * 
      * @summary Resume Factory Run
-     * @param {FactoryRunResumeRequest} factoryRunResumeRequest
+     * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi
@@ -7667,27 +7872,11 @@ export class LauncherApi extends BaseAPI {
         return LauncherApiFp(this.configuration).resumeFactoryRun(factoryRunResumeRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
-    public listSessionLaunches(options?: RawAxiosRequestConfig) {
-        return LauncherApiFp(this.configuration).listSessionLaunches(options).then((request) => request(this.axios, this.basePath));
-    }
-
     /**
-     *
-     * @summary Get Launch Interview
-     * @param {number} launchId
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof LauncherApi
-     */
-    public getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig) {
-        return LauncherApiFp(this.configuration).getLaunchInterview(launchId, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     *
+     * 
      * @summary Submit Interview Answers
-     * @param {number} launchId
-     * @param {InterviewAnswersRequest} interviewAnswersRequest
+     * @param {number} launchId 
+     * @param {InterviewAnswersRequest} interviewAnswersRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof LauncherApi

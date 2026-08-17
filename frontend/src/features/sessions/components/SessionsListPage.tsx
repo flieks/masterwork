@@ -25,6 +25,7 @@ import { LaunchSessionDialog } from './LaunchSessionDialog';
 import { LiveIndicator } from './LiveIndicator';
 import { RunCard } from './RunCard';
 import { RunFilters } from './RunFilters';
+import { WaitingRuns } from './WaitingRuns';
 
 const VIEWS = ['runs', 'assets', 'analytics'] as const;
 type View = (typeof VIEWS)[number];
@@ -68,6 +69,8 @@ export function SessionsListPage() {
       <TrackingBanner />
 
       <InterviewQuestions />
+
+      <WaitingRuns />
 
       <FactoryRunsCard />
 

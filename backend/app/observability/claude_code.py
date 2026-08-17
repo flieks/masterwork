@@ -33,6 +33,7 @@ EVENTS = [
     "UserPromptSubmit",
     "PreToolUse",
     "PostToolUse",
+    "Notification",
     "SubagentStop",
     "Stop",
     "SessionEnd",
@@ -146,7 +147,7 @@ class ClaudeCodeIntegration:
         expected = self._expected()
         stale = [event for event in EVENTS if wired[event] != [expected[event]]]
         if stale:
-            # Naming all seven reads as noise; naming a few is the useful case.
+            # Naming every one of them reads as noise; a few is the useful case.
             which = "" if len(stale) == len(EVENTS) else f" ({', '.join(stale)})"
             return (
                 "outdated",

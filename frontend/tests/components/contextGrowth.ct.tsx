@@ -41,6 +41,16 @@ async function mockRun(
       return;
     }
     const pathname = new URL(request.url()).pathname;
+    if (pathname.includes('/launcher/')) {
+      // No factory run owns this session, so its banner stays off the page.
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: 'null',
+      });
+      return;
+    }
     const body = pathname.endsWith('/events')
       ? []
       : pathname.endsWith('/context')

@@ -339,7 +339,9 @@ def _from_hook(event_type: str, tool_name: str | None, payload: dict[str, Any] |
 
     if event_type not in ("UserPromptSubmit", "Stop") and not tool_name:
         # SessionStart, Notification, a hook nobody has written yet: nothing has
-        # happened in a lane, and a lane is not worth inventing for it.
+        # happened in a lane, and a lane is not worth inventing for it. What a
+        # notification does say is about the run, not a lane, and needs the row
+        # before it to be read — so the service decides that one, not this.
         return derived
 
     derived.lane = MAIN_AGENT

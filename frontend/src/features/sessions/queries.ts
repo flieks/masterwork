@@ -225,6 +225,32 @@ export const codingSessionsQueryAtom = atomWithQuery((get) => {
 });
 
 /**
+ * Every run currently blocked on a person, whatever the grid is filtered to.
+ *
+ * A separate query rather than a filter over the list: a question left open is
+ * the one thing that must not be hidden by the filters someone set an hour ago,
+ * and it is the same reason the interview form sits outside the tabs.
+ * `include_automated` is on — a headless run rarely asks, but if one does, it
+ * is stuck until someone notices, which is exactly the case worth surfacing.
+ */
+export const waitingRunsQueryAtom = atomWithQuery(() => ({
+  queryKey: ['codingSessionsWaiting'],
+  queryFn: async (): Promise<CodingSession[]> =>
+    (
+      await api.coding.listCodingSessions(
+        undefined,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        'waiting_input',
+      )
+    ).data,
+  refetchInterval: POLL_MS,
+  refetchIntervalInBackground: true,
+}));
+
+/**
  * The stage runs one pipeline run launched, asked for by name (v1.17's
  * `parent_session_id`). This used to page the unfiltered list and pick its own
  * children out, which silently dropped every child that fell past the page —

@@ -1,4 +1,5 @@
 import type { CodingEvent, CodingSession, FactoryRun } from '~/api/generated';
+import { formatDuration } from '~/lib/datetime';
 import { LIVE_WINDOW_MS } from '~/lib/timeline';
 
 /**
@@ -31,6 +32,13 @@ export function isSessionLive(session: CodingSession, now = Date.now()): boolean
   const last = new Date(session.last_event_at).getTime();
   if (Number.isNaN(last)) return false;
   return now - last < (runWorkflow(session) === 'factory' ? FACTORY_IDLE_MS : CHAT_IDLE_MS);
+}
+
+/** How long a question has gone unanswered, as a phrase: "waiting 5h 49m". */
+export function waitedFor(since: string, now = Date.now()): string {
+  const started = Date.parse(since);
+  if (Number.isNaN(started)) return 'waiting';
+  return `waiting ${formatDuration((now - started) / 1000)}`;
 }
 
 /** True when a `claude -p` one-shot started the run — a script, hook or scheduler. */

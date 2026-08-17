@@ -38,6 +38,11 @@ async function mockSessionsScreen(page: Page): Promise<{ urls: string[] }> {
       });
       return;
     }
+    if (url.includes('status=waiting_input')) {
+      // The WaitingRuns banner — nothing is blocked in these fixtures.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      return;
+    }
     urls.push(url);
     const assets = url.includes('/coding-assets');
     const kind = new URL(url).searchParams.get('kind');
@@ -159,6 +164,11 @@ async function mockInspectionScope(page: Page): Promise<{ urls: string[] }> {
         headers: CORS,
         body: JSON.stringify([integration()]),
       });
+      return;
+    }
+    if (url.includes('status=waiting_input')) {
+      // The WaitingRuns banner — nothing is blocked in these fixtures.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
       return;
     }
     urls.push(url);
@@ -328,6 +338,11 @@ test('the grid keeps the order the server chose, live first', async ({ mount, pa
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the asset rollup.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      return;
+    }
+    if (route.request().url().includes('status=waiting_input')) {
+      // The WaitingRuns banner — none of these three is blocked on a person.
       await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
       return;
     }

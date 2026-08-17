@@ -17,6 +17,7 @@ from app.db.models.coding import (
     LAUNCH_AUTOMATED,
     STATUS_ABANDONED,
     STATUS_RUNNING,
+    STATUS_WAITING_INPUT,
     WORKFLOW_CHAT,
     WORKFLOW_FACTORY,
     CodingAgent,
@@ -97,16 +98,31 @@ def _is_empty_session(cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     return and_(not_(did_something), finished)
 
 
+def _is_waiting() -> ColumnElement[bool]:
+    """Open and blocked on its human — see `derived_status`, which ranks this
+    above both of the statuses silence produces."""
+    return and_(
+        CodingSession.status == STATUS_RUNNING,
+        CodingSession.ended_at.is_(None),
+        CodingSession.awaiting_input_since.is_not(None),
+    )
+
+
 def _status_filter(status: str, cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     """Match the status the reader will actually see, not the stored one.
 
-    `abandoned` is derived from silence and `running` is narrowed by it, so
-    filtering on the column alone would contradict the serialized payload.
+    `abandoned` is derived from silence, `waiting_input` from a notification and
+    `running` is narrowed by both, so filtering on the column alone would
+    contradict the serialized payload.
     """
+    if status == STATUS_WAITING_INPUT:
+        return _is_waiting()
     if status == STATUS_ABANDONED:
-        return and_(CodingSession.status == STATUS_RUNNING, not_(_is_live(cutoff)))
+        return and_(
+            CodingSession.status == STATUS_RUNNING, not_(_is_live(cutoff)), not_(_is_waiting())
+        )
     if status == STATUS_RUNNING:
-        return and_(CodingSession.status == STATUS_RUNNING, _is_live(cutoff))
+        return and_(CodingSession.status == STATUS_RUNNING, _is_live(cutoff), not_(_is_waiting()))
     return CodingSession.status == status
 
 
@@ -259,6 +275,19 @@ async def add_event(
     db.add(event)
     await db.flush()
     return event
+
+
+async def previous_event_type(db: AsyncSession, session_id: str, *, before_id: int) -> str | None:
+    """What the run was doing just before this event. Asked only when a
+    notification arrives — rare enough that one indexed lookup beats carrying a
+    "last event type" column that every other event would have to maintain."""
+    result = await db.execute(
+        select(CodingEvent.event_type)
+        .where(CodingEvent.session_id == session_id, CodingEvent.id < before_id)
+        .order_by(CodingEvent.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_events(

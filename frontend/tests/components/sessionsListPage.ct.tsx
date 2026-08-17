@@ -39,7 +39,12 @@ async function mockSessions(page: Page, sessions: CodingSession[]): Promise<{ ur
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the runs grid.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const url = route.request().url();
@@ -47,8 +52,11 @@ async function mockSessions(page: Page, sessions: CodingSession[]): Promise<{ ur
     // the runs, so the agent is always connected, the banner stays quiet, and
     // its request is kept out of the recorded list the filters are asserted on.
     const setup = url.includes('/observability/');
-    if (!setup) urls.push(url);
-    const body = setup ? [integration()] : sessions;
+    // Same for the blocked-run banner: it queries the same endpoint with its
+    // own status, and serving it the grid's rows would put every fixture in it.
+    const blocked = url.includes('status=waiting_input');
+    if (!setup && !blocked) urls.push(url);
+    const body = setup ? [integration()] : blocked ? [] : sessions;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -150,7 +158,12 @@ test('automated runs stay out of the grid until the toggle asks for them', async
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the runs grid.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const url = route.request().url();
@@ -160,6 +173,17 @@ test('automated runs stay out of the grid until the toggle asks for them', async
         contentType: 'application/json',
         headers: CORS,
         body: JSON.stringify([integration()]),
+      });
+      return;
+    }
+    // The blocked-run banner asks the same endpoint with its own status (and
+    // always with include_automated), so it is answered before the toggle is.
+    if (url.includes('status=waiting_input')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
       });
       return;
     }
@@ -219,12 +243,18 @@ test('the interrupted filter admits nothing can match it, rather than blaming th
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the runs grid.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const url = route.request().url();
     const setup = url.includes('/observability/');
-    const asked = url.includes('status=interrupted');
+    // `asked` covers the banner's own query too: neither filter matches here.
+    const asked = url.includes('status=interrupted') || url.includes('status=waiting_input');
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -262,7 +292,12 @@ test('an empty screen with nothing recording points at the connect card', async 
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the runs grid.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const setup = route.request().url().includes('/observability/');

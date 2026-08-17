@@ -18,6 +18,7 @@ from app.db.models.coding import (
     LAUNCH_AUTOMATED,
     STATUS_ABANDONED,
     STATUS_RUNNING,
+    STATUS_WAITING_INPUT,
     TITLE_CWD,
     TITLE_PROVENANCE,
     WORKFLOW_FACTORY,
@@ -43,9 +44,15 @@ def derived_status(session: CodingSession, *, now: datetime) -> str:
     it, the oldest last heard from a day and a half earlier. Silence past this
     kind of run's idle window reports `abandoned` instead. A run that did report
     an outcome keeps it: only the absence of one is filled in from silence.
+
+    A run blocked on a question is checked first, because it is silent for a
+    known reason: inferring `abandoned` over evidence would file the one state
+    someone still has to act on under the one nobody ever looks at again.
     """
     if session.status != STATUS_RUNNING or session.ended_at is not None:
         return session.status
+    if session.awaiting_input_since is not None:
+        return STATUS_WAITING_INPUT
     silent_since = now - idle_window(session.workflow)
     return STATUS_ABANDONED if session.last_event_at < silent_since else STATUS_RUNNING
 
@@ -155,6 +162,7 @@ def _session_fields(
         "started_at": session.started_at,
         "last_event_at": session.last_event_at,
         "ended_at": session.ended_at,
+        "awaiting_input_since": session.awaiting_input_since,
         "stats": session.stats,
         "cost_usd": session.cost_usd,
         "tokens_total": session.tokens_total,

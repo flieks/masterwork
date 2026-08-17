@@ -55,11 +55,26 @@ LAUNCH_AUTOMATED = "automated"
 # would be a claim masterwork has no evidence for, so silence stays `abandoned`
 # and this value is set only when a producer states it on the hook body (which
 # no producer does today; the factory reports an aborted run as `failed`).
+# `waiting_input` is the third derived one, and the only one derived from
+# evidence rather than from its absence: the harness said out loud that it is
+# blocked on the person. It outranks `abandoned` — a run stuck on a question is
+# silent by construction, and calling that "went quiet" is how a question can go
+# unanswered for six hours without the grid ever saying so.
 STATUS_RUNNING = "running"
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
 STATUS_INTERRUPTED = "interrupted"
 STATUS_ABANDONED = "abandoned"
+STATUS_WAITING_INPUT = "waiting_input"
+
+# Claude Code fires this when it needs the person: a permission prompt, or an
+# input box that has sat idle. Both mean the same thing to a watcher.
+NOTIFICATION_EVENT = "Notification"
+
+# After one of these, nothing is in flight, so a notification is just the person
+# not typing yet — not a run blocked mid-turn. Anything else means a turn was
+# open when the harness asked, which is the state worth reporting.
+TURN_CLOSED_EVENTS = frozenset({"Stop", "SessionEnd", "SessionStart"})
 
 # Live means recent. A run with no `ended_at` that has been silent this long is
 # reported as abandoned, and sorts below the ones that are genuinely working.
@@ -198,6 +213,12 @@ class CodingSession(Base):
         UTCDateTime, server_default=func.now(), index=True
     )
     ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    # When the run last said it was blocked on the person, cleared by whatever
+    # event proves it no longer is. Stored rather than derived from the last
+    # event: the list filters and sorts on it, and re-reading the tail of the
+    # event stream per row to answer "is this one waiting?" is the same question
+    # asked once per card.
+    awaiting_input_since: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     # Free-form roll-up (tokens, cost, turn counts), shallow-merged per event.
     stats: Mapped[dict[str, Any] | None] = mapped_column(JSONColumn, nullable=True)

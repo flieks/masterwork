@@ -424,6 +424,11 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
         payload["tool_response"] = compact(
             extract_images(raw.get("tool_response", {}), media), 2000
         )
+    elif event == "Notification":
+        # The one event that fires *because* nothing is happening: a permission
+        # prompt or an idle input box. The message is what the person would have
+        # seen on screen, so it is the whole payload worth keeping.
+        payload["message"] = raw.get("message", "")
     elif event == "SubagentStop":
         for key in ("agent_type", "agent_transcript_path"):
             if raw.get(key):

@@ -2983,3 +2983,45 @@ FactoryRunCheck { run_id: string, outcome: RunOutcome, summary: string | null }
 - **DB**: `session_launches.checks_run_id`, nullable, Alembic
   `0026_launch_checks_run` on `0025_work_source_owner` — rebased onto the head
   the work-source owner migration created rather than opening a second head.
+
+# API Contract v1.39 — a run that is waiting, not gone
+
+Additive on top of v1.38. Every derived status masterwork had was inferred from
+absence: a run with no `SessionEnd` and no recent event was reported
+`abandoned`. A run blocked on a question is silent for the opposite reason —
+something is holding it — and filing it under the bucket nobody revisits is how
+a question asked at 03:11 sat unanswered until the process died at 09:00.
+
+## Changed and new schemas
+
+```
+CodingSession.status: … | "waiting_input"     // derived, and outranks abandoned
+CodingSession.awaiting_input_since: string | null   // when it went blocked
+GET /coding-sessions?status=waiting_input     // matches the derived status
+```
+
+## Behavior
+
+- **`Notification` is now one of the recorded hooks** (eight, up from seven).
+  It is the only Claude Code hook that fires *because* nothing is happening: a
+  permission prompt, or an input box that has gone idle. Its `message` is stored
+  as the event payload.
+- **Only a mid-turn notification counts.** The same hook fires after a `Stop`,
+  when it means "nobody has typed the next prompt yet" rather than "this run is
+  stuck". The event before the notification is what separates them —
+  `Stop`/`SessionStart`/`SessionEnd` mean the turn was closed, anything else
+  means one was in flight. The message text is deliberately not parsed: its
+  wording is the harness's to change.
+- **`awaiting_input_since` is stored, and cleared by the next event** that
+  proves work resumed. `SessionEnd` is the one event that does not clear it, so
+  `ended_at` set *and* `awaiting_input_since` set is a run that died with its
+  question still on screen.
+- **`waiting_input` beats `abandoned` and narrows `running`.** Silence is only
+  read as abandonment when nothing explains it, and the list filter matches the
+  same three-way split so a filtered page never contradicts the cards in it.
+- **Frontend**: a card wears an amber `waiting_input` chip, `Status → Waiting`
+  filters to them, and a banner above the grid — outside the tabs, like the
+  interview form — lists every blocked run with how long it has been waiting,
+  with an opt-in desktop notification the first time a run goes blocked.
+- **DB**: `coding_sessions.awaiting_input_since`, nullable timestamptz, Alembic
+  `0027_coding_awaiting_input` on `0026_launch_checks_run`.

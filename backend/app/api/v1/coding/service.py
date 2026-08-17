@@ -33,6 +33,7 @@ from app.db.models.coding import (
     LAUNCH_AUTOMATED,
     LAUNCH_INTERACTIVE,
     MAIN_AGENT,
+    NOTIFICATION_EVENT,
     PHASE_ABANDONED,
     PHASE_PASSED,
     PHASE_RUNNING,
@@ -43,6 +44,7 @@ from app.db.models.coding import (
     TITLE_PROMPT,
     TITLE_PROVENANCE,
     TITLE_SUMMARY,
+    TURN_CLOSED_EVENTS,
     CodingAgent,
     CodingAssetUse,
     CodingEvent,
@@ -634,6 +636,31 @@ async def _record_evidence(
         )
 
 
+async def _apply_awaiting_input(
+    db: AsyncSession, session: CodingSession, event: CodingEvent, now: datetime
+) -> None:
+    """Track whether the run is blocked on its human.
+
+    A notification fires for two different situations and only one of them is
+    news: mid-turn (a permission prompt, a question the agent asked) the run is
+    stuck until someone answers, while after a `Stop` it is just an input box
+    nobody has typed into yet. What came before the notification is the only
+    thing that separates them, so it is read rather than guessed from the
+    message text, which is wording the harness is free to change.
+
+    Any other event clears the flag — work resuming is proof the wait is over.
+    `SessionEnd` is the exception: a run that died with the question still on
+    screen is exactly the thing worth being able to see afterwards.
+    """
+    if event.event_type == NOTIFICATION_EVENT:
+        previous = await coding_repo.previous_event_type(db, session.id, before_id=event.id)
+        if previous is not None and previous not in TURN_CLOSED_EVENTS:
+            session.awaiting_input_since = now
+        return
+    if event.event_type != "SessionEnd":
+        session.awaiting_input_since = None
+
+
 async def _apply_derived(
     db: AsyncSession,
     session: CodingSession,
@@ -673,6 +700,7 @@ async def _apply_derived(
         session.workflow = derived.workflow[:MAX_WORKFLOW]
     if derived.status:
         session.status = derived.status[:MAX_STATUS]
+    await _apply_awaiting_input(db, session, event, now)
 
     phase = await _resolve_phase(db, session, derived, now)
     for write in derived.agents:
@@ -870,6 +898,7 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     session.parent_session_id = None
     session.workflow = None
     session.status = STATUS_RUNNING
+    session.awaiting_input_since = None
     session.cost_usd = None
     session.tokens_total = None
     session.tokens_in = None
