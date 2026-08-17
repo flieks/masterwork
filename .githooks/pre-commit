@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Refuse a commit that leaves frontend/openapi.json or the generated TS client
+# behind the backend's schema. Install with `make hooks`.
+#
+# Bypass once with: SKIP_API_CHECK=1 git commit ...
+#
+# Note this checks the working tree, not the staged tree, so a partial commit
+# with unstaged backend changes can trip it. That is the safe direction to err in.
+set -euo pipefail
+
+[ -n "${SKIP_API_CHECK:-}" ] && exit 0
+
+ROOT="$(git rev-parse --show-toplevel)"
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+grep -qE '^(backend/app/|frontend/openapi\.json|frontend/src/api/generated/)' <<<"$staged" || exit 0
+
+exec "$ROOT/scripts/regen-api.sh" --check

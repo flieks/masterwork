@@ -16,6 +16,9 @@ uv run uvicorn app.main:app --reload --port 8008
 cd frontend
 npm install
 npm run dev        # http://localhost:5192
+
+# once per clone — blocks commits that leave the API contract stale
+cd .. && make hooks
 ```
 
 You need Python 3.13+, [uv](https://docs.astral.sh/uv/), Node 20+, and the
@@ -49,14 +52,19 @@ DATABASE_URL="postgresql+asyncpg://localhost:5432/masterwork" uv run pytest
 
 **If you change the API, regenerate the client.** The frontend's TypeScript
 client is generated from the backend's OpenAPI schema, and both the schema and
-the client are committed. With the backend running:
+the client are committed. One command rebuilds both:
 
 ```bash
-curl -s localhost:8008/openapi.json | python3 -m json.tool > frontend/openapi.json
-cd frontend && npm run generate:api:local
+make api
 ```
 
-CI fails if either is stale.
+The schema comes off the FastAPI app object, so nothing needs to be running.
+`make api-check` is the read-only version CI runs. Install the pre-commit hook
+once and a stale contract can't leave your machine:
+
+```bash
+make hooks
+```
 
 ## Adding a provider
 

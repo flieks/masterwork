@@ -42,12 +42,19 @@ ever touches your dev database.
 
 ## Regenerating the API client
 
-The frontend's TypeScript client is generated from the backend's OpenAPI schema
-and is not checked in. With the backend running:
+`frontend/openapi.json` and the typescript-axios client under
+`frontend/src/api/generated` are both committed, and both are derived from the
+backend. Rebuild them after any change to a route, schema or serializer:
 
 ```bash
-cd frontend && npm run generate:api:local
+make api
 ```
+
+The schema is read from the FastAPI app object rather than a running server, so
+this works with nothing on :8008. `make api-check` verifies without writing —
+that is what CI runs, and what the `make hooks` pre-commit hook runs before it
+lets a commit through. The client half needs a JDK; without one it is skipped
+with a warning and only the schema is verified.
 
 ## Running as background services (macOS)
 
