@@ -1,336 +1,590 @@
-# Plan — widen the work sync to the whole sprint, give @Me a real identity
+# Plan — read-only pull-request view + delegate a PR's comments to a coding session
 
 ## The change, in one paragraph
 
-Today `sync_source` always sends `DEFAULT_WIQL` (`[System.AssignedTo] = @Me`), so the local
-mirror only ever holds the PAT owner's items and the frontend's "Everyone" assignee filter
-has nothing extra to show. This change resolves the team's current iteration path *first*,
-and when one comes back, queries the whole sprint (`[System.IterationPath] UNDER '<path>'`,
-every assignee, non-closed states) instead; with no current iteration it falls back to the
-existing assigned-to-me WIQL, and an operator-set `source.query_wiql` still beats both. The
-iteration path is external data interpolated into a query string, so it is escaped by
-doubling single quotes and the module docstring's "no interpolation ever" rule is rewritten
-to describe the single interpolation that is now allowed and why it is safe. Because the
-sprint query drags in other people's items, "@Me" in the UI can no longer mean
-"`!pulled_as_parent`" — so the backend learns the PAT owner's display name from a new
-read-only `GET /_apis/connectionData` call, persists it on the work source
-(`owner_display_name`, new nullable column + migration + response schema), and the frontend
-matches `item.assigned_to` against that name, per source. Sprint dropdown, search box and
-tree building are untouched.
+Masterwork already mirrors Azure DevOps work items read-only (`work_sources` →
+`work_items`) and can spawn a real factory run (`POST /launcher/launch` →
+`app/services/factory_launcher.spawn_factory_run`). This change adds the same
+read-only treatment for pull requests and joins the two: three new mirror tables
+(`work_pull_requests`, `work_pr_threads`, `work_repo_paths`), a PR sync that
+reuses the two already-written-but-dead client reads
+(`AzureDevOpsClient.list_active_prs` / `list_pr_threads`), five new endpoints
+under `/api/v1/work`, and a "Pull requests" tab beside the existing backlog on
+the work page. The headline behaviour is `delegatePullRequest`: it resolves the
+PR's repository to a local working tree (stored mapping → scan of
+`projects_root`'s immediate subfolders by their `.git/config` origin remote →
+unresolved), and on a hit assembles a prompt from the PR plus its *unresolved*
+threads and launches it as a real factory run, returning the launch id and run
+id so the UI can link straight to it. Nothing in this run writes to Azure
+DevOps and nothing pushes git: `app/providers/azuredevops.py` and its guard test
+`backend/tests/unit/test_azuredevops_client.py` are not touched, the prompt
+tells the delegated session in plain words that it must not push and must not
+touch DevOps, and `app/services/work_outbound.py` stays the stub it is.
 
-## Files to add or change
+## Hard constraints this plan holds to
 
-### Backend — sync
+- `backend/app/providers/azuredevops.py` is **unchanged**. Both reads the feature
+  needs already exist (`list_active_prs`, `list_pr_threads`), so no method is
+  added, edited or removed there. `backend/tests/unit/test_azuredevops_client.py`
+  is likewise unchanged — its `test_module_has_no_write_methods` grep and its
+  `test_pr_endpoints_hit_the_documented_urls` already cover the two reads.
+- No new `PATCH`/`PUT`/`DELETE` and no DevOps comment/work-item POST anywhere in
+  the backend. The only DevOps traffic this change makes is
+  `GET …/_apis/git/pullrequests` and
+  `GET …/_apis/git/repositories/{id}/pullRequests/{id}/threads`.
+- No git push, no `git` write of any kind. The repository scan **parses
+  `.git/config`**; it never shells out to `git`.
+- `docs/API_CONTRACT.md` is **not touched in this (plan) stage**. The build
+  and/or document stage appends a new `# API Contract v1.40 — …` section after
+  the current last section (`v1.39`, line 2987); every earlier section is FROZEN
+  and must not be edited.
 
-**`backend/app/services/work_sync.py`** (change)
+---
 
-1. Module docstring: keep the "untrusted payload is stored/rendered, never executed" para,
-   and replace the last sentence (`no item field is ever concatenated into a query`) with a
-   description of the one interpolation now allowed: the team's current iteration path from
-   `get_current_iteration_path()` is interpolated into the sprint WIQL, single-quote-escaped
-   by doubling, and WIQL has no comment/statement-separator syntax to break out into — no
-   *work-item field* is ever concatenated into a query.
-2. Add next to `DEFAULT_WIQL`:
-   ```python
-   SPRINT_WIQL = (
-       "SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER '{path}' "
-       "AND [System.State] NOT IN ('Closed','Removed','Done') "
-       "ORDER BY [System.ChangedDate] DESC"
-   )
-   ```
-   plus a small helper, e.g.
-   ```python
-   def _sprint_wiql(path: str) -> str:
-       """WIQL string literals escape a quote by doubling it."""
-       return SPRINT_WIQL.format(path=path.replace("'", "''"))
-   ```
-   (Exact constant/helper names are the builder's call; keep them module-level and
-   importable so tests can assert against them rather than re-typing the SQL.)
-3. In `sync_source`, **move the best-effort iteration refresh from the end of the function to
-   the top**, before `client.query_work_item_ids(...)`:
-   ```python
-   # Sprint lookup is best-effort; on failure keep the last known value.
-   with contextlib.suppress(AzureDevOpsError):
-       source.current_iteration = await client.get_current_iteration_path()
-   ```
-   Behaviour to preserve exactly: a *successful* call that returns `None` still clears
-   `current_iteration`; only a raised `AzureDevOpsError` keeps the previous value.
-4. WIQL selection becomes: `source.query_wiql` if set → else `_sprint_wiql(current_iteration)`
-   if `source.current_iteration` is a non-empty string → else `DEFAULT_WIQL`.
-5. Add a second best-effort refresh alongside the iteration one:
-   ```python
-   with contextlib.suppress(AzureDevOpsError):
-       source.owner_display_name = await client.get_authenticated_user_display_name()
-   ```
-   Same shape as the iteration refresh: a raised error keeps the last known value.
-6. Leave `pulled_as_parent`, the parent-id collection and the second parent-fetch pass
-   exactly as they are — parents outside the sprint still have to be pulled for tree
-   grouping. Leave `FIELDS`, the upsert and `SyncCounts` alone.
-7. Update the `sync_source` docstring's first line ("Run the source's WIQL (or the default)")
-   to name the three-way choice.
+## Backend
 
-### Backend — provider
+### 1. Models — `backend/app/db/models/work.py` (modify)
 
-**`backend/app/providers/azuredevops.py`** (change) — one new read-only method, in the same
-shape as `get_current_iteration_path`:
+Three tables added to the existing module, in the style `WorkItem` already sets
+(explicit `mapped_column`, `JSONColumn` for raw payloads, `UTCDateTime` for
+timestamps, `UniqueConstraint` named `uq_…`).
 
-```python
-async def get_authenticated_user_display_name(self) -> str | None:
-    """The PAT owner's display name, or None when the org does not report one."""
-    url = f"{self._org_url}/_apis/connectionData?api-version={API_VERSION}"
-    async with self._client() as client:
-        response = await client.get(url)
-    user = _read_json(response).get("authenticatedUser")
-    name = user.get("providerDisplayName") if isinstance(user, dict) else None
-    return name if isinstance(name, str) and name else None
-```
+**`WorkPullRequest` → `work_pull_requests`**
 
-Org-level URL (no project segment), `client.get` only. The docstring's HARD RULE block stays
-as written — this adds no POST, so "the only two POSTs" remains true — and
-`tests/unit/test_azuredevops_client.py::test_module_has_no_write_methods` (greps for
-`.patch(`, `.put(`, `.delete(`) stays green.
+| column | type | notes |
+|---|---|---|
+| `id` | `Integer` pk autoincrement | local id; what the URLs use |
+| `source_id` | `Uuid` FK `work_sources.id` `ondelete="CASCADE"` | |
+| `external_id` | `Integer` | DevOps `pullRequestId` |
+| `repository_id` | `String(200)` | DevOps `repository.id` (a guid) |
+| `repository_name` | `String(300)` | `repository.name` |
+| `repository_remote_url` | `String(1000)` | `repository.remoteUrl` or `repository.webUrl` |
+| `title` | `Text` | |
+| `description` | `Text`, default `""` | DevOps sends plain text here, not HTML — stored verbatim, never rendered as HTML/markdown |
+| `source_branch` | `String(500)` | `sourceRefName` with the `refs/heads/` prefix stripped |
+| `target_branch` | `String(500)` | `targetRefName`, same strip |
+| `status` | `String(50)` | `active`/`completed`/`abandoned` |
+| `is_draft` | `Boolean`, server_default `false` | `isDraft` |
+| `created_by` | `String(300)`, nullable | `createdBy.displayName` |
+| `external_url` | `String(1000)` | built like `_work_item_url` does: `{org_url}/{project}/_git/{repository_name}/pullrequest/{external_id}` |
+| `raw` | `JSONColumn` | the untouched payload |
+| `external_changed_at` | `UTCDateTime` | |
+| `synced_at` | `UTCDateTime` | |
 
-### Backend — persistence
+`__table_args__`: `UniqueConstraint("source_id", "external_id",
+name="uq_work_prs_source_external")`.
 
-**`backend/alembic/versions/0025_work_source_owner.py`** (add)
+**`WorkPrThread` → `work_pr_threads`**
 
-```python
-revision: str = "0025_work_source_owner"
-down_revision: str | None = "0024_dismissed_runs"
+| column | type | notes |
+|---|---|---|
+| `id` | `Integer` pk | |
+| `pull_request_id` | `Integer` FK `work_pull_requests.id` `ondelete="CASCADE"` | |
+| `external_id` | `Integer` | DevOps thread id |
+| `status` | `String(50)`, nullable | DevOps thread `status`; absent on some system threads |
+| `is_resolved` | `Boolean`, server_default `false` | derived: `status` in `{fixed, closed, wontFix, byDesign}` |
+| `file_path` | `String(1000)`, nullable | `threadContext.filePath`; null for a PR-level thread |
+| `right_file_line` | `Integer`, nullable | `threadContext.rightFileStart.line`, falling back to `rightFileEnd.line` |
+| `comments` | `JSONColumn` | list of `{id, author, content, comment_type, published_at}` in DevOps order |
+| `raw` | `JSONColumn` | |
+| `synced_at` | `UTCDateTime` | |
 
-def upgrade() -> None:
-    op.add_column("work_sources", sa.Column("owner_display_name", sa.Text(), nullable=True))
+`__table_args__`: `UniqueConstraint("pull_request_id", "external_id",
+name="uq_work_pr_threads_pr_external")`.
 
-def downgrade() -> None:
-    op.drop_column("work_sources", "owner_display_name")
-```
+**`WorkRepoPath` → `work_repo_paths`** — the remote→folder memory.
 
-The request said "next revision after `0022_session_launch_run_id`", but that is no longer
-head: the chain is linear and runs `…0022 → 0023_coding_context_samples →
-0024_dismissed_runs`. Chaining from `0024_dismissed_runs` is the only correct reading — a
-new revision must descend from head or `alembic upgrade head` reports multiple heads. Follow
-the file style of `0021_work_assignee_and_current_sprint.py` (module docstring with
-`Revision ID` / `Revises` / `Create Date: 2026-08-16`, `from __future__ import annotations`,
-`branch_labels`/`depends_on` set to `None`).
+| column | type | notes |
+|---|---|---|
+| `id` | `Integer` pk | |
+| `remote_url` | `String(1000)`, unique (`uq_work_repo_paths_remote`) | the **normalized** remote; the key, never the repo name |
+| `local_path` | `String(1000)` | absolute, validated to be an existing directory |
+| `created_at` | `UTCDateTime`, `server_default=func.now()` | |
 
-**`backend/app/db/models/work.py`** (change) — on `WorkSource`, next to `current_iteration`:
+A module-level comment records *why* the key is the remote: the local folder is
+frequently named something other than the repo.
 
-```python
-# The PAT owner's DevOps display name, refreshed on sync; what "@Me" matches on.
-owner_display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
-```
+### 2. Migration — `backend/alembic/versions/0028_work_pull_requests.py` (new)
 
-`Text` is already imported. Nothing in `repositories/work.py` changes: `create_source` never
-sets it, `sync_source` writes it on a loaded row and the existing `db.flush()` / route-level
-`db.commit()` persist it.
+`revision = "0028_work_pull_requests"`, `down_revision = "0027_coding_awaiting_input"`
+(verified: `0027` is the real head — it chains from `0026_launch_checks_run` and
+nothing chains from it). One migration, all three tables, written by hand in the
+style of `0018_work_items.py` (explicit `sa.Column`, `JSONColumn` imported from
+`app.db.types`, FKs with `ondelete="CASCADE"`, named unique constraints).
+`downgrade()` drops the three in reverse dependency order
+(`work_pr_threads` → `work_pull_requests` → `work_repo_paths`).
 
-### Backend — contract
+### 3. Remote-URL normalization + local-path resolution — `backend/app/services/repo_paths.py` (new)
 
-**`backend/app/api/v1/work/schemas.py`** (change) — add to the `WorkSource` response model
-only, after `current_iteration`:
+A client-free leaf so it is unit-testable with no DB and no HTTP.
 
 ```python
-owner_display_name: str | None = Field(
-    ..., description="Display name of the PAT owner, refreshed on sync; what @Me matches."
-)
+def normalize_remote_url(url: str) -> str          # canonical comparison key
+def read_git_origin(repo: Path) -> str | None      # parse repo/.git/config, no subprocess
+async def resolve_local_path(db, remote_url, projects_root) -> Resolution
 ```
 
-Do **not** touch `WorkSourceCreateRequest` — the value is derived from the PAT, never
-operator input.
+`normalize_remote_url` rules, applied in this order:
 
-**`backend/app/api/v1/work/serializers.py`** (change) — one line in
-`work_source_to_schema`: `owner_display_name=source.owner_display_name,`.
+1. strip surrounding whitespace; return `""` for empty input.
+2. drop any userinfo/PAT prefix — `https://user:token@host/…` and
+   `https://org@dev.azure.com/…` both lose everything up to and including `@`
+   in the authority.
+3. rewrite scp-like ssh syntax (`git@host:path`) to `https://host/path`, and
+   drop an explicit `ssh://` scheme the same way.
+4. Azure DevOps ssh special case: host `ssh.dev.azure.com` (or
+   `vs-ssh.*.visualstudio.com`) with a `v3/{org}/{project}/{repo}` path becomes
+   `dev.azure.com/{org}/{project}/_git/{repo}` so the ssh and https forms of one
+   repo compare equal.
+5. lowercase the **host only** (the instruction's wording; path case is left
+   alone so two genuinely different paths never collide).
+6. drop a trailing `/`, then a trailing `.git`, then a trailing `/` again.
 
-`docs/API_CONTRACT.md` is deliberately **not** edited in this stage — the contract delta is
-recorded under "Data / contract impact" below for the document stage to apply at the end of
-the run.
+Returns `https://{host}{path}`. Documented in a short module docstring with the
+one-line *why* (ssh and https clones of one DevOps repo must be one key).
 
-### Frontend — generated client
+`read_git_origin(repo)` reads `repo/.git/config` with `configparser`, looks for
+the `[remote "origin"]` section's `url`, and returns `None` on any of: missing
+file, unreadable file, parse error, no origin, no url. It never runs `git`.
+(A `.git` *file* — a worktree/submodule pointer — is treated as "no origin"
+rather than followed; noted in a comment.)
 
-**`frontend/openapi.json`** and **`frontend/src/api/generated/*`** (regenerate, never
-hand-edit). The repo's documented procedure (CONTRIBUTING.md ~line 50, mirrored by the
-`contract` job in `.github/workflows/ci.yml`), with the backend running on port 8008:
+`resolve_local_path` implements the three steps in exactly the required order
+and returns a small frozen dataclass `Resolution(local_path: Path | None,
+matched_from: str, reason: str | None)` where `matched_from` is
+`"stored"` / `"scan"` / `"none"`:
 
-```bash
-cd backend && uv run alembic upgrade head && uv run uvicorn app.main:app --port 8008 &
-curl -s localhost:8008/openapi.json | python3 -m json.tool > frontend/openapi.json
-cd frontend && npm run generate:api:local
-rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore
-```
+1. **stored** — `work_repo_paths` lookup on `normalize_remote_url(remote_url)`.
+   Hit → that path. (If the stored path has since vanished from disk, it is
+   treated as a miss and the scan runs, so a moved checkout self-heals.)
+2. **scan** — for each immediate subdirectory of `projects_root` (sorted, skipping
+   dotted names, matching `launcher_service.list_projects`' shape), read
+   `read_git_origin(child)`, normalize it, compare. First match wins; the
+   `(normalized remote, str(child))` pair is persisted into `work_repo_paths`
+   and returned.
+3. **none** — `local_path=None` with a human-readable `reason`, e.g.
+   `"No folder under {projects_root} has {remote_url} as its git origin — pick
+   the checkout for this repository."`
 
-CI diffs both, so the committed `openapi.json` must be the `json.tool`-formatted body and
-the client must be the untouched generator output. Expected delta: one
-`'owner_display_name': string | null;` member on the `WorkSource` interface in
-`src/api/generated/api.ts` (note the generator drops descriptions on `anyOf`-nullable
-fields, as it already does for `current_iteration` — that is not drift).
+### 4. PR sync + prompt assembly — `backend/app/services/work_prs.py` (new)
 
-### Frontend — filter semantics
+Sits beside `work_sync.py` and reuses the same `AzureDevOpsClient` handed in by
+the caller (the route injects `get_devops_client_factory`, tests inject a fake),
+the same `SyncCounts` shape, and the same select-then-insert-or-update style.
 
-**`frontend/src/features/work/tree.ts`** (change)
+- `sync_pull_requests(db, source, client) -> SyncCounts` — one
+  `client.list_active_prs()` call for the whole source (bulk, as required), then
+  upsert each payload on `(source_id, external_id)`. A payload without an int
+  `pullRequestId` is skipped, exactly as `_upsert_payload` skips an id-less work
+  item. Threads are **not** fetched here — that would be one HTTP call per open
+  PR.
+- `sync_pr_threads(db, pr, client) -> list[WorkPrThread]` — on-demand, for one
+  PR: `client.list_pr_threads(pr.repository_id, pr.external_id)`, upsert each on
+  `(pull_request_id, external_id)`, return the rows ordered by `external_id`.
+  Re-running it updates rather than duplicates.
+- `assemble_pr_prompt(pr, threads) -> str` — public (not `_`-prefixed) so the
+  unit test can call it directly. Skips every `is_resolved` thread and every
+  thread left with no comments. Shape:
 
-- Rewrite the `ASSIGNEE_ME` doc comment: it currently explains the `pulled_as_parent` trick,
-  which the sprint-wide sync retires. New meaning: matches items whose `assigned_to` equals
-  the owning source's `owner_display_name`.
-- Add an exported type for the lookup, keyed by source id because items from different
-  sources have different owners:
-  ```ts
-  /** `owner_display_name` per work-source id; a source with no owner yet matches nobody. */
-  export type OwnerNames = Record<string, string | null>;
   ```
-- `filterWorkItemTree(nodes, filters, owners: OwnerNames)` — third parameter, required (one
-  call site), threaded into `matchesAssignee(item, filters.assignee, owners)`.
-- ```ts
-  function matchesAssignee(item: WorkItem, assignee: string | null, owners: OwnerNames): boolean {
-    if (assignee === null) return true;
-    if (assignee === ASSIGNEE_ME) {
-      const owner = owners[item.source_id];
-      return !!owner && item.assigned_to === owner;
-    }
-    return item.assigned_to === assignee;
-  }
-  ```
-  An item whose source has no `owner_display_name` (null/absent/empty) must not match @Me.
-- Leave `buildWorkItemTree`, `hasActiveFilters`, `countNodes`, `sprintOptions`,
-  `assigneeOptions`, `sprintLabel` untouched. Re-export `OwnerNames` from
-  `frontend/src/features/work/queries.ts` alongside the other `./tree` re-exports if the page
-  imports the type from there (the page already imports every tree symbol via `../queries`).
+  Pull request #{external_id}: {title}
+  {external_url}
+  Repository: {repository_name}
+  Branch: {source_branch} -> {target_branch}
 
-**`frontend/src/features/work/components/WorkBacklogPage.tsx`** (change) — it already holds
-`sources` from `workSourcesQueryAtom`:
+  Check out `{source_branch}` before doing anything else.
+
+  ## Unresolved review comments
+
+  ### {file_path}:{right_file_line}          (or "### On the pull request" when file_path is null)
+  - {author}: {content}
+  - {author}: {content}
+
+  ## Rules
+  - Address every comment above.
+  - Run this repository's own checks before you finish.
+  - Do NOT push. Do NOT create or update a branch on the remote.
+  - Do NOT touch Azure DevOps: no comment replies, no thread resolution, no PR update.
+  ```
+
+  The module docstring states the security posture the way `work_sync.py` does:
+  every PR/comment string is untrusted DevOps text, stored verbatim, placed into
+  the prompt as data only, and handed to `spawn_factory_run` as a single
+  **argv list element** — never a shell string, never `eval`'d, never
+  interpolated into a query.
+
+**Deliberate scope call:** `work_sync.sync_source` is *not* changed to also pull
+PRs. PR sync is its own endpoint (`POST /work/sources/{source_id}/sync-prs`), so
+a PR-sync failure structurally cannot destroy the work-item sync — the strongest
+form of the "best-effort" requirement. Within PR sync itself, a per-PR payload
+problem skips that PR instead of aborting the batch; a transport-level
+`AzureDevOpsError` surfaces as `WorkSyncError` (502) exactly like
+`syncWorkSource` already does. Recorded as an assumption.
+
+### 5. Repository layer — `backend/app/repositories/work.py` (modify)
+
+New functions in the existing file's style (`select`-then-insert-or-update, no
+dialect-specific `ON CONFLICT`, so SQLite and Postgres behave identically):
+
+`list_prs(db, *, source_id)`, `get_pr(db, pr_id)`, `upsert_pr(db, **fields) -> bool`,
+`list_pr_threads(db, pull_request_id)`, `upsert_pr_thread(db, **fields) -> bool`,
+`get_repo_path(db, remote_url)`, `upsert_repo_path(db, *, remote_url, local_path)`.
+
+### 6. Schemas — `backend/app/api/v1/work/schemas.py` (modify)
+
+`WorkPullRequest`, `WorkPrThreadComment`, `WorkPrThread`, `WorkRepoPath`,
+`WorkRepoPathCreateRequest`, `PullRequestDelegateResponse`. Every field typed,
+`Field(..., description=…)` where the name alone does not carry it (the frontend
+client is generated from this).
+
+```python
+class PullRequestDelegateResponse(BaseModel):
+    resolved: bool          # false => nothing was launched
+    remote_url: str         # the PR's repository_remote_url, as stored
+    local_path: str | None
+    reason: str | None      # human-readable; set exactly when resolved is false
+    launch_id: int | None
+    run_id: str | None
+    prompt: str | None      # what the launched session received
+    unresolved_thread_count: int
+```
+
+`WorkSyncResult` is reused for `syncPullRequests` — same three counters, same
+meaning.
+
+### 7. Serializers — `backend/app/api/v1/work/serializers.py` (modify)
+
+`work_pr_to_schema`, `work_pr_thread_to_schema`, `work_repo_path_to_schema`,
+explicit field-by-field like the existing two (the `uuid.UUID` → `str` reason in
+that module's docstring applies to `source_id` here too).
+
+### 8. Service — `backend/app/api/v1/work/service.py` (modify)
+
+```python
+async def list_pull_requests(db, *, source_id: str | None) -> list[schemas.WorkPullRequest]
+async def sync_pull_requests(db, source_id: str, client_factory) -> schemas.WorkSyncResult
+async def list_pull_request_threads(db, pr_id: int, client_factory) -> list[schemas.WorkPrThread]
+async def delegate_pull_request(db, pr_id: int, client_factory, spawner) -> schemas.PullRequestDelegateResponse
+async def save_repo_path(db, body) -> schemas.WorkRepoPath
+```
+
+- `get_pr_or_404` mirrors `get_item_or_404`; a new
+  `PullRequestNotFoundError(status_code=404)` goes in
+  `backend/app/core/exceptions.py` beside `WorkItemNotFoundError`, and a
+  `InvalidRepoPathError(status_code=400)` beside `InvalidBrowsePathError`.
+- `list_pull_request_threads` loads the PR, builds the client from its source,
+  calls `work_prs.sync_pr_threads`, commits, and returns the upserted rows —
+  fetch-and-persist on read, as specified.
+- `save_repo_path` validates `local_path`: `Path(value).expanduser()` must be
+  absolute (else `InvalidRepoPathError`) and `.resolve()` must be an existing
+  directory (else `InvalidRepoPathError`) — same shape as
+  `launcher_service._validate_browse_path`, which it deliberately echoes. The
+  remote is normalized before storing.
+- `delegate_pull_request`:
+  1. load the PR, refresh its threads from DevOps (so "unresolved" is current)
+     via `work_prs.sync_pr_threads`.
+  2. `projects_root = Path((await read_settings(db)).projects_root)` — read
+     through the settings **service**, not `app.config` directly.
+  3. `repo_paths.resolve_local_path(...)`. On `matched_from == "scan"` the
+     discovered pair is persisted and **committed before the launch**, so a
+     failed launch never loses the discovery.
+  4. unresolved → return `resolved=False` with `remote_url` + `reason`,
+     `launch_id`/`run_id`/`prompt` null. Nothing is spawned.
+  5. resolved → `assemble_pr_prompt`, then delegate the launch to
+     `app.api.v1.launcher.service.launch(db, LaunchRequest(project_path=…,
+     request_text=prompt), spawner)`. That is the single existing spawn path:
+     it allocates the run id, writes the `session_launches` row, refuses when
+     the `claude` CLI is missing, and reads the run's own refusal back out of
+     the log. Return its `id` and `run_id`.
+
+  Cross-feature service import is already the house pattern
+  (`launcher/service.py` imports `coding.service` and `settings.service`).
+
+### 9. Routes — `backend/app/api/v1/work/routes.py` (modify)
+
+Five routes, each with `response_model=`, on the existing `tags=["work"]` router:
+
+| method + path | operation_id | response_model |
+|---|---|---|
+| `GET /work/prs` (`source_id` query, optional) | `listPullRequests` | `list[schemas.WorkPullRequest]` |
+| `POST /work/sources/{source_id}/sync-prs` | `syncPullRequests` | `schemas.WorkSyncResult` |
+| `GET /work/prs/{pr_id}/threads` | `listPullRequestThreads` | `list[schemas.WorkPrThread]` |
+| `POST /work/prs/{pr_id}/delegate` | `delegatePullRequest` | `schemas.PullRequestDelegateResponse` |
+| `POST /work/repo-paths` | `saveRepoPath` | `schemas.WorkRepoPath` (201) |
+
+`{pr_id}` is the **local** `work_pull_requests.id` (an int), matching
+`/work/items/{item_id}/start`. Routes only parse, inject
+(`get_db`, `get_devops_client_factory`, `get_launch_spawner`) and shape — all
+logic is in `service.py`.
+
+---
+
+## Frontend
+
+### 10. Generated contract (regenerate, commit)
+
+`make api` from the repo root (needs no running backend). Commit
+`frontend/openapi.json` and the tracked files under
+`frontend/src/api/generated/`. `make api-check` must be green.
+
+### 11. `frontend/src/features/work/queries.ts` (modify)
+
+Following the file's existing Jotai + jotai-tanstack-query conventions, and
+`atomFamily` for the per-PR query (the established pattern — `sessions/queries.ts`,
+`assets/queries.ts`, `chat/queries.ts`):
 
 ```ts
-const owners = useMemo<OwnerNames>(
-  () => Object.fromEntries((sources.data ?? []).map((s) => [s.id, s.owner_display_name])),
-  [sources.data],
-);
-const visible = useMemo(() => filterWorkItemTree(tree, filters, owners), [tree, filters, owners]);
+export const WORK_PRS_QUERY_KEY = ['workPullRequests'];
+export const pullRequestsQueryAtom = atomWithQuery(...)                       // GET /work/prs
+export const prThreadsQueryAtom = atomFamily((prId: number) => atomWithQuery(...))  // GET /work/prs/{id}/threads
+export const syncPullRequestsMutationAtom = atomWithMutation(...)             // invalidates WORK_PRS_QUERY_KEY
+export const delegatePullRequestMutationAtom = atomWithMutation(...)
+export const saveRepoPathMutationAtom = atomWithMutation(...)
+export function unresolvedThreadCount(threads): number
+export function prBranchLabel(pr): string    // "feature/x → main"
 ```
 
-Nothing else on the page changes.
+`isHttpUrl` (already exported here) gates the `external_url` link, since PR URLs
+are DevOps-supplied.
 
-**`frontend/src/features/work/components/WorkFilters.tsx`** (optional, one line) — the inline
-comment above the `@Me` option ("Matches the rows the source's own (assigned-to-me) query
-returned") describes the retired trick. Correct it to one line about matching the source
-owner. No markup or props change; the dropdown, sprint select and search box stay as-is.
+### 12. `frontend/src/features/work/components/WorkBacklogPage.tsx` (modify)
+
+Adds a tab pair — **Backlog** / **Pull requests** — using
+`~/components/ui/tabs` with the view in the URL (`?view=prs`), which is exactly
+the `SessionsListPage` pattern; no new UI idiom. The tabs live inside the
+existing "has at least one source" branch, so the empty-state
+`NewWorkSourceForm` path is untouched. `WorkSourceBar` stays above both tabs.
+The header count badge switches to the PR count on the PR tab.
+
+### 13. `frontend/src/features/work/components/PullRequestList.tsx` (new)
+
+One row per PR: `#{external_id}`, title, `repository_name`,
+`source_branch → target_branch`, `created_by`, a `Draft` badge when `is_draft`,
+an unresolved-comment count badge, an external link to `external_url`
+(`target="_blank" rel="noreferrer noopener"`, only when `isHttpUrl`), a
+**Sync pull requests** action (per source, in the tab header) and a
+**Fix comments** action per row. Expanding a row mounts
+`<PullRequestThreads prId={pr.id} />` — so the threads request only fires when
+the user opens the PR.
+
+### 14. `frontend/src/features/work/components/PullRequestThreads.tsx` (new)
+
+Reads `prThreadsQueryAtom(prId)`. Groups threads by `file_path` with the
+PR-level (`file_path === null`) group **first**, then file groups sorted by path;
+within a group, threads keep their `external_id` order and each lists its
+comments in order with author and time (`relativeTime`/`absoluteDateTime` from
+`~/lib/datetime`, as `WorkSourceBar` does). A resolved thread is rendered but
+de-emphasised (muted foreground, a "Resolved" badge) and collapsed by default
+behind its own disclosure. Loading / error / empty states are explicit.
+
+**Every PR, comment and branch string renders as plain text** — the same
+treatment `StartPromptDialog.tsx` gives the assembled prompt (a `<pre
+className="whitespace-pre-wrap break-words">` for comment bodies, plain
+`{text}` children elsewhere). No `dangerouslySetInnerHTML`, no markdown
+renderer, anywhere in these components.
+
+### 15. Delegate + folder-picker fallback
+
+`Fix comments` calls `delegatePullRequestMutationAtom`.
+
+- `resolved === true` → `toast.success` with a link to the launched run
+  (`/sessions?…`/the run link the sessions feature already uses for a
+  `run_id`), built from `launch_id`/`run_id`.
+- `resolved === false` → open the **existing** shared picker
+  `~/components/FolderPickerDialog` (reused, not cloned), seeded with the
+  response's `reason` as its description. On confirm: `saveRepoPath({remote_url,
+  local_path})`, then **automatically retry** the delegate — so the user picks a
+  folder once per remote, never twice.
+- Any error → `toast.error` with `apiErrorMessage(err)`.
+
+> Note: the request located the picker at `frontend/src/features/sessions
+> FolderPicker`; it actually lives at `frontend/src/components/FolderPickerDialog.tsx`
+> (the sessions feature is its *consumer*, via `LaunchSessionDialog.tsx`). That
+> shared component is the one reused.
+
+`frontend/src/features/work/index.ts` gains no new public export unless the
+router needs one — the PR view is reached through `WorkBacklogPage`.
+
+---
 
 ## Data / contract impact
 
-- **Schema:** `work_sources.owner_display_name text NULL` (revision `0025_work_source_owner`,
-  down-revision `0024_dismissed_runs`). Additive and nullable — existing rows read `NULL`
-  until their next sync, and `downgrade()` drops the column. No data backfill, no destructive
-  step.
-- **API contract (for the document stage to write into `docs/API_CONTRACT.md`, not this
-  stage):** the `WorkSource` **response** object gains `owner_display_name: string | null` —
-  display name of the PAT owner, refreshed on every sync, null until the first successful
-  sync or when DevOps reports none. `WorkSourceCreateRequest` is unchanged: the field is
-  derived from the PAT and is never accepted as input. No endpoint, path, status code or
-  request body changes anywhere.
-- **Behavioural contract:** `POST /api/v1/work/sources/{id}/sync` now mirrors the *whole
-  current sprint* (all assignees, states other than Closed/Removed/Done) when the team
-  reports a current iteration, instead of only the PAT owner's items — so
-  `GET /api/v1/work/items` returns strictly more rows for a source with an active sprint, and
-  fewer duplicated `pulled_as_parent` rows (a story inside the sprint now arrives through the
-  query itself). With no current iteration the behaviour is byte-identical to today.
-- **Outbound calls:** one extra read-only request per sync,
-  `GET {org_url}/_apis/connectionData?api-version=7.1`. Still zero writes to DevOps.
+- **Three new tables**, all additive. No existing table, column or constraint is
+  altered; no data is rewritten or deleted. The migration is forward-only-safe
+  and its `downgrade()` drops only what it created.
+- **Five new endpoints**, all additive; no existing operation_id, path, request
+  or response shape changes. `frontend/openapi.json` and
+  `frontend/src/api/generated/*` gain the new operations and models and nothing
+  else.
+- **`docs/API_CONTRACT.md`**: a *new* `# API Contract v1.40 — …` section appended
+  after v1.39, describing the five endpoints and the three tables. Written by the
+  build/document stage, never by the plan stage; earlier sections are FROZEN.
+- **Secrets**: unchanged. The PAT is still only ever *named* by
+  `work_sources.secret_ref` and read at call time via `read_secret`.
 
 ## Test strategy
 
-**`backend/tests/integration/test_work.py`** (change) — the fake DevOps handler must grow
-first, or *every* existing test in this file breaks:
+### Backend unit — `backend/tests/unit/test_repo_paths.py` (new)
 
-- `_devops_handler` currently raises `AssertionError("unexpected request")` on any unknown
-  path. Add a `/_apis/connectionData` branch returning
-  `{"authenticatedUser": {"providerDisplayName": "Felix De Lille"}}`, parameterised so a test
-  can make it fail (e.g. return `httpx.Response(500, ...)`) or omit the name.
-- Capture the WIQL the handler receives (`json.loads(request.content)["query"]`) into a list
-  the test can assert on, and make the WIQL branch honour it: for the sprint query, return
-  the ids of the items whose `System.IterationPath` matches the current iteration (including
-  one assigned to somebody else); for the assigned-to-me query keep today's `_WIQL_IDS`.
-- Add an item to `_ITEMS` in `_CURRENT_ITERATION` assigned to a *different* person
-  (e.g. `{"displayName": "Sam Owner"}`), reachable only via the sprint query.
-- Existing count assertions (`{"fetched": 4, "inserted": 4, ...}`, `len(items) == 4`, the
-  state/source filters, `pulled_as_parent is True` for 104) must be re-derived, not deleted:
-  under the sprint query the mirror legitimately holds more rows. Note `_CURRENT_ITERATION`
-  is `"widgets\\Sprint 1"` while `_ITEMS` iteration paths are `"Sprint 1"`/`"Sprint 2"` —
-  align them (or make the handler's UNDER-match prefix-based) so the widened query really
-  selects something.
+- `normalize_remote_url`: ssh (`git@ssh.dev.azure.com:v3/acme/widgets/api`) and
+  https (`https://dev.azure.com/acme/widgets/_git/api`) forms of one repo compare
+  equal; trailing `.git` dropped; trailing slash dropped; embedded credentials
+  (`https://user:pat@dev.azure.com/…` and `https://acme@dev.azure.com/…`)
+  dropped; host case folded (`https://DEV.AZURE.COM/…`); a generic
+  `git@github.com:org/repo.git` also normalizes; empty/garbage input does not
+  raise.
+- `read_git_origin`: a `tmp_path` repo with a real `.git/config` returns the
+  origin; no `.git`, no `[remote "origin"]`, and a malformed config each return
+  `None`. Asserted with no subprocess in play.
+- `resolve_local_path`, all three steps, against the real test DB session:
+  stored mapping wins and no scan happens; on a miss the scan over
+  `projects_root`'s immediate children finds the repo by origin remote **and
+  persists the pair**; nothing matches → `local_path is None` with a non-empty
+  `reason`; a stored-but-vanished path falls through to the scan.
 
-New cases required:
+### Backend unit — `backend/tests/unit/test_work_prs.py` (new)
 
-1. Sprint resolves → the WIQL sent contains `[System.IterationPath] UNDER '<current
-   iteration>'` and `NOT IN ('Closed','Removed','Done')`, does **not** contain `@Me`, and an
-   item assigned to another person is persisted and returned by `GET /api/v1/work/items`.
-2. Iteration lookup raises (`teamsettings/iterations` → 500) → the WIQL sent is exactly
-   `DEFAULT_WIQL`; and the same when the lookup succeeds with `{"value": []}` (no sprint
-   covering today).
-3. An iteration path containing a single quote (e.g. `widgets\O'Brien Sprint`) → the WIQL
-   contains `UNDER 'widgets\O''Brien Sprint'`, i.e. the doubled quote, and the query is not
-   truncated/injected (assert the trailing `AND [System.State] NOT IN …` clause survives).
-4. `owner_display_name` is persisted from `connectionData` (`GET /api/v1/work/sources`
-   reports `"Felix De Lille"`), and a failing `connectionData` on a later sync keeps the
-   previously stored value while the sync itself still succeeds.
-5. An operator-set `query_wiql` still wins over the sprint query (cheap regression, add if
-   the WIQL capture makes it a two-liner).
+- `assemble_pr_prompt` includes the PR number, title, both branches and the
+  checkout instruction; includes an unresolved thread's file path, line, and
+  every comment with its author, in order; **omits** resolved threads entirely;
+  handles a PR-level (null `file_path`) thread; and always states the
+  no-push / no-DevOps rules. Also a case with zero unresolved threads.
+- `sync_pull_requests` / `sync_pr_threads` field mapping against a
+  `_FakeDevOpsClient` in the style `test_work_sync.py` already uses: the
+  `refs/heads/` prefix is stripped from both branches, `is_resolved` is derived
+  from each of `fixed`/`closed`/`wontFix`/`byDesign` (and *not* from `active`),
+  `remoteUrl` is preferred over `webUrl` with a fallback when it is absent, and
+  `threadContext` absence yields null `file_path`/`right_file_line`.
 
-**`backend/tests/unit/test_work_sync.py`** (change, required for a green `pytest` even though
-the request only names the integration file) — `_FakeDevOpsClient` needs a
-`get_authenticated_user_display_name()` (plus a failure flag) or `sync_source` raises
-`AttributeError`. `test_sync_uses_default_wiql_when_source_has_none` stays valid (that fake
-reports no iteration); add unit coverage for the escaping helper if it is exposed
-module-level.
+### Backend integration — `backend/tests/integration/test_work.py` (modify)
 
-**Frontend**
+**Do this first, before anything else in this file.** Its `_devops_handler`
+ends in `raise AssertionError(f"unexpected request: {request.url}")`, so the
+moment any code path issues a PR request every existing test in the file breaks.
+The handler learns two routes up front:
 
-- `frontend/tests/components/harness/workFixtures.ts`: add `owner_display_name` to
-  `workSource()` — default `'Alex Doe'`, the name `workItem()` already assigns — so the
-  existing `@Me` expectations hold under the new semantics (item 4900 "Ingest reliability" is
-  assigned to `'Sam Owner'` and so still drops out). Export the two names as constants
-  (e.g. `OWNER_NAME`, `OTHER_ASSIGNEE`) and add a fixture for a *sprint* item assigned to
-  another person that is **not** `pulled_as_parent` — the row only the widened sync can
-  produce.
-- `frontend/tests/components/workBacklogPage.ct.tsx`: rework
-  `'@Me drops the rows pulled only as context for someone else'` so it proves the new rule —
-  the dropped row must be excluded because `assigned_to !== owner_display_name`, not because
-  of `pulled_as_parent`; the clearest form is an item with `pulled_as_parent: false` assigned
-  to `'Sam Owner'` that @Me still hides. Add a case where the source has
-  `owner_display_name: null` and @Me therefore matches nothing. Add the required "Everyone"
-  case: with the sprint selected, the other person's non-context item is listed (and the
-  count badge reflects it) while @Me hides it. Prefer passing these rows through the per-test
-  `items:`/`sources:` overrides of `mockWork` rather than growing `workItemTree()`, so the
-  row/count assertions in the ten other tests in this file stay valid.
+- `…/_apis/git/pullrequests` → a `{"value": [...]}` list of PR payloads;
+- `…/_apis/git/repositories/{repository_id}/pullRequests/{pr_id}/threads` →
+  that PR's threads (matched on the path, so a wrong repository id is visible
+  in a test).
 
-**Gate before calling it done:** `cd backend && uv run ruff check . && uv run ruff format
---check . && uv run mypy app && uv run pytest`; `cd frontend && npm run typecheck && npm run
-lint && npm run test:ct`; and the CI `contract` job's check reproduced locally — regenerated
-`openapi.json` byte-identical to the committed one, `git diff --quiet -- src/api/generated`.
+Both are driven by new module-level fixtures (`_PRS`, `_THREADS`) and
+parameterised through `_use_devops(...)`/`_devops_handler(...)` the same way
+`iteration_path`/`owner_name` already are, including a status-code override so a
+failing PR call can be exercised. Existing assertions and counts are untouched.
+
+New cases:
+
+1. **sync then list** — `POST /work/sources/{id}/sync-prs` returns
+   `{fetched, inserted, updated}`; `GET /work/prs` returns the rows with branches
+   stripped of `refs/heads/`, `is_draft`, `created_by`, `repository_remote_url`
+   and a built `external_url`; a second sync updates without duplicating; the
+   `source_id` query scopes the list.
+2. **threads on demand, idempotent** — no thread row exists after `sync-prs`
+   alone (proving threads are not pulled per-PR on sync); `GET
+   /work/prs/{id}/threads` fetches and upserts; calling it twice leaves the row
+   count unchanged and reflects a changed upstream comment.
+3. **delegate resolves via a stored mapping** — seed `work_repo_paths` through
+   `POST /work/repo-paths`, then delegate: `resolved is true`, `local_path` is
+   the stored one, a `run_id`/`launch_id` come back, and the fake spawner
+   recorded exactly one call whose `request_text` contains the unresolved
+   comment and the "must NOT push" / "must NOT touch Azure DevOps" lines and
+   does **not** contain the resolved thread's text.
+4. **delegate resolves via a `projects_root` scan and persists what it found** —
+   `tmp_path` projects root with a folder whose `.git/config` origin is the PR's
+   remote in the *other* URL form (ssh vs https) and whose folder name differs
+   from the repo name; delegate resolves, and a subsequent `GET /work/prs` +
+   second delegate uses the now-stored mapping (asserted by removing the folder's
+   `.git/config` and delegating again successfully).
+5. **delegate unresolved launches nothing** — no mapping, empty projects root:
+   `resolved is false`, `remote_url` present, `reason` non-empty,
+   `launch_id`/`run_id`/`prompt` null, and the fake spawner recorded **zero**
+   calls.
+6. **`saveRepoPath` rejects a relative path** (400) **and a non-existent path**
+   (400); accepts an existing absolute directory and normalizes the remote
+   before storing (posting the ssh form then the https form updates one row
+   rather than creating two).
+
+Fixtures this file needs, mirroring `tests/integration/test_launcher.py`:
+a `_FakeSpawner` override of `get_launch_spawner` (no test forks a process) and
+`monkeypatch.setattr(launcher_service, "RESUME_SETTLE_SECONDS", 0)` — without
+the latter every delegate test pays a real 2-second sleep. A `projects_root`
+fixture that `PATCH /api/v1/settings` points at a `tmp_path`.
+
+### Frontend component — `frontend/tests/components/workPullRequests.ct.tsx` (new)
+
+Playwright CT in the shape `workBacklogPage.ct.tsx` already sets (a
+`page.route('**/api/v1/work/**')` handler with the CORS headers and OPTIONS
+handling that file documents, mounted through `TestProviders`). New fixtures go
+into the existing `frontend/tests/components/harness/workFixtures.ts`:
+`pullRequest()`, `prThread()`, `prComment()`, `delegateResponse()`.
+
+Cases:
+
+1. **rows render** — switching to the Pull requests tab shows the number, title,
+   repository, `source → target`, author, the draft badge and the
+   unresolved-comment count, plus a link whose `href` is `external_url`.
+2. **threads expand** — threads are only requested after the row is expanded;
+   PR-level threads come first, then file-grouped ones with their path shown;
+   comments render in order with author.
+3. **a resolved thread is de-emphasised** — present, collapsed, carrying its
+   "Resolved" marker, and not counted in the unresolved badge.
+4. **folder-picker fallback fires** — delegate returns `resolved: false`, the
+   picker opens, confirming a folder POSTs `/work/repo-paths` and the delegate is
+   retried automatically; the second (resolved) response toasts and links to the
+   run. Asserted on the recorded call list, the way that file asserts on
+   `routes.calls`.
+
+### Done gate
+
+`ruff check` + `ruff format` on the touched backend files; `mypy` (strict);
+`pytest` against the real test database; the Playwright component tests;
+`make api-check` green; and a grep proving no new `.patch(`/`.put(`/`.delete(`
+or DevOps comment POST exists anywhere under `backend/` (the existing
+`test_module_has_no_write_methods` covers the provider file itself).
 
 ## Risks
 
-- **Existing integration tests break silently-ish.** The new `connectionData` GET hits
-  `_devops_handler`'s catch-all `AssertionError`, so *every* test using `_use_devops` fails
-  until the handler is extended. Do that first.
-- **Volume.** A sprint-wide query can return far more items than an assigned-to-me one;
-  `get_work_items_batch` already chunks at 200, so the risk is UI/DB volume, not a failed
-  call. The default sprint filter on the page keeps the view scoped.
-- **`pulled_as_parent` now means less.** Items previously flagged as context can arrive
-  through the sprint query as first-class rows (`pulled_as_parent=False`). The upsert
-  overwrites the flag on the row, which is correct — but anything else keying off that flag
-  (`WorkItemTable`'s "context" badge, the start-session suppression on context rows) will
-  show fewer context rows after the change. That is the intended consequence; do not
-  compensate for it.
-- **Interpolation.** Escaping is a doubled single quote and nothing else. Do not build the
-  WIQL by f-string at the call site: keep one helper so the escape can never be bypassed, and
-  keep the docstring honest about it.
-- **Iteration-path mismatch.** DevOps returns the *full* path
-  (`widgets\2026 Q3.3`) from `get_current_iteration_path()`, while `System.IterationPath` on
-  items is also the full path — `UNDER` is prefix-semantic, so this works; but the test
-  fixtures currently mix `"widgets\\Sprint 1"` and `"Sprint 1"`, which will make a naive test
-  pass for the wrong reason.
-- **`owner_display_name` can be cleared.** A `connectionData` call that succeeds but reports
-  no display name overwrites the stored value with `NULL` (only a raised `AzureDevOpsError`
-  preserves it) — the exact same shape as `current_iteration` today, kept deliberately
-  consistent; @Me then matches nothing for that source until the next good sync.
-- **Contract drift.** `openapi.json` and the generated client are committed and CI diffs
-  them; hand-editing either, or regenerating against a backend that has not run
-  `alembic upgrade head`, fails the `contract` job.
+1. **The integration-test trap, and it has bitten before.** `_devops_handler`
+   raises `AssertionError` on any unrecognised path. If the two git routes are
+   added to the handler *after* the PR code paths exist, the whole file
+   (currently ~25 passing tests) turns red at once and the cause reads like a
+   regression in work-item sync. Mitigation: extend the handler as the very
+   first edit to that file, and run `pytest tests/integration/test_work.py`
+   before writing any new test.
+2. **The delegate launch reuses `launcher_service.launch`, which confines
+   `project_path` to `projects_root`.** A repo path saved through
+   `saveRepoPath` is only validated as "absolute + existing directory" (the
+   request's own rule), so a user can store a checkout that lives outside
+   `projects_root`; delegate will then fail with the launcher's existing
+   `ProjectPathOutsideRootError` (400). This is consistent — the factory cannot
+   run outside `projects_root` anyway — but it is a real, reachable 400 and the
+   frontend must show its message rather than swallow it. Alternative rejected:
+   bypassing `launch()` and calling `spawn_factory_run` directly, which would
+   duplicate the run-id allocation, the missing-CLI refusal and the
+   launch-row bookkeeping the request explicitly asked to reuse.
+3. **`launch()` sleeps `RESUME_SETTLE_SECONDS` (2s).** Every delegate test must
+   monkeypatch it to 0, as `test_launcher.py` does, or the suite gets slow and
+   flaky-looking.
+4. **Normalization is a guess about upstream URL shapes.** DevOps reports
+   `repository.remoteUrl` as https while a developer's checkout may use ssh, and
+   `.visualstudio.com` legacy hosts still exist. The rules above cover the forms
+   this repo can reach, but an unlisted form (e.g. an on-prem TFS host) simply
+   fails to match and falls through to the unresolved outcome — which is safe:
+   the user picks the folder once and the mapping is stored. No silent
+   mis-match, because the comparison is exact after normalization.
+5. **`external_changed_at` for a PR.** The `pullrequests` list payload has
+   `creationDate` but no dependable "last changed" field, so `creationDate` is
+   used (falling back to sync time). PR ordering is therefore by creation, not
+   by last activity. Called out so it is a decision and not a bug report later.
+6. **Prompt injection surface.** The prompt is assembled entirely from
+   DevOps-authored text. It is passed as one argv element to a `subprocess.Popen`
+   list (never a shell string), and it is data inside the prompt, but a hostile
+   PR comment could still try to talk the delegated session into doing something.
+   The explicit no-push / no-DevOps rules are in the prompt, and phase 1 adds no
+   DevOps write capability for such an instruction to reach — that is the actual
+   containment. Worth stating in the v1.40 contract section.
+7. **Scanning `projects_root` touches the filesystem on a request.** It is one
+   `listdir` plus one small file read per immediate child, only on a cache miss,
+   and the result is persisted — so the cost is paid once per remote. Reads are
+   wrapped so an unreadable child is skipped rather than 500ing the endpoint.
