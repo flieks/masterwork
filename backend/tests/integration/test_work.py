@@ -4,16 +4,19 @@ DevOps client — zero live DevOps calls."""
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import httpx
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.api.deps import get_devops_client_factory
-from app.db.models.work import WorkItemSession
+from app.api.deps import get_devops_client_factory, get_launch_spawner
+from app.api.v1.launcher import service as launcher_service
+from app.db.models.work import WorkItemSession, WorkPrThread
 from app.main import app
 from app.providers.azuredevops import AzureDevOpsClient
 
@@ -91,6 +94,60 @@ _ASSIGNED_TO_ME_IDS = (101, 103)
 _CURRENT_ITERATION = "widgets\\Sprint 1"
 _OWNER_NAME = "Felix De Lille"
 
+# One active PR, and its two review threads — one unresolved with a file/line,
+# one already fixed. Kept module-level like _ITEMS, reused across PR tests.
+_PRS: list[dict[str, object]] = [
+    {
+        "pullRequestId": 501,
+        "repository": {
+            "id": "repo-guid-1",
+            "name": "widgets-api",
+            "remoteUrl": "https://dev.azure.com/acme/widgets/_git/widgets-api",
+        },
+        "title": "Fix the retry button",
+        "description": "Handles the flaky retry case.",
+        "sourceRefName": "refs/heads/feature/retry-fix",
+        "targetRefName": "refs/heads/main",
+        "status": "active",
+        "isDraft": False,
+        "createdBy": {"displayName": "Alex Doe"},
+        "creationDate": "2026-08-10T09:00:00Z",
+    },
+]
+
+_THREADS: dict[int, list[dict[str, object]]] = {
+    501: [
+        {
+            "id": 1,
+            "status": "active",
+            "threadContext": {"filePath": "/app/main.py", "rightFileStart": {"line": 42}},
+            "comments": [
+                {
+                    "id": 1,
+                    "author": {"displayName": "Sam Reviewer"},
+                    "content": "This can throw on empty input.",
+                    "commentType": "text",
+                    "publishedDate": "2026-08-11T10:00:00Z",
+                }
+            ],
+        },
+        {
+            "id": 2,
+            "status": "fixed",
+            "threadContext": None,
+            "comments": [
+                {
+                    "id": 2,
+                    "author": {"displayName": "Alex Doe"},
+                    "content": "Already handled elsewhere.",
+                    "commentType": "text",
+                    "publishedDate": "2026-08-11T11:00:00Z",
+                }
+            ],
+        },
+    ],
+}
+
 
 @pytest.fixture(autouse=True)
 def _pat(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,9 +162,15 @@ def _devops_handler(
     iteration_status: int | None = None,
     owner_name: str | None = _OWNER_NAME,
     connection_status: int | None = None,
+    prs: list[dict[str, object]] | None = None,
+    pr_status: int | None = None,
+    threads: dict[int, list[dict[str, object]]] | None = None,
+    thread_status: int | None = None,
+    thread_requests: list[tuple[str, int]] | None = None,
 ) -> Callable[[httpx.Request], httpx.Response]:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/_apis/wit/wiql"):
+        path = request.url.path
+        if path.endswith("/_apis/wit/wiql"):
             query = json.loads(request.content)["query"]
             queries.append(query)
             if "IterationPath" in query:
@@ -120,7 +183,7 @@ def _devops_handler(
             else:
                 ids = [i for i in _ASSIGNED_TO_ME_IDS if i in items]
             return httpx.Response(200, json={"workItems": [{"id": i} for i in ids]})
-        if request.url.path.endswith("/_apis/wit/workitemsbatch"):
+        if path.endswith("/_apis/wit/workitemsbatch"):
             body = json.loads(request.content)
             value = [
                 {"id": i, "url": f"https://dev.azure.com/_apis/wit/workItems/{i}", "fields": fields}
@@ -128,16 +191,31 @@ def _devops_handler(
                 if i in body["ids"]
             ]
             return httpx.Response(200, json={"value": value})
-        if request.url.path.endswith("/_apis/work/teamsettings/iterations"):
+        if path.endswith("/_apis/work/teamsettings/iterations"):
             if iteration_status is not None:
                 return httpx.Response(iteration_status, text="teamsettings unavailable")
             values = [{"path": iteration_path}] if iteration_path else []
             return httpx.Response(200, json={"value": values})
-        if request.url.path.endswith("/_apis/connectionData"):
+        if path.endswith("/_apis/connectionData"):
             if connection_status is not None:
                 return httpx.Response(connection_status, text="connectionData unavailable")
             user = {"providerDisplayName": owner_name} if owner_name else {}
             return httpx.Response(200, json={"authenticatedUser": user})
+        if path.endswith("/_apis/git/pullrequests"):
+            if pr_status is not None:
+                return httpx.Response(pr_status, text="pull requests unavailable")
+            return httpx.Response(200, json={"value": prs or []})
+        if "/_apis/git/repositories/" in path and path.endswith("/threads"):
+            # .../repositories/{repository_id}/pullRequests/{pr_id}/threads —
+            # matched on the path, so a wrong repository id is visible in a test.
+            segments = path.split("/")
+            repository_id = segments[segments.index("repositories") + 1]
+            pr_id = int(segments[segments.index("pullRequests") + 1])
+            if thread_requests is not None:
+                thread_requests.append((repository_id, pr_id))
+            if thread_status is not None:
+                return httpx.Response(thread_status, text="threads unavailable")
+            return httpx.Response(200, json={"value": (threads or {}).get(pr_id, [])})
         raise AssertionError(f"unexpected request: {request.url}")
 
     return handler
@@ -150,6 +228,11 @@ def _use_devops(
     iteration_status: int | None = None,
     owner_name: str | None = _OWNER_NAME,
     connection_status: int | None = None,
+    prs: list[dict[str, object]] | None = None,
+    pr_status: int | None = None,
+    threads: dict[int, list[dict[str, object]]] | None = None,
+    thread_status: int | None = None,
+    thread_requests: list[tuple[str, int]] | None = None,
 ) -> list[str]:
     """Wires the fake DevOps client and returns the list every WIQL sent will
     be appended to, so a test can assert on what was actually queried."""
@@ -161,6 +244,11 @@ def _use_devops(
         iteration_status=iteration_status,
         owner_name=owner_name,
         connection_status=connection_status,
+        prs=prs,
+        pr_status=pr_status,
+        threads=threads,
+        thread_status=thread_status,
+        thread_requests=thread_requests,
     )
 
     def factory(source: object) -> AzureDevOpsClient:
@@ -182,6 +270,62 @@ async def _new_source(client: AsyncClient, project: str = "widgets") -> dict:
     )
     assert r.status_code == 201
     return r.json()
+
+
+class _FakeSpawner:
+    """Records every call instead of forking; hands back an incrementing pid.
+    Mirrors tests/integration/test_launcher.py's fixture of the same name."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(
+        self,
+        *,
+        project_path: Path,
+        request_text: str,
+        log_path: Path,
+        run_id: str | None = None,
+        interview: bool = False,
+        workflow: str | None = None,
+    ) -> int:
+        self.calls.append(
+            {
+                "project_path": project_path,
+                "request_text": request_text,
+                "log_path": log_path,
+                "run_id": run_id,
+                "interview": interview,
+                "workflow": workflow,
+            }
+        )
+        return 9000 + len(self.calls) - 1
+
+
+@pytest.fixture
+def fake_spawner() -> Iterator[_FakeSpawner]:
+    spawner = _FakeSpawner()
+    app.dependency_overrides[get_launch_spawner] = lambda: spawner
+    try:
+        yield spawner
+    finally:
+        app.dependency_overrides.pop(get_launch_spawner, None)
+
+
+@pytest.fixture(autouse=True)
+def _no_resume_settle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """delegatePullRequest reuses launcher_service.launch, which sleeps
+    RESUME_SETTLE_SECONDS after a real spawn — nothing for the fake to say."""
+    monkeypatch.setattr(launcher_service, "RESUME_SETTLE_SECONDS", 0)
+
+
+@pytest_asyncio.fixture
+async def projects_root(client: AsyncClient, tmp_path: Path) -> Path:
+    root = tmp_path / "projects"
+    root.mkdir()
+    r = await client.patch("/api/v1/settings", json={"projects_root": str(root)})
+    assert r.status_code == 200
+    return root
 
 
 # --- source CRUD + validation ------------------------------------------------
@@ -477,7 +621,264 @@ async def test_work_item_sessions_count_matches_starts(
     await client.post(f"/api/v1/work/items/{items[1]['id']}/start")
 
     async with session_factory() as db:
-        count = (
-            await db.execute(select(func.count()).select_from(WorkItemSession))
-        ).scalar()
+        count = (await db.execute(select(func.count()).select_from(WorkItemSession))).scalar()
         assert count == 2
+
+
+# --- pull requests: sync + list -------------------------------------------
+
+
+async def test_sync_prs_then_list(client: AsyncClient) -> None:
+    _use_devops(dict(_ITEMS), prs=list(_PRS))
+    source = await _new_source(client)
+
+    r = await client.post(f"/api/v1/work/sources/{source['id']}/sync-prs")
+    assert r.status_code == 200
+    assert r.json() == {"fetched": 1, "inserted": 1, "updated": 0}
+
+    prs = (await client.get("/api/v1/work/prs")).json()
+    assert len(prs) == 1
+    pr = prs[0]
+    assert pr["external_id"] == 501
+    assert pr["source_branch"] == "feature/retry-fix"
+    assert pr["target_branch"] == "main"
+    assert pr["is_draft"] is False
+    assert pr["created_by"] == "Alex Doe"
+    assert pr["repository_remote_url"] == "https://dev.azure.com/acme/widgets/_git/widgets-api"
+    assert pr["external_url"] == (
+        "https://dev.azure.com/acme/widgets/_git/widgets-api/pullrequest/501"
+    )
+
+    # a second sync updates the row rather than duplicating it
+    r2 = await client.post(f"/api/v1/work/sources/{source['id']}/sync-prs")
+    assert r2.json() == {"fetched": 1, "inserted": 0, "updated": 1}
+    assert len((await client.get("/api/v1/work/prs")).json()) == 1
+
+    # source_id scopes the list
+    other_source = await _new_source(client, "gizmos")
+    scoped = (await client.get("/api/v1/work/prs", params={"source_id": other_source["id"]})).json()
+    assert scoped == []
+
+
+async def test_sync_prs_unknown_source_404(client: AsyncClient) -> None:
+    r = await client.post("/api/v1/work/sources/00000000-0000-0000-0000-000000000000/sync-prs")
+    assert r.status_code == 404
+
+
+async def test_sync_prs_surfaces_a_devops_failure_as_502(client: AsyncClient) -> None:
+    _use_devops(dict(_ITEMS), prs=list(_PRS), pr_status=500)
+    source = await _new_source(client)
+    r = await client.post(f"/api/v1/work/sources/{source['id']}/sync-prs")
+    assert r.status_code == 502
+
+
+# --- pull requests: threads on demand --------------------------------------
+
+
+async def test_pr_threads_are_fetched_on_demand_and_idempotent(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    thread_requests: list[tuple[str, int]] = []
+    _use_devops(
+        dict(_ITEMS), prs=list(_PRS), threads=dict(_THREADS), thread_requests=thread_requests
+    )
+    source = await _new_source(client)
+    await client.post(f"/api/v1/work/sources/{source['id']}/sync-prs")
+    pr = (await client.get("/api/v1/work/prs")).json()[0]
+
+    # sync-prs alone never pulled threads — that would be one call per open PR.
+    async with session_factory() as db:
+        count = (await db.execute(select(func.count()).select_from(WorkPrThread))).scalar()
+        assert count == 0
+
+    r = await client.get(f"/api/v1/work/prs/{pr['id']}/threads")
+    assert r.status_code == 200
+    threads = r.json()
+    assert len(threads) == 2
+    assert thread_requests == [("repo-guid-1", 501)]
+
+    unresolved = next(t for t in threads if t["external_id"] == 1)
+    assert unresolved["is_resolved"] is False
+    assert unresolved["file_path"] == "/app/main.py"
+    assert unresolved["right_file_line"] == 42
+    assert unresolved["comments"] == [
+        {
+            "id": 1,
+            "author": "Sam Reviewer",
+            "content": "This can throw on empty input.",
+            "comment_type": "text",
+            "published_at": "2026-08-11T10:00:00Z",
+        }
+    ]
+    resolved = next(t for t in threads if t["external_id"] == 2)
+    assert resolved["is_resolved"] is True
+    assert resolved["file_path"] is None
+
+    # calling again upserts rather than duplicating
+    r2 = await client.get(f"/api/v1/work/prs/{pr['id']}/threads")
+    assert len(r2.json()) == 2
+    async with session_factory() as db:
+        count = (await db.execute(select(func.count()).select_from(WorkPrThread))).scalar()
+        assert count == 2
+
+
+async def test_list_pr_threads_unknown_pr_404(client: AsyncClient) -> None:
+    r = await client.get("/api/v1/work/prs/999999/threads")
+    assert r.status_code == 404
+
+
+# --- pull requests: delegate ------------------------------------------------
+
+
+async def _synced_pr(client: AsyncClient) -> dict:
+    source = await _new_source(client)
+    await client.post(f"/api/v1/work/sources/{source['id']}/sync-prs")
+    return (await client.get("/api/v1/work/prs")).json()[0]
+
+
+async def test_delegate_resolves_via_a_stored_mapping(
+    client: AsyncClient, projects_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    _use_devops(dict(_ITEMS), prs=list(_PRS), threads=dict(_THREADS))
+    pr = await _synced_pr(client)
+
+    checkout = projects_root / "my-checkout"
+    checkout.mkdir()
+    (checkout / ".git").mkdir()
+    r = await client.post(
+        "/api/v1/work/repo-paths",
+        json={"remote_url": pr["repository_remote_url"], "local_path": str(checkout)},
+    )
+    assert r.status_code == 201
+
+    r = await client.post(f"/api/v1/work/prs/{pr['id']}/delegate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["resolved"] is True
+    assert body["local_path"] == str(checkout)
+    assert body["run_id"]
+    assert body["launch_id"] is not None
+    assert body["unresolved_thread_count"] == 1
+
+    assert len(fake_spawner.calls) == 1
+    request_text = fake_spawner.calls[0]["request_text"]
+    assert "This can throw on empty input." in request_text
+    assert "Already handled elsewhere." not in request_text  # the resolved thread
+    assert "Do NOT push" in request_text
+    assert "Do NOT touch Azure DevOps" in request_text
+    assert fake_spawner.calls[0]["project_path"] == checkout
+
+
+async def test_delegate_resolves_via_a_projects_root_scan_and_persists_it(
+    client: AsyncClient, projects_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    _use_devops(dict(_ITEMS), prs=list(_PRS), threads=dict(_THREADS))
+    pr = await _synced_pr(client)
+
+    # Folder name deliberately differs from the repo name; origin is the ssh
+    # form of the PR's (https) remote — normalization must cross the forms.
+    checkout = projects_root / "my-local-name"
+    checkout.mkdir()
+    (checkout / ".git").mkdir()
+    (checkout / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git@ssh.dev.azure.com:v3/acme/widgets/widgets-api\n',
+        encoding="utf-8",
+    )
+
+    r = await client.post(f"/api/v1/work/prs/{pr['id']}/delegate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["resolved"] is True
+    assert body["local_path"] == str(checkout)
+    assert len(fake_spawner.calls) == 1
+
+    # the discovered mapping is now stored: remove the origin config and
+    # delegate again — it still resolves, via the stored mapping this time.
+    (checkout / ".git" / "config").unlink()
+    r2 = await client.post(f"/api/v1/work/prs/{pr['id']}/delegate")
+    assert r2.status_code == 200
+    assert r2.json()["resolved"] is True
+    assert r2.json()["local_path"] == str(checkout)
+    assert len(fake_spawner.calls) == 2
+
+
+async def test_delegate_unresolved_launches_nothing(
+    client: AsyncClient, projects_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    _use_devops(dict(_ITEMS), prs=list(_PRS), threads=dict(_THREADS))
+    pr = await _synced_pr(client)
+
+    r = await client.post(f"/api/v1/work/prs/{pr['id']}/delegate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["resolved"] is False
+    assert body["remote_url"] == pr["repository_remote_url"]
+    assert body["reason"]
+    assert body["local_path"] is None
+    assert body["launch_id"] is None
+    assert body["run_id"] is None
+    assert body["prompt"] is None
+    assert len(fake_spawner.calls) == 0
+
+
+async def test_delegate_unknown_pr_404(
+    client: AsyncClient, projects_root: Path, fake_spawner: _FakeSpawner
+) -> None:
+    r = await client.post("/api/v1/work/prs/999999/delegate")
+    assert r.status_code == 404
+
+
+# --- repo paths -------------------------------------------------------------
+
+
+async def test_save_repo_path_rejects_a_relative_path(client: AsyncClient) -> None:
+    r = await client.post(
+        "/api/v1/work/repo-paths",
+        json={
+            "remote_url": "https://dev.azure.com/acme/widgets/_git/api",
+            "local_path": "relative/path",
+        },
+    )
+    assert r.status_code == 400
+
+
+async def test_save_repo_path_rejects_a_nonexistent_path(
+    client: AsyncClient, tmp_path: Path
+) -> None:
+    r = await client.post(
+        "/api/v1/work/repo-paths",
+        json={
+            "remote_url": "https://dev.azure.com/acme/widgets/_git/api",
+            "local_path": str(tmp_path / "does-not-exist"),
+        },
+    )
+    assert r.status_code == 400
+
+
+async def test_save_repo_path_accepts_and_normalizes_across_url_forms(
+    client: AsyncClient, tmp_path: Path
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+
+    r = await client.post(
+        "/api/v1/work/repo-paths",
+        json={
+            "remote_url": "git@ssh.dev.azure.com:v3/acme/widgets/api",
+            "local_path": str(checkout),
+        },
+    )
+    assert r.status_code == 201
+    row_id = r.json()["id"]
+    assert r.json()["remote_url"] == "https://dev.azure.com/acme/widgets/_git/api"
+
+    # posting the https form of the same repo updates the one row, not a second
+    r2 = await client.post(
+        "/api/v1/work/repo-paths",
+        json={
+            "remote_url": "https://dev.azure.com/acme/widgets/_git/api",
+            "local_path": str(checkout),
+        },
+    )
+    assert r2.status_code == 201
+    assert r2.json()["id"] == row_id

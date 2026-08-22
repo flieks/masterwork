@@ -8,7 +8,7 @@ columns are `uuid.UUID`, and Pydantic v2 does not coerce UUID to `str` for a
 from __future__ import annotations
 
 from app.api.v1.work import schemas
-from app.db.models.work import WorkItem, WorkSource
+from app.db.models.work import WorkItem, WorkPrThread, WorkPullRequest, WorkRepoPath, WorkSource
 
 
 def work_source_to_schema(source: WorkSource) -> schemas.WorkSource:
@@ -47,4 +47,48 @@ def work_item_to_schema(item: WorkItem) -> schemas.WorkItem:
         tags=list(item.tags) if item.tags is not None else None,
         external_changed_at=item.external_changed_at,
         synced_at=item.synced_at,
+    )
+
+
+def work_pr_to_schema(pr: WorkPullRequest) -> schemas.WorkPullRequest:
+    return schemas.WorkPullRequest(
+        id=pr.id,
+        source_id=str(pr.source_id),
+        external_id=pr.external_id,
+        repository_id=pr.repository_id,
+        repository_name=pr.repository_name,
+        repository_remote_url=pr.repository_remote_url,
+        title=pr.title,
+        description=pr.description,
+        source_branch=pr.source_branch,
+        target_branch=pr.target_branch,
+        status=pr.status,
+        is_draft=pr.is_draft,
+        created_by=pr.created_by,
+        external_url=pr.external_url,
+        external_changed_at=pr.external_changed_at,
+        synced_at=pr.synced_at,
+    )
+
+
+def work_pr_thread_to_schema(thread: WorkPrThread) -> schemas.WorkPrThread:
+    return schemas.WorkPrThread(
+        id=thread.id,
+        pull_request_id=thread.pull_request_id,
+        external_id=thread.external_id,
+        status=thread.status,
+        is_resolved=thread.is_resolved,
+        file_path=thread.file_path,
+        right_file_line=thread.right_file_line,
+        comments=[schemas.WorkPrThreadComment(**c) for c in thread.comments],
+        synced_at=thread.synced_at,
+    )
+
+
+def work_repo_path_to_schema(repo_path: WorkRepoPath) -> schemas.WorkRepoPath:
+    return schemas.WorkRepoPath(
+        id=repo_path.id,
+        remote_url=repo_path.remote_url,
+        local_path=repo_path.local_path,
+        created_at=repo_path.created_at,
     )

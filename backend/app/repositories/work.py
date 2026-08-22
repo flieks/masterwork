@@ -9,7 +9,14 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.work import WorkItem, WorkItemSession, WorkSource
+from app.db.models.work import (
+    WorkItem,
+    WorkItemSession,
+    WorkPrThread,
+    WorkPullRequest,
+    WorkRepoPath,
+    WorkSource,
+)
 
 
 async def create_source(
@@ -84,9 +91,7 @@ async def upsert_item(
     dialect-specific ON CONFLICT, so this runs identically on SQLite and
     Postgres. Returns True when a new row was inserted, False on update."""
     result = await db.execute(
-        select(WorkItem).where(
-            WorkItem.source_id == source_id, WorkItem.external_id == external_id
-        )
+        select(WorkItem).where(WorkItem.source_id == source_id, WorkItem.external_id == external_id)
     )
     item = result.scalar_one_or_none()
     if item is None:
@@ -141,3 +146,169 @@ async def create_item_session(
     await db.flush()
     await db.refresh(link)
     return link
+
+
+# --- pull requests -----------------------------------------------------
+
+
+async def list_prs(db: AsyncSession, *, source_id: uuid.UUID | None) -> list[WorkPullRequest]:
+    query = select(WorkPullRequest)
+    if source_id is not None:
+        query = query.where(WorkPullRequest.source_id == source_id)
+    result = await db.execute(query.order_by(WorkPullRequest.external_changed_at.desc()))
+    return list(result.scalars().all())
+
+
+async def get_pr(db: AsyncSession, pr_id: int) -> WorkPullRequest | None:
+    return await db.get(WorkPullRequest, pr_id)
+
+
+async def upsert_pr(
+    db: AsyncSession,
+    *,
+    source_id: uuid.UUID,
+    external_id: int,
+    repository_id: str,
+    repository_name: str,
+    repository_remote_url: str,
+    title: str,
+    description: str,
+    source_branch: str,
+    target_branch: str,
+    status: str,
+    is_draft: bool,
+    created_by: str | None,
+    external_url: str,
+    raw: dict[str, Any],
+    external_changed_at: datetime,
+    synced_at: datetime,
+) -> bool:
+    """Select-then-insert-or-update on (source_id, external_id), same shape as
+    `upsert_item`. Returns True when a new row was inserted, False on update."""
+    result = await db.execute(
+        select(WorkPullRequest).where(
+            WorkPullRequest.source_id == source_id, WorkPullRequest.external_id == external_id
+        )
+    )
+    pr = result.scalar_one_or_none()
+    if pr is None:
+        db.add(
+            WorkPullRequest(
+                source_id=source_id,
+                external_id=external_id,
+                repository_id=repository_id,
+                repository_name=repository_name,
+                repository_remote_url=repository_remote_url,
+                title=title,
+                description=description,
+                source_branch=source_branch,
+                target_branch=target_branch,
+                status=status,
+                is_draft=is_draft,
+                created_by=created_by,
+                external_url=external_url,
+                raw=raw,
+                external_changed_at=external_changed_at,
+                synced_at=synced_at,
+            )
+        )
+        await db.flush()
+        return True
+
+    pr.repository_id = repository_id
+    pr.repository_name = repository_name
+    pr.repository_remote_url = repository_remote_url
+    pr.title = title
+    pr.description = description
+    pr.source_branch = source_branch
+    pr.target_branch = target_branch
+    pr.status = status
+    pr.is_draft = is_draft
+    pr.created_by = created_by
+    pr.external_url = external_url
+    pr.raw = raw
+    pr.external_changed_at = external_changed_at
+    pr.synced_at = synced_at
+    await db.flush()
+    return False
+
+
+async def list_pr_threads(db: AsyncSession, pull_request_id: int) -> list[WorkPrThread]:
+    result = await db.execute(
+        select(WorkPrThread)
+        .where(WorkPrThread.pull_request_id == pull_request_id)
+        .order_by(WorkPrThread.external_id)
+    )
+    return list(result.scalars().all())
+
+
+async def upsert_pr_thread(
+    db: AsyncSession,
+    *,
+    pull_request_id: int,
+    external_id: int,
+    status: str | None,
+    is_resolved: bool,
+    file_path: str | None,
+    right_file_line: int | None,
+    comments: list[dict[str, Any]],
+    raw: dict[str, Any],
+    synced_at: datetime,
+) -> bool:
+    """Select-then-insert-or-update on (pull_request_id, external_id)."""
+    result = await db.execute(
+        select(WorkPrThread).where(
+            WorkPrThread.pull_request_id == pull_request_id,
+            WorkPrThread.external_id == external_id,
+        )
+    )
+    thread = result.scalar_one_or_none()
+    if thread is None:
+        db.add(
+            WorkPrThread(
+                pull_request_id=pull_request_id,
+                external_id=external_id,
+                status=status,
+                is_resolved=is_resolved,
+                file_path=file_path,
+                right_file_line=right_file_line,
+                comments=comments,
+                raw=raw,
+                synced_at=synced_at,
+            )
+        )
+        await db.flush()
+        return True
+
+    thread.status = status
+    thread.is_resolved = is_resolved
+    thread.file_path = file_path
+    thread.right_file_line = right_file_line
+    thread.comments = comments
+    thread.raw = raw
+    thread.synced_at = synced_at
+    await db.flush()
+    return False
+
+
+# --- repo paths ----------------------------------------------------------
+
+
+async def get_repo_path(db: AsyncSession, remote_url: str) -> WorkRepoPath | None:
+    result = await db.execute(select(WorkRepoPath).where(WorkRepoPath.remote_url == remote_url))
+    return result.scalar_one_or_none()
+
+
+async def upsert_repo_path(db: AsyncSession, *, remote_url: str, local_path: str) -> WorkRepoPath:
+    """Select-then-insert-or-update on the normalized remote_url — a re-save
+    of an already-known remote updates the path rather than duplicating."""
+    existing = await get_repo_path(db, remote_url)
+    if existing is None:
+        row = WorkRepoPath(remote_url=remote_url, local_path=local_path)
+        db.add(row)
+        await db.flush()
+        await db.refresh(row)
+        return row
+    existing.local_path = local_path
+    await db.flush()
+    return existing

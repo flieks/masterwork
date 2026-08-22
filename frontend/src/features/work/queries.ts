@@ -1,9 +1,14 @@
-import { atomWithStorage } from 'jotai/utils';
+import { atomFamily, atomWithStorage } from 'jotai/utils';
 import { atomWithMutation, atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
 import { api, WORK_SYNC_TIMEOUT_MS } from '~/api/client';
 import type {
+  PullRequestDelegateResponse,
   WorkItem,
   WorkItemStartResponse,
+  WorkPrThread,
+  WorkPullRequest,
+  WorkRepoPath,
+  WorkRepoPathCreateRequest,
   WorkSource,
   WorkSourceCreateRequest,
   WorkSyncResult,
@@ -92,4 +97,55 @@ export function sourceLabel(source: WorkSource): string {
  */
 export function isHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
+}
+
+// --- pull requests ---------------------------------------------------------
+
+export const WORK_PRS_QUERY_KEY = ['workPullRequests'];
+
+export const pullRequestsQueryAtom = atomWithQuery(() => ({
+  queryKey: WORK_PRS_QUERY_KEY,
+  queryFn: async (): Promise<WorkPullRequest[]> => (await api.work.listPullRequests()).data,
+}));
+
+/** One query per PR, so threads are only fetched once its row is expanded. */
+export const prThreadsQueryAtom = atomFamily((prId: number) =>
+  atomWithQuery(() => ({
+    queryKey: ['workPullRequestThreads', prId],
+    queryFn: async (): Promise<WorkPrThread[]> =>
+      (await api.work.listPullRequestThreads(prId)).data,
+  })),
+);
+
+export const syncPullRequestsMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (sourceId: string): Promise<WorkSyncResult> =>
+    api.work.syncPullRequests(sourceId, { timeout: WORK_SYNC_TIMEOUT_MS }).then((r) => r.data),
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: WORK_PRS_QUERY_KEY }),
+}));
+
+export const delegatePullRequestMutationAtom = atomWithMutation<
+  PullRequestDelegateResponse,
+  number
+>((get) => ({
+  mutationFn: (prId: number): Promise<PullRequestDelegateResponse> =>
+    api.work.delegatePullRequest(prId).then((r) => r.data),
+  onSuccess: (_data, prId) => {
+    // The delegate call refreshed the PR's threads server-side.
+    get(queryClientAtom).invalidateQueries({ queryKey: ['workPullRequestThreads', prId] });
+  },
+}));
+
+export const saveRepoPathMutationAtom = atomWithMutation(() => ({
+  mutationFn: (body: WorkRepoPathCreateRequest): Promise<WorkRepoPath> =>
+    api.work.saveRepoPath(body).then((r) => r.data),
+}));
+
+/** Threads that count against a PR's unresolved badge: not resolved, and say something. */
+export function unresolvedThreadCount(threads: WorkPrThread[]): number {
+  return threads.filter((t) => !t.is_resolved && t.comments.length > 0).length;
+}
+
+/** "feature/x → main" */
+export function prBranchLabel(pr: WorkPullRequest): string {
+  return `${pr.source_branch} → ${pr.target_branch}`;
 }

@@ -1,5 +1,5 @@
-"""Azure DevOps work-item mirror: registered sources, the items pulled from
-them, and the coding sessions requested for one.
+"""Azure DevOps work-item mirror: registered sources, the items and pull
+requests pulled from them, and the coding sessions requested for one.
 
 Read-only inbound. Nothing in this app writes back to DevOps (see
 app/providers/azuredevops.py and app/services/work_outbound.py), and
@@ -106,6 +106,91 @@ class WorkItem(Base):
         # The list endpoint filters on exactly this pair.
         Index("ix_work_items_source_state", "source_id", "state"),
     )
+
+
+class WorkPullRequest(Base):
+    """One mirrored DevOps pull request, upserted on (source_id, external_id).
+
+    `repository_remote_url` is the join key `delegatePullRequest` resolves to a
+    local checkout via app/services/repo_paths.py — normalized before comparison,
+    never the repository name (the local folder is often named differently).
+    """
+
+    __tablename__ = "work_pull_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("work_sources.id", ondelete="CASCADE")
+    )
+    external_id: Mapped[int] = mapped_column(Integer)
+    repository_id: Mapped[str] = mapped_column(String(200))
+    repository_name: Mapped[str] = mapped_column(String(300))
+    repository_remote_url: Mapped[str] = mapped_column(String(1000))
+    title: Mapped[str] = mapped_column(Text)
+    # DevOps sends plain text here, not HTML — stored verbatim, never rendered as HTML/markdown.
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    source_branch: Mapped[str] = mapped_column(String(500))
+    target_branch: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(50))
+    is_draft: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    created_by: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    external_url: Mapped[str] = mapped_column(String(1000))
+    # The untouched DevOps payload — untrusted external data: stored, placed
+    # into the delegate prompt as data, never executed or eval'd.
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONColumn)
+    external_changed_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    synced_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_id", name="uq_work_prs_source_external"),
+    )
+
+
+class WorkPrThread(Base):
+    """One PR review thread, upserted on (pull_request_id, external_id).
+
+    Fetched on demand (per PR), not on bulk PR sync — see app/services/work_prs.py.
+    """
+
+    __tablename__ = "work_pr_threads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    pull_request_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("work_pull_requests.id", ondelete="CASCADE")
+    )
+    external_id: Mapped[int] = mapped_column(Integer)
+    # Absent on some system threads.
+    status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Null for a PR-level thread (no threadContext).
+    file_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    right_file_line: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # [{id, author, content, comment_type, published_at}, ...] in DevOps order —
+    # untrusted external data, rendered as plain text only.
+    comments: Mapped[list[dict[str, Any]]] = mapped_column(JSONColumn)
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONColumn)
+    synced_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+    __table_args__ = (
+        UniqueConstraint("pull_request_id", "external_id", name="uq_work_pr_threads_pr_external"),
+    )
+
+
+class WorkRepoPath(Base):
+    """Remote-to-folder memory for `delegatePullRequest`.
+
+    Keyed on the NORMALIZED remote URL, never the repository name — a local
+    checkout is frequently named something else. See app/services/repo_paths.py.
+    """
+
+    __tablename__ = "work_repo_paths"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    remote_url: Mapped[str] = mapped_column(String(1000))
+    local_path: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("remote_url", name="uq_work_repo_paths_remote"),)
 
 
 class WorkItemSession(Base):

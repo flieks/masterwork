@@ -3025,3 +3025,111 @@ GET /coding-sessions?status=waiting_input     // matches the derived status
   with an opt-in desktop notification the first time a run goes blocked.
 - **DB**: `coding_sessions.awaiting_input_since`, nullable timestamptz, Alembic
   `0027_coding_awaiting_input` on `0026_launch_checks_run`.
+
+# API Contract v1.40 — pull requests, their review comments, and a session sent to fix them
+
+Additive on top of v1.39. The work surface mirrored work items but stopped at
+the point the work becomes a pull request: review comments lived only in the
+DevOps web UI, and getting one fixed meant reading it there, finding the right
+checkout, and retyping the comment as a prompt. This turns the PR and its
+threads into rows masterwork holds, and makes "fix these comments" one button.
+
+**Read-only, still.** Nothing here writes to Azure DevOps. Replying to a comment
+and resolving a thread are a later, separately-approved change; the delegate
+prompt tells the session so in as many words.
+
+## New endpoints
+
+```
+GET  /api/v1/work/prs?source_id=            listPullRequests       -> WorkPullRequest[]
+POST /api/v1/work/sources/{id}/sync-prs     syncPullRequests       -> WorkSyncResult
+GET  /api/v1/work/prs/{pr_id}/threads       listPullRequestThreads -> WorkPrThread[]
+POST /api/v1/work/prs/{pr_id}/delegate      delegatePullRequest    -> PullRequestDelegateResponse
+POST /api/v1/work/repo-paths                saveRepoPath           -> WorkRepoPath (201)
+```
+
+## New schemas
+
+```
+WorkPullRequest {
+  id, source_id, external_id,                  // external_id is DevOps' pullRequestId
+  repository_id, repository_name,
+  repository_remote_url,                       // the join key, never the name
+  title, description,
+  source_branch, target_branch,                // refs/heads/ stripped
+  status, is_draft, created_by: string | null,
+  external_url, external_changed_at, synced_at,
+}
+
+WorkPrThread {
+  id, pull_request_id, external_id,
+  status: string | null,                       // absent on some system threads
+  is_resolved: boolean,                        // derived, see below
+  file_path: string | null,                    // null on a PR-level thread
+  right_file_line: number | null,
+  comments: WorkPrThreadComment[], synced_at,
+}
+
+WorkPrThreadComment { id, author, content, comment_type, published_at }   // all nullable but content
+
+WorkRepoPath { id, remote_url, local_path, created_at }
+WorkRepoPathCreateRequest { remote_url, local_path }
+
+PullRequestDelegateResponse {
+  resolved: boolean,                           // false means nothing was launched
+  remote_url, local_path: string | null,
+  reason: string | null,                       // set exactly when resolved is false
+  launch_id: number | null, run_id: string | null,
+  prompt: string | null, unresolved_thread_count: number,
+}
+```
+
+## Behavior
+
+- **PRs sync in bulk, threads on demand.** `sync-prs` pulls the source's active
+  PRs and upserts on `(source_id, external_id)`, exactly like work items. Threads
+  are fetched per PR when `listPullRequestThreads` is called, because a bulk sync
+  would be one HTTP round trip per open PR to fill a panel nobody opened. The
+  frontend follows the same rule: a collapsed PR row issues no thread request.
+- **`is_resolved` is derived, not reported.** DevOps has no boolean here, only a
+  `status` string; `fixed`, `closed`, `wontFix` and `byDesign` all count as
+  resolved, anything else does not. A thread with no comments is a system marker
+  and never counts toward the unresolved badge.
+- **A repository is matched by its remote, never by its name.** A local folder is
+  routinely named differently from the DevOps repository, and DevOps reports one
+  repository under several URL forms (ssh clone, https clone, the API's own
+  `remoteUrl`). `repo_paths.normalize_remote_url` drops userinfo and any embedded
+  PAT, rewrites ssh — including Azure's `v3/{org}/{project}/{repo}` form — to the
+  https shape, lowercases the host, and drops a trailing `/` or `.git`, so both
+  forms of one repo land on one key.
+- **Resolution is three steps, and it learns.** Stored mapping → scan of
+  `projects_root`'s immediate subfolders by their git origin → unresolved. The
+  origin is read out of `.git/config` with `configparser`; nothing shells out to
+  `git`. A scan hit is written to `work_repo_paths` before it is returned, so the
+  next delegate for that remote is a stored hit. A stored path that no longer
+  exists on disk is treated as a miss, which lets a moved checkout self-heal via
+  the scan.
+- **Unresolved is a normal answer, not an error.** `delegatePullRequest` returns
+  `200` with `resolved: false` and a `reason` naming the root it searched. The
+  frontend opens the shared `FolderPickerDialog`, `saveRepoPath` records the
+  choice against the normalized remote, and the delegate is retried
+  automatically — so a repository outside `projects_root` is picked once, ever,
+  and every later PR on that remote resolves from the mapping.
+- **The prompt carries the comments, and the limits.** `assemble_pr_prompt`
+  writes the PR identity, a "check out this branch first" line, and only the
+  unresolved threads (resolved ones and comment-less ones are skipped), each
+  under its `file:line` heading. It closes with the rules in plain words: address
+  every comment, run the repo's own checks, do **not** push, and do **not** touch
+  DevOps. The launch itself reuses `launcher_service.launch` — the one spawn path
+  — so a PR run is an ordinary factory run and appears in the runs list as one.
+- **DevOps text is data.** PR titles, descriptions and comment bodies are stored
+  verbatim and rendered as plain text — never as markdown or HTML, and never
+  executed — matching how work-item descriptions have been handled since v1.20.
+- **Frontend**: `Work` gains a `Backlog` / `Pull requests` tab pair driven by
+  `?view=`, the same URL pattern the sessions list uses. A PR row expands to its
+  threads grouped by file (PR-level threads first), resolved threads folded away
+  and de-emphasised, and carries an unresolved count once opened. `Fix comments`
+  is the delegate button.
+- **DB**: three additive tables — `work_pull_requests`, `work_pr_threads`,
+  `work_repo_paths` — Alembic `0028_work_pull_requests` on
+  `0027_coding_awaiting_input`.

@@ -256,7 +256,8 @@ def context_samples(path: str) -> list[dict[str, Any]]:
                     for block in _content_blocks(message):
                         if not isinstance(block, dict) or block.get("type") != "tool_result":
                             continue
-                        name = tool_names.get(block.get("tool_use_id"))
+                        use_id = block.get("tool_use_id")
+                        name = tool_names.get(use_id) if isinstance(use_id, str) else None
                         if name:  # an id that resolves to nothing is skipped, never invented
                             pending[is_sidechain].append(name)
                     continue

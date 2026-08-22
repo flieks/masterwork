@@ -3344,6 +3344,232 @@
                     }
                 }
             }
+        },
+        "/api/v1/work/prs": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Pull Requests",
+                "operationId": "listPullRequests",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Scope to one registered source.",
+                            "title": "Source Id"
+                        },
+                        "description": "Scope to one registered source."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkPullRequest"
+                                    },
+                                    "title": "Response Listpullrequests"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/sources/{source_id}/sync-prs": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Sync Pull Requests",
+                "operationId": "syncPullRequests",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Source Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkSyncResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/prs/{pr_id}/threads": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Pull Request Threads",
+                "operationId": "listPullRequestThreads",
+                "parameters": [
+                    {
+                        "name": "pr_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Pr Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkPrThread"
+                                    },
+                                    "title": "Response Listpullrequestthreads"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/prs/{pr_id}/delegate": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Delegate Pull Request",
+                "operationId": "delegatePullRequest",
+                "parameters": [
+                    {
+                        "name": "pr_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Pr Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PullRequestDelegateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/repo-paths": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Save Repo Path",
+                "operationId": "saveRepoPath",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/WorkRepoPathCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkRepoPath"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -7996,6 +8222,91 @@
                 ],
                 "title": "ProposalStatus"
             },
+            "PullRequestDelegateResponse": {
+                "properties": {
+                    "resolved": {
+                        "type": "boolean",
+                        "title": "Resolved",
+                        "description": "False means nothing was launched."
+                    },
+                    "remote_url": {
+                        "type": "string",
+                        "title": "Remote Url",
+                        "description": "The PR's repository_remote_url, as stored."
+                    },
+                    "local_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Local Path"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason",
+                        "description": "Set exactly when resolved is false."
+                    },
+                    "launch_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Launch Id"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id"
+                    },
+                    "prompt": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Prompt",
+                        "description": "What the launched session received."
+                    },
+                    "unresolved_thread_count": {
+                        "type": "integer",
+                        "title": "Unresolved Thread Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "resolved",
+                    "remote_url",
+                    "local_path",
+                    "launch_id",
+                    "run_id",
+                    "unresolved_thread_count"
+                ],
+                "title": "PullRequestDelegateResponse"
+            },
             "RoleStat": {
                 "properties": {
                     "role": {
@@ -9269,6 +9580,299 @@
                     "link_id"
                 ],
                 "title": "WorkItemStartResponse"
+            },
+            "WorkPrThread": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "pull_request_id": {
+                        "type": "integer",
+                        "title": "Pull Request Id"
+                    },
+                    "external_id": {
+                        "type": "integer",
+                        "title": "External Id",
+                        "description": "DevOps thread id."
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status"
+                    },
+                    "is_resolved": {
+                        "type": "boolean",
+                        "title": "Is Resolved",
+                        "description": "Derived from status being fixed/closed/wontFix/byDesign."
+                    },
+                    "file_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "File Path",
+                        "description": "Null for a PR-level thread."
+                    },
+                    "right_file_line": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Right File Line"
+                    },
+                    "comments": {
+                        "items": {
+                            "$ref": "#/components/schemas/WorkPrThreadComment"
+                        },
+                        "type": "array",
+                        "title": "Comments"
+                    },
+                    "synced_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Synced At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "pull_request_id",
+                    "external_id",
+                    "status",
+                    "is_resolved",
+                    "file_path",
+                    "right_file_line",
+                    "comments",
+                    "synced_at"
+                ],
+                "title": "WorkPrThread"
+            },
+            "WorkPrThreadComment": {
+                "properties": {
+                    "id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Id"
+                    },
+                    "author": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Author"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    },
+                    "comment_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Comment Type"
+                    },
+                    "published_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Published At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "author",
+                    "content",
+                    "comment_type",
+                    "published_at"
+                ],
+                "title": "WorkPrThreadComment"
+            },
+            "WorkPullRequest": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "title": "Source Id"
+                    },
+                    "external_id": {
+                        "type": "integer",
+                        "title": "External Id",
+                        "description": "DevOps pullRequestId."
+                    },
+                    "repository_id": {
+                        "type": "string",
+                        "title": "Repository Id"
+                    },
+                    "repository_name": {
+                        "type": "string",
+                        "title": "Repository Name"
+                    },
+                    "repository_remote_url": {
+                        "type": "string",
+                        "title": "Repository Remote Url",
+                        "description": "What delegatePullRequest resolves to a local checkout."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "source_branch": {
+                        "type": "string",
+                        "title": "Source Branch",
+                        "description": "refs/heads/ prefix stripped."
+                    },
+                    "target_branch": {
+                        "type": "string",
+                        "title": "Target Branch",
+                        "description": "refs/heads/ prefix stripped."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "DevOps status, e.g. \"active\"."
+                    },
+                    "is_draft": {
+                        "type": "boolean",
+                        "title": "Is Draft"
+                    },
+                    "created_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created By"
+                    },
+                    "external_url": {
+                        "type": "string",
+                        "title": "External Url"
+                    },
+                    "external_changed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "External Changed At"
+                    },
+                    "synced_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Synced At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "source_id",
+                    "external_id",
+                    "repository_id",
+                    "repository_name",
+                    "repository_remote_url",
+                    "title",
+                    "description",
+                    "source_branch",
+                    "target_branch",
+                    "status",
+                    "is_draft",
+                    "created_by",
+                    "external_url",
+                    "external_changed_at",
+                    "synced_at"
+                ],
+                "title": "WorkPullRequest"
+            },
+            "WorkRepoPath": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "remote_url": {
+                        "type": "string",
+                        "title": "Remote Url",
+                        "description": "The normalized remote \u2014 the key, not the name."
+                    },
+                    "local_path": {
+                        "type": "string",
+                        "title": "Local Path"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "remote_url",
+                    "local_path",
+                    "created_at"
+                ],
+                "title": "WorkRepoPath"
+            },
+            "WorkRepoPathCreateRequest": {
+                "properties": {
+                    "remote_url": {
+                        "type": "string",
+                        "title": "Remote Url"
+                    },
+                    "local_path": {
+                        "type": "string",
+                        "title": "Local Path",
+                        "description": "Absolute path to an existing directory."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "remote_url",
+                    "local_path"
+                ],
+                "title": "WorkRepoPathCreateRequest"
             },
             "WorkSource": {
                 "properties": {

@@ -160,6 +160,16 @@ class WorkItemNotFoundError(DomainError):
     status_code = 404
 
 
+class PullRequestNotFoundError(DomainError):
+    status_code = 404
+
+
+class InvalidRepoPathError(DomainError):
+    """A repo path was relative, nonexistent, or not a directory."""
+
+    status_code = 400
+
+
 class InvalidWorkSourceError(DomainError):
     status_code = 400
 

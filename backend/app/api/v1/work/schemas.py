@@ -69,3 +69,69 @@ class WorkItemStartResponse(BaseModel):
     )
     session_id: str | None = Field(..., description="Null until a launched session is linked.")
     link_id: int = Field(..., description="The work_item_sessions row id.")
+
+
+class WorkPullRequest(BaseModel):
+    id: int
+    source_id: str
+    external_id: int = Field(..., description="DevOps pullRequestId.")
+    repository_id: str
+    repository_name: str
+    repository_remote_url: str = Field(
+        ..., description="What delegatePullRequest resolves to a local checkout."
+    )
+    title: str
+    description: str
+    source_branch: str = Field(..., description="refs/heads/ prefix stripped.")
+    target_branch: str = Field(..., description="refs/heads/ prefix stripped.")
+    status: str = Field(..., description='DevOps status, e.g. "active".')
+    is_draft: bool
+    created_by: str | None
+    external_url: str
+    external_changed_at: datetime
+    synced_at: datetime
+
+
+class WorkPrThreadComment(BaseModel):
+    id: int | None
+    author: str | None
+    content: str
+    comment_type: str | None
+    published_at: str | None
+
+
+class WorkPrThread(BaseModel):
+    id: int
+    pull_request_id: int
+    external_id: int = Field(..., description="DevOps thread id.")
+    status: str | None
+    is_resolved: bool = Field(
+        ..., description="Derived from status being fixed/closed/wontFix/byDesign."
+    )
+    file_path: str | None = Field(..., description="Null for a PR-level thread.")
+    right_file_line: int | None
+    comments: list[WorkPrThreadComment]
+    synced_at: datetime
+
+
+class WorkRepoPath(BaseModel):
+    id: int
+    remote_url: str = Field(..., description="The normalized remote — the key, not the name.")
+    local_path: str
+    created_at: datetime
+
+
+class WorkRepoPathCreateRequest(BaseModel):
+    remote_url: str
+    local_path: str = Field(..., description="Absolute path to an existing directory.")
+
+
+class PullRequestDelegateResponse(BaseModel):
+    resolved: bool = Field(..., description="False means nothing was launched.")
+    remote_url: str = Field(..., description="The PR's repository_remote_url, as stored.")
+    local_path: str | None
+    reason: str | None = Field(None, description="Set exactly when resolved is false.")
+    launch_id: int | None
+    run_id: str | None
+    prompt: str | None = Field(None, description="What the launched session received.")
+    unresolved_thread_count: int

@@ -1,4 +1,12 @@
-import type { WorkItem, WorkItemStartResponse, WorkSource } from '~/api/generated';
+import type {
+  PullRequestDelegateResponse,
+  WorkItem,
+  WorkItemStartResponse,
+  WorkPrThread,
+  WorkPrThreadComment,
+  WorkPullRequest,
+  WorkSource,
+} from '~/api/generated';
 
 export const SOURCE_ID = '6f3b2c1a-0d4e-4a9b-8c77-1f2e3d4c5b6a';
 
@@ -153,6 +161,70 @@ export function startResponse(
     launched: false,
     session_id: null,
     link_id: 77,
+    ...overrides,
+  };
+}
+
+export function pullRequest(overrides: Partial<WorkPullRequest> = {}): WorkPullRequest {
+  return {
+    id: 1,
+    source_id: SOURCE_ID,
+    external_id: 501,
+    repository_id: 'repo-guid-1',
+    repository_name: 'widgets-api',
+    repository_remote_url: 'https://dev.azure.com/acme/widgets/_git/widgets-api',
+    title: 'Fix the retry button',
+    description: 'Handles the flaky retry case.',
+    source_branch: 'feature/retry-fix',
+    target_branch: 'main',
+    status: 'active',
+    is_draft: false,
+    created_by: 'Alex Doe',
+    external_url: 'https://dev.azure.com/acme/widgets/_git/widgets-api/pullrequest/501',
+    external_changed_at: '2026-08-10T09:00:00Z',
+    synced_at: '2026-08-13T09:15:00Z',
+    ...overrides,
+  };
+}
+
+export function prComment(overrides: Partial<WorkPrThreadComment> = {}): WorkPrThreadComment {
+  return {
+    id: 1,
+    author: 'Sam Reviewer',
+    content: 'This can throw on empty input.',
+    comment_type: 'text',
+    published_at: '2026-08-11T10:00:00Z',
+    ...overrides,
+  };
+}
+
+export function prThread(overrides: Partial<WorkPrThread> = {}): WorkPrThread {
+  return {
+    id: 1,
+    pull_request_id: 1,
+    external_id: 1,
+    status: 'active',
+    is_resolved: false,
+    file_path: '/app/main.py',
+    right_file_line: 42,
+    comments: [prComment()],
+    synced_at: '2026-08-13T09:15:00Z',
+    ...overrides,
+  };
+}
+
+export function delegateResponse(
+  overrides: Partial<PullRequestDelegateResponse> = {},
+): PullRequestDelegateResponse {
+  return {
+    resolved: true,
+    remote_url: 'https://dev.azure.com/acme/widgets/_git/widgets-api',
+    local_path: '/Users/dev/projects/widgets-api',
+    reason: null,
+    launch_id: 12,
+    run_id: 'run-abc123',
+    prompt: 'Pull request #501: Fix the retry button',
+    unresolved_thread_count: 1,
     ...overrides,
   };
 }

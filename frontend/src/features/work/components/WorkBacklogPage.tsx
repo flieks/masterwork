@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useAtom } from 'jotai';
+import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Inbox, SearchX } from 'lucide-react';
 import type { WorkItem } from '~/api/generated';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Skeleton } from '~/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
 import { toast } from '~/components/ui/sonner';
 import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
@@ -15,6 +17,7 @@ import {
   countNodes,
   filterWorkItemTree,
   hasActiveFilters,
+  pullRequestsQueryAtom,
   sprintOptions,
   startWorkItemMutationAtom,
   workFilterSelectionAtom,
@@ -24,6 +27,7 @@ import {
   type WorkItemFilters,
 } from '../queries';
 import { NewWorkSourceForm } from './NewWorkSourceForm';
+import { PullRequestList } from './PullRequestList';
 import { StartPromptDialog, type StartedItem } from './StartPromptDialog';
 import { WorkFilters } from './WorkFilters';
 import { WorkItemDetailDialog } from './WorkItemDetailDialog';
@@ -32,9 +36,20 @@ import { WorkSourceBar } from './WorkSourceBar';
 
 const NO_FILTERS: WorkItemFilters = { iteration: null, assignee: null, query: '' };
 
+const VIEWS = ['backlog', 'prs'] as const;
+type WorkView = (typeof VIEWS)[number];
+
+function isWorkView(value: string | null): value is WorkView {
+  return VIEWS.includes(value as WorkView);
+}
+
 export function WorkBacklogPage() {
+  const [params, setParams] = useSearchParams();
+  const view: WorkView = isWorkView(params.get('view')) ? (params.get('view') as WorkView) : 'backlog';
+
   const [sources] = useAtom(workSourcesQueryAtom);
   const [items] = useAtom(workItemsQueryAtom);
+  const [prs] = useAtom(pullRequestsQueryAtom);
   const [{ mutateAsync: start, isPending: starting, variables: startingId }] =
     useAtom(startWorkItemMutationAtom);
 
@@ -94,15 +109,18 @@ export function WorkBacklogPage() {
   }
 
   const hasSources = !sources.isPending && !sources.isError && sources.data.length > 0;
-  const shownCount = countNodes(visible);
+  const shownCount = view === 'prs' ? (prs.data?.length ?? null) : countNodes(visible);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-6">
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Work</h1>
-          {hasSources && items.data ? (
-            <Badge variant="muted" aria-label={`${shownCount} work items`}>
+          {hasSources && shownCount !== null ? (
+            <Badge
+              variant="muted"
+              aria-label={`${shownCount} ${view === 'prs' ? 'pull requests' : 'work items'}`}
+            >
               {shownCount}
             </Badge>
           ) : null}
@@ -132,58 +150,81 @@ export function WorkBacklogPage() {
         <>
           <WorkSourceBar sources={sources.data} />
 
-          {items.isPending ? (
-            <Skeleton className="h-64 w-full" />
-          ) : items.isError ? (
-            <EmptyState
-              icon={<AlertTriangle className="size-8" />}
-              title="Couldn't load work items"
-              description={apiErrorMessage(items.error)}
-              action={
-                <Button variant="outline" size="sm" onClick={() => items.refetch()}>
-                  Retry
-                </Button>
-              }
-            />
-          ) : loaded.length === 0 ? (
-            <EmptyState
-              icon={<Inbox className="size-8" />}
-              title="No work items yet"
-              description="Sync a source above to pull its backlog in."
-            />
-          ) : (
-            <>
-              <WorkFilters
-                filters={filters}
-                onChange={changeFilters}
-                sprints={sprints}
-                activeSprint={activeSprint}
-                assignees={assignees}
-              />
-              {visible.length === 0 ? (
+          <Tabs
+            value={view}
+            onValueChange={(next) =>
+              setParams(next === 'backlog' ? {} : { view: next }, { replace: true })
+            }
+            className="flex flex-col gap-4"
+          >
+            <TabsList className="self-start">
+              <TabsTrigger value="backlog">Backlog</TabsTrigger>
+              <TabsTrigger value="prs">Pull requests</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="backlog" className="flex flex-col gap-4">
+              {items.isPending ? (
+                <Skeleton className="h-64 w-full" />
+              ) : items.isError ? (
                 <EmptyState
-                  icon={<SearchX className="size-8" />}
-                  title="No work item matches these filters"
+                  icon={<AlertTriangle className="size-8" />}
+                  title="Couldn't load work items"
+                  description={apiErrorMessage(items.error)}
                   action={
-                    <Button variant="outline" size="sm" onClick={() => changeFilters(NO_FILTERS)}>
-                      Clear filters
+                    <Button variant="outline" size="sm" onClick={() => items.refetch()}>
+                      Retry
                     </Button>
                   }
                 />
-              ) : (
-                <WorkItemTable
-                  // Turning filtering on or off resets which groups are open,
-                  // so a manual collapse never survives into the next mode.
-                  key={filtered ? 'filtered' : 'all'}
-                  nodes={visible}
-                  onStart={(item) => void startItem(item)}
-                  onOpen={setDetail}
-                  startingId={starting ? (startingId ?? null) : null}
-                  forceExpanded={filtered}
+              ) : loaded.length === 0 ? (
+                <EmptyState
+                  icon={<Inbox className="size-8" />}
+                  title="No work items yet"
+                  description="Sync a source above to pull its backlog in."
                 />
+              ) : (
+                <>
+                  <WorkFilters
+                    filters={filters}
+                    onChange={changeFilters}
+                    sprints={sprints}
+                    activeSprint={activeSprint}
+                    assignees={assignees}
+                  />
+                  {visible.length === 0 ? (
+                    <EmptyState
+                      icon={<SearchX className="size-8" />}
+                      title="No work item matches these filters"
+                      action={
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => changeFilters(NO_FILTERS)}
+                        >
+                          Clear filters
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <WorkItemTable
+                      // Turning filtering on or off resets which groups are open,
+                      // so a manual collapse never survives into the next mode.
+                      key={filtered ? 'filtered' : 'all'}
+                      nodes={visible}
+                      onStart={(item) => void startItem(item)}
+                      onOpen={setDetail}
+                      startingId={starting ? (startingId ?? null) : null}
+                      forceExpanded={filtered}
+                    />
+                  )}
+                </>
               )}
-            </>
-          )}
+            </TabsContent>
+
+            <TabsContent value="prs">
+              <PullRequestList sources={sources.data} />
+            </TabsContent>
+          </Tabs>
         </>
       )}
 

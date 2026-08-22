@@ -3446,6 +3446,61 @@ export type ProposalStatus = typeof ProposalStatus[keyof typeof ProposalStatus];
 
 
 /**
+ * 
+ * @export
+ * @interface PullRequestDelegateResponse
+ */
+export interface PullRequestDelegateResponse {
+    /**
+     * False means nothing was launched.
+     * @type {boolean}
+     * @memberof PullRequestDelegateResponse
+     */
+    'resolved': boolean;
+    /**
+     * The PR\'s repository_remote_url, as stored.
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'remote_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'local_path': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'reason'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PullRequestDelegateResponse
+     */
+    'launch_id': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'run_id': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'prompt'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PullRequestDelegateResponse
+     */
+    'unresolved_thread_count': number;
+}
+/**
  * One role across every run: what it costs, and how often it is sent back.
  * @export
  * @interface RoleStat
@@ -4452,6 +4507,257 @@ export interface WorkItemStartResponse {
      * @memberof WorkItemStartResponse
      */
     'link_id': number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkPrThread
+ */
+export interface WorkPrThread {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'id': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'pull_request_id': number;
+    /**
+     * DevOps thread id.
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'external_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThread
+     */
+    'status': string | null;
+    /**
+     * Derived from status being fixed/closed/wontFix/byDesign.
+     * @type {boolean}
+     * @memberof WorkPrThread
+     */
+    'is_resolved': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThread
+     */
+    'file_path': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'right_file_line': number | null;
+    /**
+     * 
+     * @type {Array<WorkPrThreadComment>}
+     * @memberof WorkPrThread
+     */
+    'comments': Array<WorkPrThreadComment>;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThread
+     */
+    'synced_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkPrThreadComment
+ */
+export interface WorkPrThreadComment {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThreadComment
+     */
+    'id': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'author': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'content': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'comment_type': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'published_at': string | null;
+}
+/**
+ * 
+ * @export
+ * @interface WorkPullRequest
+ */
+export interface WorkPullRequest {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPullRequest
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'source_id': string;
+    /**
+     * DevOps pullRequestId.
+     * @type {number}
+     * @memberof WorkPullRequest
+     */
+    'external_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'repository_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'repository_name': string;
+    /**
+     * What delegatePullRequest resolves to a local checkout.
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'repository_remote_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'title': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'description': string;
+    /**
+     * refs/heads/ prefix stripped.
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'source_branch': string;
+    /**
+     * refs/heads/ prefix stripped.
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'target_branch': string;
+    /**
+     * DevOps status, e.g. \"active\".
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'status': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkPullRequest
+     */
+    'is_draft': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'created_by': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'external_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'external_changed_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'synced_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkRepoPath
+ */
+export interface WorkRepoPath {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkRepoPath
+     */
+    'id': number;
+    /**
+     * The normalized remote — the key, not the name.
+     * @type {string}
+     * @memberof WorkRepoPath
+     */
+    'remote_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkRepoPath
+     */
+    'local_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkRepoPath
+     */
+    'created_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkRepoPathCreateRequest
+ */
+export interface WorkRepoPathCreateRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkRepoPathCreateRequest
+     */
+    'remote_url': string;
+    /**
+     * Absolute path to an existing directory.
+     * @type {string}
+     * @memberof WorkRepoPathCreateRequest
+     */
+    'local_path': string;
 }
 /**
  * 
@@ -9869,6 +10175,109 @@ export const WorkApiAxiosParamCreator = function (configuration?: Configuration)
         },
         /**
          * 
+         * @summary Delegate Pull Request
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        delegatePullRequest: async (prId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'prId' is not null or undefined
+            assertParamExists('delegatePullRequest', 'prId', prId)
+            const localVarPath = `/api/v1/work/prs/{pr_id}/delegate`
+                .replace(`{${"pr_id"}}`, encodeURIComponent(String(prId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Pull Request Threads
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequestThreads: async (prId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'prId' is not null or undefined
+            assertParamExists('listPullRequestThreads', 'prId', prId)
+            const localVarPath = `/api/v1/work/prs/{pr_id}/threads`
+                .replace(`{${"pr_id"}}`, encodeURIComponent(String(prId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Pull Requests
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequests: async (sourceId?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/work/prs`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (sourceId !== undefined) {
+                localVarQueryParameter['source_id'] = sourceId;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary List Work Items
          * @param {string | null} [sourceId] Scope to one registered source.
          * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
@@ -9939,6 +10348,42 @@ export const WorkApiAxiosParamCreator = function (configuration?: Configuration)
         },
         /**
          * 
+         * @summary Save Repo Path
+         * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        saveRepoPath: async (workRepoPathCreateRequest: WorkRepoPathCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'workRepoPathCreateRequest' is not null or undefined
+            assertParamExists('saveRepoPath', 'workRepoPathCreateRequest', workRepoPathCreateRequest)
+            const localVarPath = `/api/v1/work/repo-paths`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workRepoPathCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Start Work Item
          * @param {number} itemId 
          * @param {*} [options] Override http request option.
@@ -9949,6 +10394,40 @@ export const WorkApiAxiosParamCreator = function (configuration?: Configuration)
             assertParamExists('startWorkItem', 'itemId', itemId)
             const localVarPath = `/api/v1/work/items/{item_id}/start`
                 .replace(`{${"item_id"}}`, encodeURIComponent(String(itemId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Sync Pull Requests
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncPullRequests: async (sourceId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sourceId' is not null or undefined
+            assertParamExists('syncPullRequests', 'sourceId', sourceId)
+            const localVarPath = `/api/v1/work/sources/{source_id}/sync-prs`
+                .replace(`{${"source_id"}}`, encodeURIComponent(String(sourceId)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -10030,6 +10509,45 @@ export const WorkApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Delegate Pull Request
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async delegatePullRequest(prId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PullRequestDelegateResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.delegatePullRequest(prId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.delegatePullRequest']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Pull Request Threads
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listPullRequestThreads(prId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkPrThread>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listPullRequestThreads(prId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listPullRequestThreads']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Pull Requests
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listPullRequests(sourceId?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkPullRequest>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listPullRequests(sourceId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listPullRequests']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary List Work Items
          * @param {string | null} [sourceId] Scope to one registered source.
          * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
@@ -10056,6 +10574,19 @@ export const WorkApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Save Repo Path
+         * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async saveRepoPath(workRepoPathCreateRequest: WorkRepoPathCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkRepoPath>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.saveRepoPath(workRepoPathCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.saveRepoPath']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Start Work Item
          * @param {number} itemId 
          * @param {*} [options] Override http request option.
@@ -10065,6 +10596,19 @@ export const WorkApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.startWorkItem(itemId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkApi.startWorkItem']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Sync Pull Requests
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async syncPullRequests(sourceId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkSyncResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.syncPullRequests(sourceId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.syncPullRequests']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -10102,6 +10646,36 @@ export const WorkApiFactory = function (configuration?: Configuration, basePath?
         },
         /**
          * 
+         * @summary Delegate Pull Request
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        delegatePullRequest(prId: number, options?: RawAxiosRequestConfig): AxiosPromise<PullRequestDelegateResponse> {
+            return localVarFp.delegatePullRequest(prId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Pull Request Threads
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequestThreads(prId: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkPrThread>> {
+            return localVarFp.listPullRequestThreads(prId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Pull Requests
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequests(sourceId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkPullRequest>> {
+            return localVarFp.listPullRequests(sourceId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary List Work Items
          * @param {string | null} [sourceId] Scope to one registered source.
          * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
@@ -10122,6 +10696,16 @@ export const WorkApiFactory = function (configuration?: Configuration, basePath?
         },
         /**
          * 
+         * @summary Save Repo Path
+         * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        saveRepoPath(workRepoPathCreateRequest: WorkRepoPathCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkRepoPath> {
+            return localVarFp.saveRepoPath(workRepoPathCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Start Work Item
          * @param {number} itemId 
          * @param {*} [options] Override http request option.
@@ -10129,6 +10713,16 @@ export const WorkApiFactory = function (configuration?: Configuration, basePath?
          */
         startWorkItem(itemId: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemStartResponse> {
             return localVarFp.startWorkItem(itemId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Sync Pull Requests
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncPullRequests(sourceId: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkSyncResult> {
+            return localVarFp.syncPullRequests(sourceId, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -10164,6 +10758,42 @@ export class WorkApi extends BaseAPI {
 
     /**
      * 
+     * @summary Delegate Pull Request
+     * @param {number} prId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public delegatePullRequest(prId: number, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).delegatePullRequest(prId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Pull Request Threads
+     * @param {number} prId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listPullRequestThreads(prId: number, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listPullRequestThreads(prId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Pull Requests
+     * @param {string | null} [sourceId] Scope to one registered source.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listPullRequests(sourceId?: string | null, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listPullRequests(sourceId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary List Work Items
      * @param {string | null} [sourceId] Scope to one registered source.
      * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
@@ -10188,6 +10818,18 @@ export class WorkApi extends BaseAPI {
 
     /**
      * 
+     * @summary Save Repo Path
+     * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public saveRepoPath(workRepoPathCreateRequest: WorkRepoPathCreateRequest, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).saveRepoPath(workRepoPathCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary Start Work Item
      * @param {number} itemId 
      * @param {*} [options] Override http request option.
@@ -10196,6 +10838,18 @@ export class WorkApi extends BaseAPI {
      */
     public startWorkItem(itemId: number, options?: RawAxiosRequestConfig) {
         return WorkApiFp(this.configuration).startWorkItem(itemId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Sync Pull Requests
+     * @param {string} sourceId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public syncPullRequests(sourceId: string, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).syncPullRequests(sourceId, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
