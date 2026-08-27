@@ -3133,3 +3133,147 @@ PullRequestDelegateResponse {
 - **DB**: three additive tables — `work_pull_requests`, `work_pr_threads`,
   `work_repo_paths` — Alembic `0028_work_pull_requests` on
   `0027_coding_awaiting_input`.
+
+# API Contract v1.41 — a catalog of community skills, and installing one
+
+Additive on top of v1.40. The assets surface could only ever show skills that
+were already on disk: the ones written in a chat session and the ones an
+installed Claude Code plugin shipped. Finding a skill someone else published
+meant leaving masterwork for a browser, and installing it meant copying files by
+hand. This adds the other half — search the community registries, read a
+SKILL.md before trusting it, and write a chosen skill into the same directory the
+`claude` asset provider already scans.
+
+**Third-party data, treated as such.** Everything a registry returns is text
+someone else wrote. It is rendered as plain text, never as HTML or markdown, and
+a skill whose license cannot be established is badged and gated rather than
+quietly installed.
+
+## New endpoints
+
+```
+GET    /api/v1/skills/catalog?q=&limit=              searchSkillCatalog -> CatalogSearchResponse
+GET    /api/v1/skills/catalog/{owner}/{repo}/{skill} getCatalogSkill    -> CatalogSkillDetail
+POST   /api/v1/skills/install                        installSkill       -> InstalledSkill
+DELETE /api/v1/skills/installed/{name}               uninstallSkill     -> 204
+```
+
+## New schemas
+
+```
+CatalogSkill {
+  owner, repo,                                 // the GitHub source repo
+  skill,                                       // slug within the repo; a GitHub hit uses the repo name
+  name, description,                           // description is "" when the registry gave none
+  registry: "skills_sh" | "github",
+  installs: number | null,                     // only skills.sh reports one
+  license: string | null,                      // SPDX id when known at search time
+  license_resolved: boolean,                   // false means not looked up yet — see below
+  url,
+  installed: boolean,                          // a directory with this slug already exists
+}
+
+CatalogSourceError { registry, message }       // why one source's results are missing
+
+CatalogSearchResponse { skills: CatalogSkill[], errors: CatalogSourceError[] }
+
+CatalogSkillDetail {
+  owner, repo, skill, name, registry,
+  license: string | null,
+  all_rights_reserved: boolean,                // true exactly when license is null
+  installed: boolean,                          // a directory with this slug already exists
+  installed_by_masterwork: boolean,            // false for a hand-installed skill
+  skill_md,                                    // full SKILL.md text
+  files: string[],                             // companion paths, relative to the skill folder
+}
+
+SkillInstallRequest { owner, repo, skill, overwrite: boolean }
+
+InstalledSkill {
+  asset_id,                                    // "claude:skill:<name>", the id the assets API uses
+  name, owner, repo,
+  license: string | null,
+  registry, installed_at,
+}
+```
+
+## Behavior
+
+- **Two sources, merged, and a failure is partial not fatal.** A search queries
+  the skills.sh no-auth endpoint and GitHub's repo search for `topic:claude-skills`
+  concurrently, dedupes on `(owner, repo, skill)` case-insensitively, and returns
+  200 with the sources that worked. A source that times out, 5xxs or rate-limits
+  lands in `errors` instead of failing the request, because a rate-limited GitHub
+  must never hide working skills.sh results. Only both sources failing is a 502.
+  skills.sh wins a dedupe conflict since it carries install counts, but a license
+  GitHub resolved is carried onto the winning record rather than thrown away.
+- **`license_resolved` is the difference between "unlicensed" and "unknown".**
+  skills.sh reports no license, so its search hits arrive `license: null,
+  license_resolved: false`, which the UI shows as *License unknown*. GitHub
+  reports the license explicitly, and a repo it reports as `null` or
+  `NOASSERTION` really is all rights reserved. Only a resolved null is shown as
+  such, and `getCatalogSkill` always resolves it — which is why a preview is
+  required before the risky install path can be taken.
+- **An unlicensed skill needs a second click.** `all_rights_reserved` is sent as
+  its own boolean rather than left for the client to infer from `license === null`,
+  so a missing field can never read as permissive. The install button on such a
+  skill re-arms into a risk-naming confirmation instead of installing on the
+  first press.
+- **"Is my copy current?" is answered by content, not by a version.** Skill
+  frontmatter has no standard version key — most skills declare none at all, and
+  the ones that do disagree on where it lives (`version`, or nested under
+  `metadata`). `version` and `installed_version` are therefore best-effort and
+  usually null, while `differs_from_installed` compares the registry's SKILL.md
+  against the copy on disk and works for every skill. It is null when nothing is
+  installed, so the client can tell "no copy" from "identical copy".
+- **The dates cost two requests, and are allowed to fail.** `created_at` and
+  `last_modified_at` come from the commits API filtered to the skill folder: the
+  newest commit is one request, and its `Link` header names the last page, whose
+  single entry is the oldest commit. That takes a preview from two API requests
+  to four, so the lookup degrades to nulls on any failure — losing the dates must
+  never cost the SKILL.md. `last_change_summary` is the commit subject only,
+  capped and rendered as plain text like every other registry string.
+- **`url` points at the skill, not the repo.** The tree read already knows which
+  folder the SKILL.md came from, so the link deep-links to it — often several
+  levels down, e.g. `/tree/HEAD/skills/engineering/grill-with-docs`.
+- **Already-installed is a state, not an error.** Install keys on the directory
+  name under the skills root, so both the search rows and the detail report
+  whether that slug is taken; the UI offers a guarded reinstall rather than
+  letting the request 409. The refusal is checked before the fetch, so
+  discovering it costs no GitHub round trip. `installed_by_masterwork`
+  separates a skill masterwork wrote from one that was already there — only the
+  former can be uninstalled here, so the UI must not offer removal for the
+  latter.
+- **A spent GitHub quota is its own answer.** Anonymous GitHub allows 60
+  requests an hour, which a single browse can exhaust, so a 403/429 carrying
+  `x-ratelimit-remaining: 0` becomes a 429 whose message names `GITHUB_TOKEN`
+  as the remedy rather than passing GitHub's raw body to the UI. It is never
+  retried — the quota will not refill within a request — and the nested-folder
+  fallback lets it propagate instead of reporting it as a missing skill.
+- **Four skills are refused outright.** `anthropics/skills` ships `docx`, `pdf`,
+  `pptx` and `xlsx` under a license that forbids extracting them; the refusal is
+  checked before any network call, not after fetching.
+- **A fetch costs two API requests, whatever the layout.** One recursive tree
+  read resolves the skill folder *and* lists it with every file's size, and the
+  bytes come from `raw.githubusercontent.com`, which is outside the API quota —
+  so the file count no longer affects the cost. The only other request is the
+  license lookup. Probing candidate paths one at a time cost up to eight
+  requests for the same skill, which one browse could turn into a spent
+  anonymous quota. A repo too large for a single tree response reports
+  `truncated` and falls back to walking the contents API.
+- **The fetch is bounded in four ways.** 5 MiB total, 200 entries, 5 directory
+  levels, and any entry whose resolved path escapes the skill folder is a refusal
+  rather than a skip. Symlinks and submodules are refused, not followed. Reading
+  the tree first means the size and escape guards run against the listing, so an
+  oversized or escaping skill is refused before a single byte is downloaded.
+- **Installs are atomic, and never escape the skills root.** The tree is staged
+  in a sibling directory and swapped in with `os.replace`, so a failed fetch
+  leaves no half-written skill folder; an overwrite moves the old directory aside
+  and restores it if the write fails. A slug that is not plain lowercase-kebab is
+  rejected before anything is written.
+- **Uninstall only removes what masterwork installed.** The install row is the
+  permission: a skill directory with no matching row is not deleted, so a
+  hand-written skill can never be removed through this endpoint.
+- **No new read path.** An installed skill lands in `settings.claude_skills_root`,
+  which the existing `claude` asset provider already scans, so it appears in the
+  assets list with no change to that provider.

@@ -243,3 +243,55 @@ class RunNotResumableError(DomainError):
     """The run is still running, or completed accepted — nothing to resume."""
 
     status_code = 409
+
+
+class SkillCatalogError(DomainError):
+    """Both skills.sh and GitHub search failed — a single source failing degrades
+    to a partial result instead, see app/services/skill_catalog.py."""
+
+    status_code = 502
+
+
+class SkillNotFoundError(DomainError):
+    """No SKILL.md at any resolved path candidate for this owner/repo/skill."""
+
+    status_code = 404
+
+
+class SkillFetchError(DomainError):
+    """The GitHub contents fetch failed, or tripped the size/entry/escape guard."""
+
+    status_code = 502
+
+
+class GitHubRateLimitError(DomainError):
+    """GitHub's hourly quota is spent. Anonymous requests get 60/h, which one
+    catalog browse can exhaust — the message names the token as the fix."""
+
+    status_code = 429
+
+
+class InvalidSkillNameError(DomainError):
+    """Not a plain lowercase-kebab slug."""
+
+    status_code = 400
+
+
+class SkillAlreadyInstalledError(DomainError):
+    """A directory already exists at this slug and overwrite was not passed."""
+
+    status_code = 409
+
+
+class SkillLicenseRefusedError(DomainError):
+    """anthropics/skills' docx/pdf/pptx/xlsx carry an all-rights-reserved
+    license that forbids extraction — refused before any fetch."""
+
+    status_code = 403
+
+
+class InstalledSkillNotFoundError(DomainError):
+    """No installed_skills row for this name — never delete a directory
+    masterwork did not itself install."""
+
+    status_code = 404

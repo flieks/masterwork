@@ -21,6 +21,7 @@ from app.api.v1.projects.routes import router as projects_router
 from app.api.v1.proposals.routes import router as proposals_router
 from app.api.v1.settings.routes import router as settings_router
 from app.api.v1.simulations.routes import router as simulations_router
+from app.api.v1.skills.routes import router as skills_router
 from app.api.v1.work.routes import router as work_router
 from app.config import settings
 from app.core.exceptions import DomainError
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(proposals_router, prefix=API_PREFIX)
     app.include_router(settings_router, prefix=API_PREFIX)
     app.include_router(simulations_router, prefix=API_PREFIX)
+    app.include_router(skills_router, prefix=API_PREFIX)
     app.include_router(work_router, prefix=API_PREFIX)
     return app
 

@@ -10,6 +10,7 @@ import {
   ProposalsApi,
   SettingsApi,
   SimulationsApi,
+  SkillsApi,
   WorkApi,
   Configuration,
 } from './generated';
@@ -51,6 +52,7 @@ export const api = {
   proposals: new ProposalsApi(configuration, '', http),
   settings: new SettingsApi(configuration, '', http),
   simulations: new SimulationsApi(configuration, '', http),
+  skills: new SkillsApi(configuration, '', http),
   work: new WorkApi(configuration, '', http),
 };
 

@@ -1,7 +1,16 @@
 import { atomFamily } from 'jotai/utils';
-import { atomWithQuery, atomWithMutation } from 'jotai-tanstack-query';
+import { atomWithQuery, atomWithMutation, queryClientAtom } from 'jotai-tanstack-query';
 import { api, GENERATE_TIMEOUT_MS, isNotFoundError } from '~/api/client';
-import type { AssetDetail, AssetDiagram, AssetSessionUse, CodingAssetUsage } from '~/api/generated';
+import type {
+  AssetDetail,
+  AssetDiagram,
+  AssetSessionUse,
+  CatalogSearchResponse,
+  CatalogSkillDetail,
+  CodingAssetUsage,
+  InstalledSkill,
+  SkillInstallRequest,
+} from '~/api/generated';
 // The rollup owns the inspection scope; the drill-in follows it.
 import { includeInspectionAtom } from '~/features/sessions/queries';
 import type { AssetKind } from './paths';
@@ -115,4 +124,59 @@ export const generateAssetDiagramMutationAtom = atomWithMutation(() => ({
   // One-shot claude -p (up to 300 s) — no client timeout, same as chat sends.
   mutationFn: (assetId: string): Promise<AssetDiagram> =>
     api.assets.generateAssetDiagram(assetId, { timeout: GENERATE_TIMEOUT_MS }).then((r) => r.data),
+}));
+
+// --- community skill catalog ------------------------------------------
+
+/** One entry per trimmed query string; empty string never fires a search. */
+export const skillCatalogQueryAtom = atomFamily((query: string) =>
+  atomWithQuery(() => ({
+    queryKey: ['skillCatalog', query],
+    queryFn: async (): Promise<CatalogSearchResponse> =>
+      (await api.skills.searchSkillCatalog(query)).data,
+    enabled: query.length > 0,
+  })),
+);
+
+interface CatalogSkillKey {
+  owner: string;
+  repo: string;
+  skill: string;
+}
+
+export function catalogSkillKey(owner: string, repo: string, skill: string): string {
+  return JSON.stringify({ owner, repo, skill } satisfies CatalogSkillKey);
+}
+
+export const catalogSkillQueryAtom = atomFamily((keyJson: string) =>
+  atomWithQuery(() => {
+    const { owner, repo, skill } = JSON.parse(keyJson) as CatalogSkillKey;
+    return {
+      // Shares a prefix with `assetsQueryAtom`'s ['assets', ...] keys so an
+      // install invalidates both the installed list and this preview.
+      queryKey: ['assets', 'skill', owner, repo, skill],
+      queryFn: async (): Promise<CatalogSkillDetail> =>
+        (await api.skills.getCatalogSkill(owner, repo, skill)).data,
+      enabled: owner.length > 0 && repo.length > 0 && skill.length > 0,
+    };
+  }),
+);
+
+export const installSkillMutationAtom = atomWithMutation<InstalledSkill, SkillInstallRequest>(
+  (get) => ({
+    mutationFn: (body: SkillInstallRequest): Promise<InstalledSkill> =>
+      api.skills.installSkill(body).then((r) => r.data),
+    onSuccess: (_data, variables) => {
+      const queryClient = get(queryClientAtom);
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({
+        queryKey: ['assets', 'skill', variables.owner, variables.repo, variables.skill],
+      });
+    },
+  }),
+);
+
+export const uninstallSkillMutationAtom = atomWithMutation<void, string>((get) => ({
+  mutationFn: (name: string): Promise<void> => api.skills.uninstallSkill(name).then(() => undefined),
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: ['assets'] }),
 }));

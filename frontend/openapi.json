@@ -3124,6 +3124,199 @@
                 }
             }
         },
+        "/api/v1/skills/catalog": {
+            "get": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Search Skill Catalog",
+                "operationId": "searchSkillCatalog",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Search text.",
+                            "title": "Q"
+                        },
+                        "description": "Search text."
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 25,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CatalogSearchResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/catalog/{owner}/{repo}/{skill}": {
+            "get": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Get Catalog Skill",
+                "operationId": "getCatalogSkill",
+                "parameters": [
+                    {
+                        "name": "owner",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Owner"
+                        }
+                    },
+                    {
+                        "name": "repo",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Repo"
+                        }
+                    },
+                    {
+                        "name": "skill",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Skill"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CatalogSkillDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/install": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Install Skill",
+                "operationId": "installSkill",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SkillInstallRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstalledSkill"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/installed/{name}": {
+            "delete": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Uninstall Skill",
+                "operationId": "uninstallSkill",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/work/sources": {
             "get": {
                 "tags": [
@@ -4340,6 +4533,291 @@
                 ],
                 "title": "BackfillTotals",
                 "description": "The same, summed over a whole-history rebuild."
+            },
+            "CatalogSearchResponse": {
+                "properties": {
+                    "skills": {
+                        "items": {
+                            "$ref": "#/components/schemas/CatalogSkill"
+                        },
+                        "type": "array",
+                        "title": "Skills"
+                    },
+                    "errors": {
+                        "items": {
+                            "$ref": "#/components/schemas/CatalogSourceError"
+                        },
+                        "type": "array",
+                        "title": "Errors",
+                        "description": "Per-source failures; a partial result still returns 200."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "skills",
+                    "errors"
+                ],
+                "title": "CatalogSearchResponse"
+            },
+            "CatalogSkill": {
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner",
+                        "description": "GitHub owner/org that publishes the source repo."
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo",
+                        "description": "GitHub repo name."
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill",
+                        "description": "Skill slug within the repo \u2014 a GitHub hit uses the repo name."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Display name."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "\"\" when the registry supplied none."
+                    },
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry",
+                        "description": "Which source this record came from."
+                    },
+                    "installs": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installs",
+                        "description": "Install count; only skills.sh reports one."
+                    },
+                    "license": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "License",
+                        "description": "SPDX id when known at search time, else null."
+                    },
+                    "license_resolved": {
+                        "type": "boolean",
+                        "title": "License Resolved",
+                        "description": "Unresolved (skills.sh) \u2014 preview to resolve; null is not \"unlicensed\"."
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "Link to the source repository on GitHub."
+                    },
+                    "installed": {
+                        "type": "boolean",
+                        "title": "Installed",
+                        "description": "A skill directory with this slug already exists on disk."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "owner",
+                    "repo",
+                    "skill",
+                    "name",
+                    "description",
+                    "registry",
+                    "license_resolved",
+                    "url",
+                    "installed"
+                ],
+                "title": "CatalogSkill"
+            },
+            "CatalogSkillDetail": {
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo"
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry"
+                    },
+                    "license": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "License",
+                        "description": "SPDX id, or null when all rights reserved."
+                    },
+                    "all_rights_reserved": {
+                        "type": "boolean",
+                        "title": "All Rights Reserved",
+                        "description": "True when license is null \u2014 explicit, so the UI never reads null as unknown."
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "Link to the skill's folder on GitHub."
+                    },
+                    "version": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Version",
+                        "description": "Version from the registry copy's frontmatter; most skills declare none."
+                    },
+                    "installed_version": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installed Version",
+                        "description": "Version from the copy on disk, when it declares one."
+                    },
+                    "created_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created At",
+                        "description": "First commit that touched the skill folder; null if unavailable."
+                    },
+                    "last_modified_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Modified At",
+                        "description": "Most recent commit that touched the skill folder."
+                    },
+                    "last_change_summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Change Summary",
+                        "description": "Subject of that commit \u2014 third-party text, render as plain text."
+                    },
+                    "differs_from_installed": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Differs From Installed",
+                        "description": "Null when nothing is installed; true when the disk SKILL.md differs."
+                    },
+                    "installed": {
+                        "type": "boolean",
+                        "title": "Installed",
+                        "description": "A skill directory with this slug already exists on disk."
+                    },
+                    "installed_by_masterwork": {
+                        "type": "boolean",
+                        "title": "Installed By Masterwork",
+                        "description": "True only when masterwork wrote it; a hand-installed one is not removable."
+                    },
+                    "skill_md": {
+                        "type": "string",
+                        "title": "Skill Md",
+                        "description": "Full SKILL.md text, rendered as plain text only."
+                    },
+                    "files": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Files",
+                        "description": "Companion file paths, relative to the skill folder."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "owner",
+                    "repo",
+                    "skill",
+                    "name",
+                    "registry",
+                    "all_rights_reserved",
+                    "url",
+                    "installed",
+                    "installed_by_masterwork",
+                    "skill_md",
+                    "files"
+                ],
+                "title": "CatalogSkillDetail"
+            },
+            "CatalogSourceError": {
+                "properties": {
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry"
+                    },
+                    "message": {
+                        "type": "string",
+                        "title": "Message",
+                        "description": "Why this source's results are missing."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "registry",
+                    "message"
+                ],
+                "title": "CatalogSourceError"
             },
             "ChangeAction": {
                 "type": "string",
@@ -6940,6 +7418,56 @@
                 "title": "HookEventRequest",
                 "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
             },
+            "InstalledSkill": {
+                "properties": {
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id",
+                        "description": "\"claude:skill:<name>\", the id the assets API also uses."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo"
+                    },
+                    "license": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "License"
+                    },
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry"
+                    },
+                    "installed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Installed At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset_id",
+                    "name",
+                    "owner",
+                    "repo",
+                    "registry",
+                    "installed_at"
+                ],
+                "title": "InstalledSkill"
+            },
             "InstructionsDoc": {
                 "properties": {
                     "path": {
@@ -9334,6 +9862,43 @@
                     "applied_at"
                 ],
                 "title": "SimulationSuggestion"
+            },
+            "SkillInstallRequest": {
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo"
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill"
+                    },
+                    "overwrite": {
+                        "type": "boolean",
+                        "title": "Overwrite",
+                        "description": "Replace an existing directory at this slug.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "owner",
+                    "repo",
+                    "skill"
+                ],
+                "title": "SkillInstallRequest"
+            },
+            "SkillRegistry": {
+                "type": "string",
+                "enum": [
+                    "skills_sh",
+                    "github"
+                ],
+                "title": "SkillRegistry"
             },
             "SuggestedLink": {
                 "properties": {

@@ -646,6 +646,238 @@ export interface BackfillTotals {
 /**
  * 
  * @export
+ * @interface CatalogSearchResponse
+ */
+export interface CatalogSearchResponse {
+    /**
+     * 
+     * @type {Array<CatalogSkill>}
+     * @memberof CatalogSearchResponse
+     */
+    'skills': Array<CatalogSkill>;
+    /**
+     * Per-source failures; a partial result still returns 200.
+     * @type {Array<CatalogSourceError>}
+     * @memberof CatalogSearchResponse
+     */
+    'errors': Array<CatalogSourceError>;
+}
+/**
+ * 
+ * @export
+ * @interface CatalogSkill
+ */
+export interface CatalogSkill {
+    /**
+     * GitHub owner/org that publishes the source repo.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'owner': string;
+    /**
+     * GitHub repo name.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'repo': string;
+    /**
+     * Skill slug within the repo — a GitHub hit uses the repo name.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'skill': string;
+    /**
+     * Display name.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'name': string;
+    /**
+     * \"\" when the registry supplied none.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'description': string;
+    /**
+     * Which source this record came from.
+     * @type {SkillRegistry}
+     * @memberof CatalogSkill
+     */
+    'registry': SkillRegistry;
+    /**
+     * 
+     * @type {number}
+     * @memberof CatalogSkill
+     */
+    'installs'?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'license'?: string | null;
+    /**
+     * Unresolved (skills.sh) — preview to resolve; null is not \"unlicensed\".
+     * @type {boolean}
+     * @memberof CatalogSkill
+     */
+    'license_resolved': boolean;
+    /**
+     * Link to the source repository on GitHub.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'url': string;
+    /**
+     * A skill directory with this slug already exists on disk.
+     * @type {boolean}
+     * @memberof CatalogSkill
+     */
+    'installed': boolean;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface CatalogSkillDetail
+ */
+export interface CatalogSkillDetail {
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'owner': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'repo': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'skill': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'name': string;
+    /**
+     * 
+     * @type {SkillRegistry}
+     * @memberof CatalogSkillDetail
+     */
+    'registry': SkillRegistry;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'license'?: string | null;
+    /**
+     * True when license is null — explicit, so the UI never reads null as unknown.
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'all_rights_reserved': boolean;
+    /**
+     * Link to the skill\'s folder on GitHub.
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'version'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'installed_version'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'created_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'last_modified_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'last_change_summary'?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'differs_from_installed'?: boolean | null;
+    /**
+     * A skill directory with this slug already exists on disk.
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'installed': boolean;
+    /**
+     * True only when masterwork wrote it; a hand-installed one is not removable.
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'installed_by_masterwork': boolean;
+    /**
+     * Full SKILL.md text, rendered as plain text only.
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'skill_md': string;
+    /**
+     * Companion file paths, relative to the skill folder.
+     * @type {Array<string>}
+     * @memberof CatalogSkillDetail
+     */
+    'files': Array<string>;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface CatalogSourceError
+ */
+export interface CatalogSourceError {
+    /**
+     * 
+     * @type {SkillRegistry}
+     * @memberof CatalogSourceError
+     */
+    'registry': SkillRegistry;
+    /**
+     * Why this source\'s results are missing.
+     * @type {string}
+     * @memberof CatalogSourceError
+     */
+    'message': string;
+}
+
+
+/**
+ * 
+ * @export
  * @enum {string}
  */
 
@@ -2439,6 +2671,57 @@ export interface HookEventRequest {
      */
     'context_samples'?: Array<ContextSampleIn> | null;
 }
+/**
+ * 
+ * @export
+ * @interface InstalledSkill
+ */
+export interface InstalledSkill {
+    /**
+     * \"claude:skill:<name>\", the id the assets API also uses.
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'asset_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'owner': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'repo': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'license'?: string | null;
+    /**
+     * 
+     * @type {SkillRegistry}
+     * @memberof InstalledSkill
+     */
+    'registry': SkillRegistry;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'installed_at': string;
+}
+
+
 /**
  * 
  * @export
@@ -4298,6 +4581,51 @@ export const SimulationSuggestionStatusEnum = {
 } as const;
 
 export type SimulationSuggestionStatusEnum = typeof SimulationSuggestionStatusEnum[keyof typeof SimulationSuggestionStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface SkillInstallRequest
+ */
+export interface SkillInstallRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof SkillInstallRequest
+     */
+    'owner': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SkillInstallRequest
+     */
+    'repo': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SkillInstallRequest
+     */
+    'skill': string;
+    /**
+     * Replace an existing directory at this slug.
+     * @type {boolean}
+     * @memberof SkillInstallRequest
+     */
+    'overwrite'?: boolean;
+}
+/**
+ * 
+ * @export
+ * @enum {string}
+ */
+
+export const SkillRegistry = {
+    SkillsSh: 'skills_sh',
+    Github: 'github'
+} as const;
+
+export type SkillRegistry = typeof SkillRegistry[keyof typeof SkillRegistry];
+
 
 /**
  * 
@@ -10126,6 +10454,348 @@ export class SimulationsApi extends BaseAPI {
      */
     public stopSimulationAutopilot(runId: string, options?: RawAxiosRequestConfig) {
         return SimulationsApiFp(this.configuration).stopSimulationAutopilot(runId, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * SkillsApi - axios parameter creator
+ * @export
+ */
+export const SkillsApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Get Catalog Skill
+         * @param {string} owner 
+         * @param {string} repo 
+         * @param {string} skill 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCatalogSkill: async (owner: string, repo: string, skill: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'owner' is not null or undefined
+            assertParamExists('getCatalogSkill', 'owner', owner)
+            // verify required parameter 'repo' is not null or undefined
+            assertParamExists('getCatalogSkill', 'repo', repo)
+            // verify required parameter 'skill' is not null or undefined
+            assertParamExists('getCatalogSkill', 'skill', skill)
+            const localVarPath = `/api/v1/skills/catalog/{owner}/{repo}/{skill}`
+                .replace(`{${"owner"}}`, encodeURIComponent(String(owner)))
+                .replace(`{${"repo"}}`, encodeURIComponent(String(repo)))
+                .replace(`{${"skill"}}`, encodeURIComponent(String(skill)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Install Skill
+         * @param {SkillInstallRequest} skillInstallRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        installSkill: async (skillInstallRequest: SkillInstallRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'skillInstallRequest' is not null or undefined
+            assertParamExists('installSkill', 'skillInstallRequest', skillInstallRequest)
+            const localVarPath = `/api/v1/skills/install`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(skillInstallRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Search Skill Catalog
+         * @param {string} q Search text.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        searchSkillCatalog: async (q: string, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'q' is not null or undefined
+            assertParamExists('searchSkillCatalog', 'q', q)
+            const localVarPath = `/api/v1/skills/catalog`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (q !== undefined) {
+                localVarQueryParameter['q'] = q;
+            }
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Uninstall Skill
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uninstallSkill: async (name: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'name' is not null or undefined
+            assertParamExists('uninstallSkill', 'name', name)
+            const localVarPath = `/api/v1/skills/installed/{name}`
+                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * SkillsApi - functional programming interface
+ * @export
+ */
+export const SkillsApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = SkillsApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Get Catalog Skill
+         * @param {string} owner 
+         * @param {string} repo 
+         * @param {string} skill 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCatalogSkill(owner: string, repo: string, skill: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CatalogSkillDetail>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCatalogSkill(owner, repo, skill, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.getCatalogSkill']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Install Skill
+         * @param {SkillInstallRequest} skillInstallRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async installSkill(skillInstallRequest: SkillInstallRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstalledSkill>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.installSkill(skillInstallRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.installSkill']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Search Skill Catalog
+         * @param {string} q Search text.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async searchSkillCatalog(q: string, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CatalogSearchResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.searchSkillCatalog(q, limit, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.searchSkillCatalog']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Uninstall Skill
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async uninstallSkill(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.uninstallSkill(name, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.uninstallSkill']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * SkillsApi - factory interface
+ * @export
+ */
+export const SkillsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = SkillsApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Get Catalog Skill
+         * @param {string} owner 
+         * @param {string} repo 
+         * @param {string} skill 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCatalogSkill(owner: string, repo: string, skill: string, options?: RawAxiosRequestConfig): AxiosPromise<CatalogSkillDetail> {
+            return localVarFp.getCatalogSkill(owner, repo, skill, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Install Skill
+         * @param {SkillInstallRequest} skillInstallRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        installSkill(skillInstallRequest: SkillInstallRequest, options?: RawAxiosRequestConfig): AxiosPromise<InstalledSkill> {
+            return localVarFp.installSkill(skillInstallRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Search Skill Catalog
+         * @param {string} q Search text.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        searchSkillCatalog(q: string, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<CatalogSearchResponse> {
+            return localVarFp.searchSkillCatalog(q, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Uninstall Skill
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uninstallSkill(name: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+            return localVarFp.uninstallSkill(name, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * SkillsApi - object-oriented interface
+ * @export
+ * @class SkillsApi
+ * @extends {BaseAPI}
+ */
+export class SkillsApi extends BaseAPI {
+    /**
+     * 
+     * @summary Get Catalog Skill
+     * @param {string} owner 
+     * @param {string} repo 
+     * @param {string} skill 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public getCatalogSkill(owner: string, repo: string, skill: string, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).getCatalogSkill(owner, repo, skill, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Install Skill
+     * @param {SkillInstallRequest} skillInstallRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public installSkill(skillInstallRequest: SkillInstallRequest, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).installSkill(skillInstallRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Search Skill Catalog
+     * @param {string} q Search text.
+     * @param {number} [limit] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public searchSkillCatalog(q: string, limit?: number, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).searchSkillCatalog(q, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Uninstall Skill
+     * @param {string} name 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public uninstallSkill(name: string, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).uninstallSkill(name, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
@@ -36,6 +37,7 @@ __all__ = [
     "get_session_factory",
     "get_devops_client_factory",
     "DevOpsClientFactory",
+    "get_skill_catalog_transport",
     "get_launch_spawner",
     "LaunchSpawner",
     "get_resume_spawner",
@@ -133,6 +135,12 @@ def get_devops_client_factory() -> DevOpsClientFactory:
         )
 
     return _factory
+
+
+def get_skill_catalog_transport() -> httpx.AsyncBaseTransport | None:
+    """None means the real network; tests override this with a MockTransport
+    so no test ever reaches skills.sh or GitHub."""
+    return None
 
 
 def get_launch_spawner() -> LaunchSpawner:

@@ -17,4 +17,5 @@ from app.db.models import diagram as _diagram  # noqa: E402,F401
 from app.db.models import launcher as _launcher  # noqa: E402,F401
 from app.db.models import project as _project  # noqa: E402,F401
 from app.db.models import simulation as _simulation  # noqa: E402,F401
+from app.db.models import skills as _skills  # noqa: E402,F401
 from app.db.models import work as _work  # noqa: E402,F401

@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # DEFAULT_RUNS_ROOT) so an interview run's questions/answers files land
     # exactly where every other run of that repo lands.
     factory_runs_root: Path = MASTERWORK_HOME / "runs"
+    # Optional GitHub PAT for the skill catalog search — unset means anonymous
+    # GitHub requests (60 req/h), not a startup failure.
+    github_token: str | None = None
 
     @property
     def ingest_url(self) -> str:
