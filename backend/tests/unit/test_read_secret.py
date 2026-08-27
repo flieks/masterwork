@@ -28,16 +28,12 @@ def test_falls_back_to_dotenv(monkeypatch: pytest.MonkeyPatch, dotenv: Path) -> 
     assert read_secret("MW_TEST_SECRET") == "from-dotenv"
 
 
-def test_missing_everywhere_is_none(
-    monkeypatch: pytest.MonkeyPatch, dotenv: Path
-) -> None:
+def test_missing_everywhere_is_none(monkeypatch: pytest.MonkeyPatch, dotenv: Path) -> None:
     monkeypatch.delenv("MW_TEST_SECRET", raising=False)
     assert read_secret("MW_TEST_SECRET") is None
 
 
-def test_empty_env_var_falls_through(
-    monkeypatch: pytest.MonkeyPatch, dotenv: Path
-) -> None:
+def test_empty_env_var_falls_through(monkeypatch: pytest.MonkeyPatch, dotenv: Path) -> None:
     monkeypatch.setenv("MW_TEST_SECRET", "")
     dotenv.write_text("MW_TEST_SECRET=from-dotenv\n")
     assert read_secret("MW_TEST_SECRET") == "from-dotenv"

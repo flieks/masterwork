@@ -40,6 +40,7 @@ def find_agent_cli() -> str | None:
     to say so."""
     return shutil.which(AGENT_CLI, path=_child_path())
 
+
 # Live child handles, reaped opportunistically on each new launch so a
 # long-lived backend never accumulates zombies — nothing ever wait()s them.
 _children: list[subprocess.Popen[bytes]] = []

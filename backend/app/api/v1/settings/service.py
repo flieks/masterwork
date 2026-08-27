@@ -29,9 +29,7 @@ def _validate_projects_root(value: str) -> Path:
     if not expanded.is_absolute():
         raise InvalidSettingError(f"projects_root must be an absolute path, got: {value}")
     if not expanded.is_dir():
-        raise InvalidSettingError(
-            f"projects_root does not exist or is not a directory: {expanded}"
-        )
+        raise InvalidSettingError(f"projects_root does not exist or is not a directory: {expanded}")
     return expanded
 
 

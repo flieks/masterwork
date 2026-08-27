@@ -601,9 +601,7 @@ async def list_launches(
             pid=row.pid,
             run_id=row.run_id,
             launched=True,
-            interview=(
-                _interview_read(row) if row.mode == MODE_INTERVIEW and row.run_id else None
-            ),
+            interview=(_interview_read(row) if row.mode == MODE_INTERVIEW and row.run_id else None),
         )
         for row in rows
     ]

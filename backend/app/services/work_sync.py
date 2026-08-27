@@ -203,9 +203,7 @@ async def sync_source(
             if isinstance(parent, int) and parent not in fetched_ids
         }
     )
-    parent_payloads = (
-        await client.get_work_items_batch(parent_ids, FIELDS) if parent_ids else []
-    )
+    parent_payloads = await client.get_work_items_batch(parent_ids, FIELDS) if parent_ids else []
     for payload in parent_payloads:
         inserted_row = await _upsert_payload(db, source, payload, now=now, pulled_as_parent=True)
         if inserted_row is None:

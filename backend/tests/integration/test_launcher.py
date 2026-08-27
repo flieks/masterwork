@@ -193,9 +193,7 @@ async def test_browse_explicit_path_lists_dirs_only_sorted(
     assert body["entries"][0]["path"] == str(seeded_projects / "alpha")
 
 
-async def test_browse_defaults_to_projects_root(
-    client: AsyncClient, seeded_projects: Path
-) -> None:
+async def test_browse_defaults_to_projects_root(client: AsyncClient, seeded_projects: Path) -> None:
     explicit = await client.get("/api/v1/launcher/browse", params={"path": str(seeded_projects)})
     default = await client.get("/api/v1/launcher/browse")
     assert default.status_code == 200
@@ -206,9 +204,7 @@ async def test_browse_descends_into_a_subdirectory(
     client: AsyncClient, seeded_projects: Path
 ) -> None:
     (seeded_projects / "alpha" / "nested").mkdir()
-    r = await client.get(
-        "/api/v1/launcher/browse", params={"path": str(seeded_projects / "alpha")}
-    )
+    r = await client.get("/api/v1/launcher/browse", params={"path": str(seeded_projects / "alpha")})
     assert r.status_code == 200
     body = r.json()
     assert [e["name"] for e in body["entries"]] == ["nested"]
@@ -649,13 +645,20 @@ async def test_list_factory_runs_reads_every_projects_run_dirs(
     alpha = seeded_projects / "alpha"
     beta = seeded_projects / "beta"
     _write_run_record(
-        runs_root, alpha, "aaaa1111",
-        state="stopped", reason="cost cap reached: $32 of $25 budget",
+        runs_root,
+        alpha,
+        "aaaa1111",
+        state="stopped",
+        reason="cost cap reached: $32 of $25 budget",
         started="2026-08-15T09:40:00+00:00",
     )
     _write_run_record(
-        runs_root, beta, "bbbb2222",
-        state="finished", accepted=True, started="2026-08-14T08:00:00+00:00",
+        runs_root,
+        beta,
+        "bbbb2222",
+        state="finished",
+        accepted=True,
+        started="2026-08-14T08:00:00+00:00",
     )
 
     r = await client.get("/api/v1/launcher/runs")
