@@ -215,11 +215,17 @@ export interface AssetDetail {
      */
     'kind': AssetKind;
     /**
-     * Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store).
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetDetail
      */
     'provider': string;
+    /**
+     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none.
+     * @type {Array<string>}
+     * @memberof AssetDetail
+     */
+    'agents': Array<string>;
     /**
      * Filename/dir-derived asset name.
      * @type {string}
@@ -323,6 +329,80 @@ export type AssetKind = typeof AssetKind[keyof typeof AssetKind];
 
 
 /**
+ * 
+ * @export
+ * @interface AssetMigrateRequest
+ */
+export interface AssetMigrateRequest {
+    /**
+     * Throw away a differing copy already in the generic folder. Never needed when that copy is identical — it is adopted as is.
+     * @type {boolean}
+     * @memberof AssetMigrateRequest
+     */
+    'replace_generic'?: boolean;
+}
+/**
+ * 
+ * @export
+ * @interface AssetMigrationResult
+ */
+export interface AssetMigrationResult {
+    /**
+     * The skill at its new generic id.
+     * @type {AssetDetail}
+     * @memberof AssetMigrationResult
+     */
+    'asset': AssetDetail;
+    /**
+     * The id the skill had before the move.
+     * @type {string}
+     * @memberof AssetMigrationResult
+     */
+    'previous_id': string;
+    /**
+     * Agents whose skills dir now links to the generic copy.
+     * @type {Array<string>}
+     * @memberof AssetMigrationResult
+     */
+    'linked_agents': Array<string>;
+    /**
+     * Agents that already had an unrelated skill of this name; left alone.
+     * @type {Array<string>}
+     * @memberof AssetMigrationResult
+     */
+    'skipped_agents': Array<string>;
+    /**
+     * Frontmatter keys kept that only Claude Code honours; other agents ignore them.
+     * @type {Array<string>}
+     * @memberof AssetMigrationResult
+     */
+    'claude_only_keys': Array<string>;
+    /**
+     * True when `name:` was added or changed to match the folder.
+     * @type {boolean}
+     * @memberof AssetMigrationResult
+     */
+    'name_rewritten': boolean;
+    /**
+     * Project links that were re-pointed from the old id to the new one.
+     * @type {number}
+     * @memberof AssetMigrationResult
+     */
+    'relinked_projects': number;
+    /**
+     * The generic folder already held an identical copy: nothing was copied, the source just became a link to it.
+     * @type {boolean}
+     * @memberof AssetMigrationResult
+     */
+    'adopted': boolean;
+    /**
+     * A differing generic copy was replaced by this one on request.
+     * @type {boolean}
+     * @memberof AssetMigrationResult
+     */
+    'replaced_generic': boolean;
+}
+/**
  * One run that used an asset, and the calls it made.
  * @export
  * @interface AssetSessionUse
@@ -408,11 +488,17 @@ export interface AssetSummary {
      */
     'kind': AssetKind;
     /**
-     * Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store).
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetSummary
      */
     'provider': string;
+    /**
+     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none.
+     * @type {Array<string>}
+     * @memberof AssetSummary
+     */
+    'agents': Array<string>;
     /**
      * Filename/dir-derived asset name.
      * @type {string}
@@ -5379,6 +5465,44 @@ export const AssetsApiAxiosParamCreator = function (configuration?: Configuratio
         },
         /**
          * 
+         * @summary Migrate Asset To Generic
+         * @param {string} assetId 
+         * @param {AssetMigrateRequest} [assetMigrateRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        migrateAssetToGeneric: async (assetId: string, assetMigrateRequest?: AssetMigrateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'assetId' is not null or undefined
+            assertParamExists('migrateAssetToGeneric', 'assetId', assetId)
+            const localVarPath = `/api/v1/assets/{asset_id}/migrate`
+                .replace(`{${"asset_id"}}`, encodeURIComponent(String(assetId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(assetMigrateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Update Asset
          * @param {string} assetId 
          * @param {AssetUpdateRequest} assetUpdateRequest 
@@ -5482,6 +5606,20 @@ export const AssetsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Migrate Asset To Generic
+         * @param {string} assetId 
+         * @param {AssetMigrateRequest} [assetMigrateRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AssetMigrationResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.migrateAssetToGeneric(assetId, assetMigrateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AssetsApi.migrateAssetToGeneric']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Update Asset
          * @param {string} assetId 
          * @param {AssetUpdateRequest} assetUpdateRequest 
@@ -5544,6 +5682,17 @@ export const AssetsApiFactory = function (configuration?: Configuration, basePat
          */
         listAssets(kind?: AssetKind | null, q?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<AssetSummary>> {
             return localVarFp.listAssets(kind, q, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Migrate Asset To Generic
+         * @param {string} assetId 
+         * @param {AssetMigrateRequest} [assetMigrateRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig): AxiosPromise<AssetMigrationResult> {
+            return localVarFp.migrateAssetToGeneric(assetId, assetMigrateRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -5613,6 +5762,19 @@ export class AssetsApi extends BaseAPI {
      */
     public listAssets(kind?: AssetKind | null, q?: string | null, options?: RawAxiosRequestConfig) {
         return AssetsApiFp(this.configuration).listAssets(kind, q, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Migrate Asset To Generic
+     * @param {string} assetId 
+     * @param {AssetMigrateRequest} [assetMigrateRequest] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AssetsApi
+     */
+    public migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig) {
+        return AssetsApiFp(this.configuration).migrateAssetToGeneric(assetId, assetMigrateRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -13,10 +13,17 @@ from typing import Any
 
 import yaml
 
-from app.providers.base import ScannedAsset, SnapshotTree, file_times, resolve_within_roots
+from app.providers.base import (
+    ScannedAsset,
+    SnapshotTree,
+    file_times,
+    resolve_within_roots,
+    resolves_under,
+)
 
 _KIND_SKILL = "skill"
 _KIND_AGENT = "agent"
+AGENT_CLAUDE = "claude"
 
 
 def parse_frontmatter(content: str) -> dict[str, Any]:
@@ -68,7 +75,13 @@ def _read(path: Path) -> str:
 
 
 def build_asset(
-    provider: str, kind: str, name: str, path: Path, *, read_only: bool = False
+    provider: str,
+    kind: str,
+    name: str,
+    path: Path,
+    *,
+    read_only: bool = False,
+    agents: tuple[str, ...] = (),
 ) -> ScannedAsset | None:
     """Read one asset file into a ScannedAsset; None if the file is unreadable."""
     try:
@@ -89,6 +102,7 @@ def build_asset(
         read_only=read_only,
         model=_meta_model(meta),
         created_at=created_at,
+        agents=agents,
     )
 
 
@@ -97,9 +111,13 @@ class ClaudeProvider:
 
     name = "claude"
 
-    def __init__(self, skills_root: Path, agents_root: Path) -> None:
+    def __init__(
+        self, skills_root: Path, agents_root: Path, *, generic_root: Path | None = None
+    ) -> None:
         self._skills_root = skills_root
         self._agents_root = agents_root
+        # Skill dirs that are links into here belong to the generic provider.
+        self._generic_root = generic_root
 
     def roots(self) -> list[Path]:
         return [self._skills_root, self._agents_root]
@@ -114,6 +132,8 @@ class ClaudeProvider:
         for entry in sorted(self._skills_root.iterdir()):
             skill_file = entry / "SKILL.md"
             if not entry.is_dir() or not skill_file.is_file():
+                continue
+            if resolves_under(entry, self._generic_root):
                 continue
             asset = self._build(_KIND_SKILL, entry.name, skill_file)
             if asset is not None:
@@ -130,7 +150,7 @@ class ClaudeProvider:
                 yield asset
 
     def _build(self, kind: str, name: str, path: Path) -> ScannedAsset | None:
-        return build_asset(self.name, kind, name, path)
+        return build_asset(self.name, kind, name, path, agents=(AGENT_CLAUDE,))
 
     def snapshot_tree(self, path: Path) -> SnapshotTree | None:
         """The whole ~/.claude tree, which is where the repo sits: it holds both

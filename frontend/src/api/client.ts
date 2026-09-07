@@ -61,6 +61,10 @@ export function isNotFoundError(err: unknown): boolean {
   return err instanceof AxiosError && err.response?.status === 404;
 }
 
+export function isConflictError(err: unknown): boolean {
+  return err instanceof AxiosError && err.response?.status === 409;
+}
+
 /** Pull a readable message out of a FastAPI error (`{ detail: ... }`). */
 export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
   if (err instanceof AxiosError) {

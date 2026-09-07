@@ -30,3 +30,17 @@ async def get_project(db: AsyncSession, project_id: uuid.UUID) -> Project | None
 async def delete_project(db: AsyncSession, project: Project) -> None:
     await db.delete(project)
     await db.flush()
+
+
+async def replace_asset_id(db: AsyncSession, old_id: str, new_id: str) -> int:
+    """Re-point every project link from `old_id` to `new_id`; -> projects changed.
+    An asset that moves folders changes id, and a link must follow it."""
+    changed = 0
+    for project in await list_projects(db):
+        if old_id not in project.asset_ids:
+            continue
+        project.asset_ids = [new_id if a == old_id else a for a in project.asset_ids]
+        changed += 1
+    if changed:
+        await db.flush()
+    return changed

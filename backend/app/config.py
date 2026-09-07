@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     claude_skills_root: Path = Path.home() / ".claude" / "skills"
     claude_agents_root: Path = Path.home() / ".claude" / "agents"
     claude_plugins_root: Path = Path.home() / ".claude" / "plugins"
+    # The cross-agent skill folder (the Agent Skills layout skills.sh installs
+    # into): a skill here is loaded by every coding agent whose own skills dir
+    # links to it. Claude Code and Codex read only their own dirs, so a generic
+    # skill is symlinked into each rather than copied.
+    generic_skills_root: Path = Path.home() / ".agents" / "skills"
+    codex_skills_root: Path = Path.home() / ".codex" / "skills"
     # Claude Code's own settings file — where the observability hooks are written.
     claude_settings_file: Path = Path.home() / ".claude" / "settings.json"
     # Everything masterwork installs on disk (database, forwarder scripts).

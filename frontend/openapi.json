@@ -195,6 +195,65 @@
                 }
             }
         },
+        "/api/v1/assets/{asset_id}/migrate": {
+            "post": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Migrate Asset To Generic",
+                "operationId": "migrateAssetToGeneric",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "anyOf": [
+                                    {
+                                        "$ref": "#/components/schemas/AssetMigrateRequest"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ],
+                                "title": "Body"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetMigrationResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/assets/{asset_id}/diagram": {
             "get": {
                 "tags": [
@@ -4063,7 +4122,15 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store)."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
+                    },
+                    "agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none."
                     },
                     "name": {
                         "type": "string",
@@ -4132,6 +4199,7 @@
                     "id",
                     "kind",
                     "provider",
+                    "agents",
                     "name",
                     "title",
                     "description",
@@ -4180,6 +4248,88 @@
                     "agent"
                 ],
                 "title": "AssetKind"
+            },
+            "AssetMigrateRequest": {
+                "properties": {
+                    "replace_generic": {
+                        "type": "boolean",
+                        "title": "Replace Generic",
+                        "description": "Throw away a differing copy already in the generic folder. Never needed when that copy is identical \u2014 it is adopted as is.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "title": "AssetMigrateRequest"
+            },
+            "AssetMigrationResult": {
+                "properties": {
+                    "asset": {
+                        "$ref": "#/components/schemas/AssetDetail",
+                        "description": "The skill at its new generic id."
+                    },
+                    "previous_id": {
+                        "type": "string",
+                        "title": "Previous Id",
+                        "description": "The id the skill had before the move."
+                    },
+                    "linked_agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Linked Agents",
+                        "description": "Agents whose skills dir now links to the generic copy."
+                    },
+                    "skipped_agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Skipped Agents",
+                        "description": "Agents that already had an unrelated skill of this name; left alone."
+                    },
+                    "claude_only_keys": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Claude Only Keys",
+                        "description": "Frontmatter keys kept that only Claude Code honours; other agents ignore them."
+                    },
+                    "name_rewritten": {
+                        "type": "boolean",
+                        "title": "Name Rewritten",
+                        "description": "True when `name:` was added or changed to match the folder."
+                    },
+                    "relinked_projects": {
+                        "type": "integer",
+                        "title": "Relinked Projects",
+                        "description": "Project links that were re-pointed from the old id to the new one."
+                    },
+                    "adopted": {
+                        "type": "boolean",
+                        "title": "Adopted",
+                        "description": "The generic folder already held an identical copy: nothing was copied, the source just became a link to it."
+                    },
+                    "replaced_generic": {
+                        "type": "boolean",
+                        "title": "Replaced Generic",
+                        "description": "A differing generic copy was replaced by this one on request."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset",
+                    "previous_id",
+                    "linked_agents",
+                    "skipped_agents",
+                    "claude_only_keys",
+                    "name_rewritten",
+                    "relinked_projects",
+                    "adopted",
+                    "replaced_generic"
+                ],
+                "title": "AssetMigrationResult"
             },
             "AssetSessionUse": {
                 "properties": {
@@ -4277,7 +4427,15 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store)."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
+                    },
+                    "agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none."
                     },
                     "name": {
                         "type": "string",
@@ -4341,6 +4499,7 @@
                     "id",
                     "kind",
                     "provider",
+                    "agents",
                     "name",
                     "title",
                     "description",

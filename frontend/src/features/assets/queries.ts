@@ -4,6 +4,7 @@ import { api, GENERATE_TIMEOUT_MS, isNotFoundError } from '~/api/client';
 import type {
   AssetDetail,
   AssetDiagram,
+  AssetMigrationResult,
   AssetSessionUse,
   CatalogSearchResponse,
   CatalogSkillDetail,
@@ -64,6 +65,23 @@ export const assetDetailQueryAtom = atomFamily((assetId: string) =>
 export const updateAssetMutationAtom = atomWithMutation(() => ({
   mutationFn: (vars: { assetId: string; content: string }): Promise<AssetDetail> =>
     api.assets.updateAsset(vars.assetId, { content: vars.content }).then((r) => r.data),
+}));
+
+/** Move a Claude or Codex skill into ~/.agents/skills; it comes back under a new id. */
+export const migrateAssetMutationAtom = atomWithMutation<
+  AssetMigrationResult,
+  { assetId: string; replaceGeneric?: boolean }
+>((get) => ({
+  mutationFn: ({ assetId, replaceGeneric = false }): Promise<AssetMigrationResult> =>
+    api.assets
+      .migrateAssetToGeneric(assetId, { replace_generic: replaceGeneric })
+      .then((r) => r.data),
+  onSuccess: (result) => {
+    const queryClient = get(queryClientAtom);
+    queryClient.setQueryData(['asset', result.asset.id], result.asset);
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+  },
 }));
 
 /** The cached diagram for an asset. Resolves to `null` when none exists (404). */
@@ -177,6 +195,7 @@ export const installSkillMutationAtom = atomWithMutation<InstalledSkill, SkillIn
 );
 
 export const uninstallSkillMutationAtom = atomWithMutation<void, string>((get) => ({
-  mutationFn: (name: string): Promise<void> => api.skills.uninstallSkill(name).then(() => undefined),
+  mutationFn: (name: string): Promise<void> =>
+    api.skills.uninstallSkill(name).then(() => undefined),
   onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: ['assets'] }),
 }));

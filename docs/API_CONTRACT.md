@@ -3277,3 +3277,93 @@ InstalledSkill {
 - **No new read path.** An installed skill lands in `settings.claude_skills_root`,
   which the existing `claude` asset provider already scans, so it appears in the
   assets list with no change to that provider.
+
+# API Contract v1.42 — where a skill lives, which agents load it, and making one generic
+
+Additive on top of v1.41. Every skill masterwork listed was a Claude Code skill,
+because `~/.claude/skills` was the only skills folder it scanned. A machine with
+more than one coding agent has more than one: Codex reads `~/.codex/skills`, and
+the Agent Skills layout that skills.sh installs into, `~/.agents/skills`, is the
+one folder every agent can share. This makes the folder visible on every asset,
+scans the other two, and adds the one write that moves a skill from an agent's
+own folder into the shared one — without leaving a second copy behind.
+
+## New endpoint
+
+```
+POST /api/v1/assets/{asset_id}/migrate   migrateAssetToGeneric(AssetMigrateRequest?) -> AssetMigrationResult
+```
+
+## Changed and new schemas
+
+```
+AssetSummary {
+  ...,
+  provider: "claude" | "claude-plugin" | "codex" | "generic" | "masterwork",   // "codex" and "generic" are new
+  agents: string[],              // NEW — coding agents that load this asset: "claude", "codex"
+}
+
+AssetMigrateRequest { replace_generic: boolean }   // optional body; default false
+
+AssetMigrationResult {
+  asset: AssetDetail,            // the skill at its new "generic:skill:<name>" id
+  previous_id,                   // the id it had before the move
+  linked_agents: string[],       // agents whose skills dir now links to the generic copy
+  skipped_agents: string[],      // agents that already had an unrelated skill of this name
+  claude_only_keys: string[],    // frontmatter keys kept that only Claude Code honours
+  name_rewritten: boolean,       // `name:` was added or changed to match the folder
+  relinked_projects: number,     // project links re-pointed from the old id to the new one
+  adopted: boolean,              // the generic folder already held an identical copy; nothing was copied
+  replaced_generic: boolean,     // a differing generic copy was replaced, on request
+}
+```
+
+## Behavior
+
+- **Two more providers, one skill scanned once.** `codex` scans
+  `~/.codex/skills` (skipping Codex's hidden `.system` folder, which is Codex's,
+  not the user's) and `generic` scans `~/.agents/skills`. Claude Code and Codex
+  only read their own folder, so a generic skill reaches an agent through a
+  symlink in that agent's folder. The `claude` and `codex` providers skip any
+  entry that resolves into the generic root, so the skill is listed once, under
+  the provider that owns the real files, and never as a duplicate.
+- **`agents` is what the UI reads, `provider` is where the files are.** A
+  Claude skill lists `["claude"]`, a Codex skill `["codex"]`. A generic skill
+  lists the agents whose folder actually links to it — which can be fewer than
+  all of them, so "generic" never silently means "reaches everyone". A factory
+  role lists none.
+- **Migration copies, then swaps, then links.** The skill folder is copied into
+  the generic root under a staging name and moved into place; the source folder
+  is then replaced by a symlink to it, and every other agent's folder gets a
+  symlink too unless it already holds something of that name (reported in
+  `skipped_agents`, left alone). The skill therefore lives on disk exactly once,
+  and every agent still finds it. A failure before the swap leaves the source
+  untouched; a failure after it leaves a complete generic copy.
+- **The generic format is the same file, with `name` guaranteed.** The Agent
+  Skills spec requires `name` and that it match the folder, so the move adds or
+  corrects that one line and changes nothing else — a folded description block
+  and key order survive byte for byte. Claude-only keys
+  (`disable-model-invocation`, `argument-hint`, `model`, …) are kept, because
+  other agents ignore keys they do not know while stripping them would change
+  how Claude uses the skill; they are returned in `claude_only_keys` so the UI
+  can say so.
+- **The id changes, and links follow it.** The skill is `claude:skill:<name>`
+  before and `generic:skill:<name>` after. Every project that linked the old id
+  is re-pointed in the same request (`relinked_projects`), so a project's asset
+  list never dangles. Usage rollups are keyed by name and need no change.
+- **A copy that is already there is adopted, not refused.** skills.sh-style
+  installs leave the same skill in both `~/.claude/skills` and
+  `~/.agents/skills`, which is exactly the duplicate this endpoint exists to
+  remove. When the generic folder already holds a byte-identical tree, nothing
+  is copied: the source folder becomes the link and `adopted` is true. When the
+  generic copy differs, the request is refused with a 409 whose detail says so
+  ("differs"), and only an explicit `replace_generic: true` throws that copy
+  away in favour of this one (`replaced_generic`). The UI must re-arm into a
+  confirmation naming the loss before sending that flag.
+- **What cannot move is a 409, not a silent no-op.** An agent file (no
+  cross-agent format), a plugin asset (its marketplace owns it), a factory role,
+  and a skill that is already generic all answer 409; so does a source folder
+  that is already a link. An unknown id stays 404.
+- **Snapshots as for any write.** The source tree (`~/.claude` or `~/.codex`) is
+  committed before and after when the user made it a repo; `~/.agents` likewise.
+  Neither is ever turned into a repo behind the user's back.

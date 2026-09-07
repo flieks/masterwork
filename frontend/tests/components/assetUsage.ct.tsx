@@ -26,6 +26,7 @@ function skill(name: string, title: string): AssetSummary {
     model: null,
     path: `/Users/me/.claude/skills/${name}/SKILL.md`,
     updated_at: '2026-08-01T09:00:00.000Z',
+    agents: ['claude'],
     read_only: false,
   };
 }

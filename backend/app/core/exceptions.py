@@ -295,3 +295,17 @@ class InstalledSkillNotFoundError(DomainError):
     masterwork did not itself install."""
 
     status_code = 404
+
+
+class AssetNotMigratableError(DomainError):
+    """Only a skill in one agent's own dir can be made generic: an agent file
+    has no cross-agent format, a plugin asset belongs to its marketplace, and a
+    generic skill already is one."""
+
+    status_code = 409
+
+
+class GenericSkillExistsError(DomainError):
+    """The generic folder already holds a skill with this name."""
+
+    status_code = 409

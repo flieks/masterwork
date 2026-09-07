@@ -5,7 +5,7 @@ import { absoluteDate, absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { assetAge } from '../dates';
 import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../queries';
 import { NeverEdited, UnknownCreated } from './AssetDates';
-import { ProviderBadge } from './ProviderBadge';
+import { AgentsBadge } from './AgentsBadge';
 
 interface AssetTableProps {
   kind: AssetKind;
@@ -23,7 +23,7 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
           <tr>
             <th className="px-4 py-2.5 font-medium">Name</th>
             <th className="px-4 py-2.5 font-medium">Description</th>
-            <th className="px-4 py-2.5 font-medium">Provider</th>
+            <th className="px-4 py-2.5 font-medium">Agents</th>
             <th className="px-4 py-2.5 text-right font-medium">Uses</th>
             <th className="px-4 py-2.5 text-right font-medium">Runs</th>
             <th className="px-4 py-2.5 font-medium">Last used</th>
@@ -55,7 +55,7 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
                   {asset.description || '—'}
                 </td>
                 <td className="px-4 py-2.5">
-                  <ProviderBadge provider={asset.provider} />
+                  <AgentsBadge provider={asset.provider} agents={asset.agents} />
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
                   {used ? used.uses : <span className="text-muted-foreground">—</span>}

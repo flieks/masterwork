@@ -8,6 +8,7 @@ import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../querie
 import { usageLabel } from '../usage';
 import { AssetDatesStacked } from './AssetDates';
 import { ModelBadge } from './ModelBadge';
+import { AgentsBadge } from './AgentsBadge';
 
 interface AssetGridProps {
   kind: AssetKind;
@@ -40,7 +41,10 @@ export function AssetGrid({ kind, assets }: AssetGridProps) {
               <UsageLine usage={usage?.get(asset.name)} pending={isPending} />
               <div className="flex items-end justify-between gap-2">
                 <AssetDatesStacked created={asset.created_at} updated={asset.updated_at} />
-                <ModelBadge model={asset.model} showInherit={kind === 'agent'} compact />
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <AgentsBadge provider={asset.provider} agents={asset.agents} />
+                  <ModelBadge model={asset.model} showInherit={kind === 'agent'} compact />
+                </div>
               </div>
             </div>
           </Card>
