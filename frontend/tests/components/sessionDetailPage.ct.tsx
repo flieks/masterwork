@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import type { CodingEvent } from '~/api/generated';
 import { SessionDetailPage } from '~/features/sessions/components/SessionDetailPage';
 import { TestProviders } from './harness/TestProviders';
-import { denseChatRun, factoryRun, toolCall } from './harness/runFixtures';
+import { contextSeries, denseChatRun, factoryRun, toolCall } from './harness/runFixtures';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,9 +34,16 @@ async function mockRun(page: Page, run: typeof RUN = RUN): Promise<void> {
       return;
     }
     const url = new URL(request.url());
+    if (url.pathname.includes('/launcher/')) {
+      // No factory run owns this session, so its banner stays off the page.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: 'null' });
+      return;
+    }
     const body = url.pathname.endsWith('/events')
       ? EVENTS.filter((e) => e.id > Number(url.searchParams.get('after') ?? 0))
-      : run;
+      : url.pathname.endsWith('/context')
+        ? contextSeries({ session_id: run.id })
+        : run;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

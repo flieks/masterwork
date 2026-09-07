@@ -10,8 +10,12 @@ class Base(DeclarativeBase):
 
 
 # Import models so Alembic autogenerate and Base.metadata.create_all see them.
+from app.db.models import app_settings as _app_settings  # noqa: E402,F401
 from app.db.models import chat as _chat  # noqa: E402,F401
 from app.db.models import coding as _coding  # noqa: E402,F401
 from app.db.models import diagram as _diagram  # noqa: E402,F401
+from app.db.models import launcher as _launcher  # noqa: E402,F401
 from app.db.models import project as _project  # noqa: E402,F401
 from app.db.models import simulation as _simulation  # noqa: E402,F401
+from app.db.models import skills as _skills  # noqa: E402,F401
+from app.db.models import work as _work  # noqa: E402,F401

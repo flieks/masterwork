@@ -77,7 +77,7 @@ jobs:
 
   contract:
     # The generated client is committed, so it can silently drift from the API.
-    # Regenerate both from a live backend and fail if anything differs.
+    # Same check the pre-commit hook runs, so a green hook means a green job.
     name: openapi contract is current
     runs-on: ubuntu-latest
     steps:
@@ -90,41 +90,16 @@ jobs:
 
       - run: npm ci
         working-directory: frontend
+      - run: uv sync --frozen
+        working-directory: backend
 
-      # One step: a server backgrounded in one step and used in another is not
-      # reliably still alive, and can hang the step it was started in.
-      - name: Compare committed spec and client against a live API
+      # No server and no database: the schema comes off the FastAPI app object.
+      # STRICT turns a missing JDK or node_modules into a failure rather than a
+      # skipped client check, so a setup regression here can't pass silently.
+      - name: Compare the committed spec and client against the app object
+        run: scripts/regen-api.sh --check
         env:
-          DATABASE_URL: sqlite+aiosqlite:///./contract.db
-        run: |
-          set -euo pipefail
-          cd backend
-          uv sync --frozen
-          uv run alembic upgrade head
-          uv run uvicorn app.main:app --port 8008 &
-          API_PID=$!
-          trap 'kill $API_PID 2>/dev/null || true' EXIT
-
-          for i in $(seq 30); do
-            curl -sf http://localhost:8008/openapi.json >/dev/null && break
-            [ "$i" = 30 ] && { echo "backend did not come up"; exit 1; }
-            sleep 2
-          done
-
-          cd ../frontend
-          curl -s http://localhost:8008/openapi.json | python3 -m json.tool > /tmp/live.json
-          if ! diff -u openapi.json /tmp/live.json; then
-            echo "::error::frontend/openapi.json is stale — regenerate it from the running backend"
-            exit 1
-          fi
-
-          npm run generate:api:local
-          rm -f src/api/generated/git_push.sh src/api/generated/.openapi-generator-ignore
-          if ! git diff --quiet -- src/api/generated; then
-            git diff --stat -- src/api/generated
-            echo "::error::the committed API client is stale — run 'npm run generate:api:local' and commit"
-            exit 1
-          fi
+          REGEN_API_STRICT: "1"
 
   e2e:
     name: end-to-end

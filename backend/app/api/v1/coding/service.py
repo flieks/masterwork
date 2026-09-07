@@ -33,6 +33,7 @@ from app.db.models.coding import (
     LAUNCH_AUTOMATED,
     LAUNCH_INTERACTIVE,
     MAIN_AGENT,
+    NOTIFICATION_EVENT,
     PHASE_ABANDONED,
     PHASE_PASSED,
     PHASE_RUNNING,
@@ -43,6 +44,7 @@ from app.db.models.coding import (
     TITLE_PROMPT,
     TITLE_PROVENANCE,
     TITLE_SUMMARY,
+    TURN_CLOSED_EVENTS,
     CodingAgent,
     CodingAssetUse,
     CodingEvent,
@@ -73,6 +75,11 @@ MAX_COLOR = 20
 MAX_SHA = 64
 MAX_ASSET_NAME = 200
 MAX_USE_SOURCE = 30
+MAX_MESSAGE_ID = 200
+
+# The same truncate-never-reject posture as every other hook-fed field.
+MAX_CONTEXT_SAMPLES = 2000
+MAX_CONTEXT_TOOLS = 20
 
 # Title precedence. A truncated prompt is the floor: the agent's own summary of
 # what it was asked says the same thing in a phrase a card can hold. A factory
@@ -629,6 +636,31 @@ async def _record_evidence(
         )
 
 
+async def _apply_awaiting_input(
+    db: AsyncSession, session: CodingSession, event: CodingEvent, now: datetime
+) -> None:
+    """Track whether the run is blocked on its human.
+
+    A notification fires for two different situations and only one of them is
+    news: mid-turn (a permission prompt, a question the agent asked) the run is
+    stuck until someone answers, while after a `Stop` it is just an input box
+    nobody has typed into yet. What came before the notification is the only
+    thing that separates them, so it is read rather than guessed from the
+    message text, which is wording the harness is free to change.
+
+    Any other event clears the flag — work resuming is proof the wait is over.
+    `SessionEnd` is the exception: a run that died with the question still on
+    screen is exactly the thing worth being able to see afterwards.
+    """
+    if event.event_type == NOTIFICATION_EVENT:
+        previous = await coding_repo.previous_event_type(db, session.id, before_id=event.id)
+        if previous is not None and previous not in TURN_CLOSED_EVENTS:
+            session.awaiting_input_since = now
+        return
+    if event.event_type != "SessionEnd":
+        session.awaiting_input_since = None
+
+
 async def _apply_derived(
     db: AsyncSession,
     session: CodingSession,
@@ -668,6 +700,7 @@ async def _apply_derived(
         session.workflow = derived.workflow[:MAX_WORKFLOW]
     if derived.status:
         session.status = derived.status[:MAX_STATUS]
+    await _apply_awaiting_input(db, session, event, now)
 
     phase = await _resolve_phase(db, session, derived, now)
     for write in derived.agents:
@@ -700,6 +733,58 @@ async def _apply_derived(
         _promote_stats(session, derived.stats)
     if phase is not None:
         await _rollup_phases(db, session)
+
+
+async def _record_context_samples(
+    db: AsyncSession,
+    session_id: str,
+    samples: list[schemas.ContextSampleIn],
+    now: datetime,
+) -> None:
+    """Upsert the reported series by (session_id, message_id), then recompute
+    `delta_tokens` for the whole session in one pass.
+
+    Called from `_apply` only — never `_apply_derived`, which a backfill
+    replays, since the hook body carrying these samples is never stored.
+    Recomputing wholesale rather than incrementally is what makes a re-post of
+    the same cumulative list idempotent and self-healing.
+    """
+    for incoming in samples[:MAX_CONTEXT_SAMPLES]:
+        message_id = incoming.message_id[:MAX_MESSAGE_ID]
+        if not message_id:
+            continue
+        tools = None
+        if incoming.tools:
+            tools = [t[:MAX_TOOL_NAME] for t in incoming.tools[:MAX_CONTEXT_TOOLS]]
+        existing = await coding_repo.get_context_sample(db, session_id, message_id)
+        if existing is None:
+            await coding_repo.add_context_sample(
+                db,
+                session_id=session_id,
+                seq=incoming.seq,
+                message_id=message_id,
+                is_sidechain=incoming.is_sidechain,
+                at=incoming.at or now,
+                total_tokens=incoming.total_tokens,
+                output_tokens=incoming.output_tokens,
+                tools=tools,
+            )
+        else:
+            existing.seq = incoming.seq
+            existing.is_sidechain = incoming.is_sidechain
+            existing.at = incoming.at or now
+            existing.total_tokens = incoming.total_tokens
+            existing.output_tokens = incoming.output_tokens
+            existing.tools = tools
+
+    # Per lane, in the order rows are read back — global (seq, id), not filtered
+    # by lane first, so a lane's own predecessor is still whichever same-lane
+    # row it followed in transcript order.
+    previous: dict[bool, int] = {}
+    for row in await coding_repo.context_samples_for_session(db, session_id):
+        prior = previous.get(row.is_sidechain)
+        row.delta_tokens = None if prior is None else row.total_tokens - prior
+        previous[row.is_sidechain] = row.total_tokens
 
 
 async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
@@ -760,6 +845,8 @@ async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
         payload=body.payload,
         reported=evidence.from_body(body, lane=derived.lane),
     )
+    if body.context_samples:
+        await _record_context_samples(db, session_id, body.context_samples, now)
 
 
 async def ingest_event(db: AsyncSession, body: schemas.HookEventRequest) -> None:
@@ -783,6 +870,10 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     new run gets. Idempotent by construction — the derived rows are dropped and
     rebuilt rather than updated, which is what stops the counters (gates, turns,
     uses) doubling on a second run.
+
+    `coding_context_samples` is reported, not derived, exactly like
+    `coding_envelopes` — the hook body that carried it is never stored, so it is
+    left untouched here rather than cleared.
     """
     session = await coding_repo.get_session(db, session_id)
     if session is None:
@@ -807,6 +898,7 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     session.parent_session_id = None
     session.workflow = None
     session.status = STATUS_RUNNING
+    session.awaiting_input_since = None
     session.cost_usd = None
     session.tokens_total = None
     session.tokens_in = None
@@ -1063,6 +1155,12 @@ async def list_events(
     await get_session_or_404(db, session_id)
     events = await coding_repo.list_events(db, session_id, after=after, limit=limit)
     return [serializers.coding_event_to_schema(e) for e in events]
+
+
+async def get_context_series(db: AsyncSession, session_id: str) -> schemas.ContextSeries:
+    await get_session_or_404(db, session_id)
+    samples = await coding_repo.context_samples_for_session(db, session_id)
+    return serializers.context_series_to_schema(session_id, samples)
 
 
 # Both halves of a media path arrive in a URL, so both are matched rather than

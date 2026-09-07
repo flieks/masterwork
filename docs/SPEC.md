@@ -12,9 +12,12 @@ chatbot that proposes changes the user can accept or reject.
 - **Asset** — one installed skill or agent. Source of truth is the file on disk;
   nothing about assets is stored in the DB.
   - `kind`: `skill` | `agent`
-  - `provider`: which tool it belongs to (`claude` only in v1)
+  - `provider`: which folder it belongs to — `claude`, `claude-plugin`, `codex`,
+    `generic` (the shared `~/.agents/skills`), or `masterwork` (factory roles)
   - Claude provider roots: skills `~/.claude/skills/<name>/SKILL.md`,
-    agents `~/.claude/agents/<name>.md`
+    agents `~/.claude/agents/<name>.md`; Codex: `~/.codex/skills/<name>/SKILL.md`;
+    generic: `~/.agents/skills/<name>/SKILL.md`, reached by Claude and Codex only
+    through a symlink in their own folder (`agents` lists which ones link to it)
   - `id` is the stable slug `"{provider}:{kind}:{name}"`, e.g. `claude:skill:frontend-dev`
   - title/description parsed from YAML frontmatter when present, else derived from filename
 - **ChatSession / ChatMessage / Proposal** — stored in the app database (see API

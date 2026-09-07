@@ -127,6 +127,104 @@ async def test_status_filter_matches_the_derived_status(
     assert [s["id"] for s in await _list(client, status="abandoned")] == ["old"]
 
 
+# ------------------------------------------------------- waiting on input ---
+
+
+async def _blocked(client: AsyncClient, session_id: str = "s1") -> None:
+    """A turn in flight, then the harness saying it needs the person."""
+    await _ingest(
+        client, session_id=session_id, event_type="UserPromptSubmit", payload={"prompt": "go"}
+    )
+    await _ingest(
+        client,
+        session_id=session_id,
+        event_type="Notification",
+        payload={"message": "Claude needs your permission to use Bash"},
+    )
+
+
+async def test_a_notification_mid_turn_is_waiting_input(client: AsyncClient) -> None:
+    await _blocked(client)
+
+    session = await _session(client)
+    assert session["status"] == "waiting_input"
+    assert session["awaiting_input_since"] is not None
+
+
+async def test_waiting_survives_the_silence_that_would_call_it_abandoned(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    """The whole point: a question left open overnight is silent for a reason,
+    and reporting that as `abandoned` is how it goes unnoticed."""
+    await _blocked(client)
+    await _age_session(session_factory, "s1", minutes=6 * 60)
+
+    assert (await _session(client))["status"] == "waiting_input"
+
+
+async def test_a_notification_after_a_stop_is_only_an_idle_prompt(client: AsyncClient) -> None:
+    """Claude Code also notifies when the input box has sat idle. Nothing is in
+    flight then, so the run is finished being blocked, not blocked."""
+    await _ingest(client, session_id="s1", event_type="UserPromptSubmit", payload={"prompt": "go"})
+    await _ingest(client, session_id="s1", event_type="Stop")
+    await _ingest(client, session_id="s1", event_type="Notification", payload={"message": "idle"})
+
+    session = await _session(client)
+    assert session["status"] == "running"
+    assert session["awaiting_input_since"] is None
+
+
+async def test_answering_clears_the_wait(client: AsyncClient) -> None:
+    await _blocked(client)
+    await _ingest(client, session_id="s1", event_type="PostToolUse", tool_name="Bash")
+
+    session = await _session(client)
+    assert session["status"] == "running"
+    assert session["awaiting_input_since"] is None
+
+
+async def test_a_run_that_died_waiting_keeps_the_timestamp(client: AsyncClient) -> None:
+    """`ended_at` plus a surviving `awaiting_input_since` is the one way to tell
+    a run that was killed with its question on screen from one that finished."""
+    await _blocked(client)
+    await _ingest(client, session_id="s1", event_type="SessionEnd", ended=True)
+
+    session = await _session(client)
+    assert session["status"] == "success"
+    assert session["awaiting_input_since"] is not None
+
+
+async def test_waiting_is_its_own_filter_and_leaves_the_others_alone(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    await _ingest(client, session_id="live", event_type="UserPromptSubmit", payload={"prompt": "a"})
+    await _ingest(client, session_id="old", event_type="UserPromptSubmit", payload={"prompt": "b"})
+    await _age_session(session_factory, "old", minutes=90)
+    await _blocked(client, "blocked")
+    await _age_session(session_factory, "blocked", minutes=90)
+
+    assert [s["id"] for s in await _list(client, status="waiting_input")] == ["blocked"]
+    assert [s["id"] for s in await _list(client, status="running")] == ["live"]
+    assert [s["id"] for s in await _list(client, status="abandoned")] == ["old"]
+
+
+async def test_a_backfill_rebuilds_the_wait_from_the_stored_events(
+    client: AsyncClient, session_factory: async_sessionmaker
+) -> None:
+    await _blocked(client)
+    async with session_factory() as db:
+        await db.execute(
+            update(CodingSession).where(CodingSession.id == "s1").values(awaiting_input_since=None)
+        )
+        await db.commit()
+    assert (await _session(client))["status"] == "running"
+
+    async with session_factory() as db:
+        await service.backfill_session(db, "s1")
+
+    assert (await _session(client))["status"] == "waiting_input"
+
+
 # ----------------------------------------------------- active vs wall time ---
 
 

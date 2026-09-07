@@ -2151,3 +2151,1219 @@ ends at the first quote or newline and is stored at 120 characters.
   bytes only exist in the transcript. The request block renders `image_ref`
   nodes if it ever finds any, so this becomes a forwarder change alone.
 - **DB**: unchanged. No migration — `title_source` is already a free string.
+
+---
+
+# API Contract v1.24 — Azure DevOps work items, read-only inbound (FROZEN additions)
+
+Additive on top of v1.23. Masterwork can now mirror the Azure DevOps work items
+assigned to the user. This is **read-only inbound only**: the DevOps client
+(`app/providers/azuredevops.py`) has no PATCH/PUT/DELETE/comment-post method at
+all, and outbound stays a deliberate stub
+(`app/services/work_outbound.perform` always raises `NotImplementedError`).
+The PAT is never stored — `WorkSource.secret_ref` only names the environment
+variable it is read from at call time.
+
+## New schemas
+
+```
+WorkSource {
+  id: string                    // uuid
+  provider: string               // "azuredevops" today
+  org_url: string
+  project: string
+  team: string | null
+  query_wiql: string | null      // overrides the default assigned-to-me WIQL when set
+  secret_ref: string             // env var naming the PAT — never the PAT itself
+  current_iteration: string | null // the team's current sprint path, refreshed on sync
+  last_sync_at: string | null
+  created_at: string
+  updated_at: string
+}
+WorkSourceCreateRequest {
+  org_url: string                // must match ^https://dev\.azure\.com/[A-Za-z0-9._~-]+/?$
+  project: string
+  team?: string | null
+  query_wiql?: string | null
+  secret_ref?: string            // default "AZURE_DEVOPS_PAT"
+}
+WorkItem {
+  id: number
+  source_id: string
+  external_id: number            // DevOps work item id
+  external_url: string           // {org_url}/{project}/_workitems/edit/{external_id}
+  item_type: string              // System.WorkItemType, e.g. "Bug"
+  title: string
+  description_md: string         // System.Description, HTML converted to markdown
+  acceptance_md: string | null   // Microsoft.VSTS.Common.AcceptanceCriteria, converted; null if absent
+  state: string
+  iteration: string | null
+  assigned_to: string | null     // System.AssignedTo display name
+  priority: number | null
+  tags: string[] | null
+  external_changed_at: string
+  synced_at: string
+}
+WorkSyncResult { fetched: number, inserted: number, updated: number }
+WorkItemStartResponse {
+  prompt: string                 // the assembled session prompt
+  launched: boolean               // always false today — see Behavior
+  session_id: string | null      // null until a launched session is linked
+  link_id: number                // the work_item_sessions row id
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/work/sources` | `listWorkSources` | — | `WorkSource[]` (created_at desc) |
+| POST `/api/v1/work/sources` | `createWorkSource` | `WorkSourceCreateRequest` | `WorkSource` (201; 400 `InvalidWorkSourceError` on a non-DevOps `org_url`) |
+| GET `/api/v1/work/items?source_id=&state=` | `listWorkItems` | query: both optional | `WorkItem[]` |
+| POST `/api/v1/work/sources/{source_id}/sync` | `syncWorkSource` | — | `WorkSyncResult` (404 unknown source; 502 `WorkSyncError` on a DevOps failure or an unset PAT) |
+| POST `/api/v1/work/items/{item_id}/start` | `startWorkItem` | — | `WorkItemStartResponse` (404 unknown item) |
+
+## Behavior
+
+- **Sync**: runs `source.query_wiql`, or the default
+  `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND
+  [System.State] NOT IN ('Closed','Removed','Done') ORDER BY
+  [System.ChangedDate] DESC` when unset, against the DevOps WIQL endpoint;
+  batch-fetches the returned ids in chunks of 200
+  (`Microsoft.VSTS.Common.AcceptanceCriteria`, `System.Description`, and seven
+  other fields); converts `System.Description` and
+  `Microsoft.VSTS.Common.AcceptanceCriteria` from HTML to markdown with
+  `markdownify`; upserts one `work_items` row per `(source_id, external_id)`
+  (select-then-insert-or-update, not a dialect-specific `ON CONFLICT`); stamps
+  `work_sources.last_sync_at`. The whole DevOps payload is stored unchanged in
+  `raw` — untrusted external data, rendered as markdown, never executed.
+- **`startWorkItem` still only assembles a prompt, it does not launch.** A
+  reusable launch path now exists (`POST /api/v1/launcher/launch`, see the
+  Session launcher section below), but rewiring this endpoint to call it is
+  out of scope here — `startWorkItem` assembles the prompt (title line,
+  `external_url`, `## Story` + `description_md`, then `## Acceptance criteria`
+  + `acceptance_md` — that section omitted entirely when acceptance criteria
+  is absent or empty) and returns it with `launched: false`. It writes a
+  `work_item_sessions` row (`kind: "spawned"`, `session_id: null`) so the
+  request is on record; nothing in v1 ever fills in that `session_id`.
+- **No write path exists.** `AzureDevOpsClient` (in `app/providers/`, not a
+  `Provider` — it is not registered in `build_providers`) exposes only
+  `query_work_item_ids`, `get_work_items_batch`, `list_active_prs`, and
+  `list_pr_threads`; the last two are implemented and unit-tested but unused
+  by any endpoint in v1. `work_outbound.perform` describes a
+  `ProposedOutboundAction` (state change / comment / PR link) and always
+  raises before doing anything.
+- **DB**: three new tables — `work_sources`, `work_items` (unique on
+  `(source_id, external_id)`, indexed on `(source_id, state)`),
+  `work_item_sessions` (`session_id` nullable, FK `coding_sessions.id` ON
+  DELETE CASCADE). Alembic migration `0018_work_items`.
+
+---
+
+# API Contract v1.25 — in-app session launcher (FROZEN additions)
+
+Additive on top of v1.24. A coding session can now be started from the
+Sessions screen, always through `factory/run.py` — never a bare `claude`
+invocation. `projects_root` (default `~/Projects`, expanded server-side) is a
+persisted setting; every path this feature touches is resolved and checked to
+live inside it with `resolve_within_roots` (`app/providers/base.py`), the same
+helper the asset write path uses.
+
+## New schemas
+
+```
+AppSettings { projects_root: string }               // absolute, expanded ~
+AppSettingsUpdateRequest { projects_root?: string | null }   // omitted/null = unchanged
+
+LaunchMode = "autonomous" | "interview"
+
+LauncherProject {
+  name: string
+  path: string           // absolute, under projects_root
+  is_git_repo: boolean
+}
+LauncherProjectCreateRequest { name: string }   // no path separators or traversal
+
+LaunchRequest {
+  project_path: string   // absolute; must resolve under projects_root
+  request_text: string   // min length 1
+  mode?: LaunchMode       // default "autonomous"
+}
+SessionLaunchRead {
+  id: number
+  project_path: string
+  request_text: string
+  mode: LaunchMode
+  launched_at: string
+  pid: number | null
+  launched: boolean       // true once the subprocess was spawned
+}
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/settings` | `getSettings` | — | `AppSettings` (default filled in when unset) |
+| PATCH `/api/v1/settings` | `updateSettings` | `AppSettingsUpdateRequest` | `AppSettings` (400 on a relative or non-existent `projects_root`) |
+| GET `/api/v1/launcher/projects` | `listLauncherProjects` | — | `LauncherProject[]` (immediate subdirectories of `projects_root`, sorted, dotted dirs and non-directories excluded) |
+| POST `/api/v1/launcher/projects` | `createLauncherProject` | `LauncherProjectCreateRequest` | `LauncherProject` (201; `mkdir` + `git init`; 400 on an invalid name; 409 if it already exists) |
+| POST `/api/v1/launcher/launch` | `launchSession` | `LaunchRequest` | `SessionLaunchRead` (400 when `project_path` is outside `projects_root`, not a directory, or not a git repo; 502 `LaunchFailedError` if the spawn itself fails) |
+
+## Behavior
+
+- **Always the factory, never a bare `claude` call.** The launch endpoint
+  spawns `python3 <masterwork_repo_root>/factory/run.py --repo <project_path>
+  "<request_text>"` as a detached, fire-and-forget `Popen`
+  (`start_new_session=True`, argv list, never `shell=True` — `request_text` is
+  untrusted and is passed as a single argv element). Nothing waits on it; a
+  `session_launches` row is written first (so a launch is on record even if
+  the spawn fails) and stamped with the child's pid.
+- **`mode` selects the spawned argv.** `"autonomous"` is unchanged: no mode
+  flag, no run id. `"interview"` gets a server-generated run id passed as
+  `--run-id`, plus `--interview` — see v1.26 below for what that does.
+- **No extra attribution wiring.** A launched run's Claude sessions
+  self-attribute to the Sessions screen the same way every other factory run
+  does, via the `MASTERWORK_FACTORY_RUN_ID` env handshake
+  (`factory/adw/agent.py`, forwarded by
+  `app/observability/forwarders/claude_code.py`) — nothing in
+  `app/api/v1/coding/` changes for this feature.
+- **A run that dies at startup is not surfaced beyond its log.**
+  `factory/run.py` exits 2 for a missing/non-git repo or an unresolvable
+  config; the launch endpoint pre-checks directory-ness and `.git` so those
+  cases 400 synchronously instead, but a failure after that 200 is only
+  visible in `~/.masterwork/launches/<launch id>.log` — the response never
+  claims the run succeeded, only that it started.
+- **Project name validation** (`POST /api/v1/launcher/projects`) rejects
+  empty/whitespace-only names, `/`, `\`, and NUL bytes, `.` and `..`, any name
+  starting with `.`, and names over 100 characters.
+- **DB**: two new tables — `app_settings` (`key` PK, key-value so a future
+  setting needs no migration) and `session_launches` (`id`, `project_path`,
+  `request_text`, `mode`, `launched_at`, `pid` nullable). Not linked to
+  `coding_sessions` by FK — attribution rides the env handshake, not this
+  table. Alembic migration `0020_app_settings_and_launches`.
+
+---
+
+# API Contract v1.26 — real interview mode
+
+Additive on top of v1.25. An interview launch now really pauses: the factory
+run executes `plan` as always, then — instead of continuing to `build` — turns
+the plan envelope's `assumptions[]` into questions, writes them to
+`<run_dir>/questions.json`, marks `run.json` `state: "waiting_input"`, and
+exits 0. `--resume <run_id>` on such a run requires `<run_dir>/answers.json`;
+with it, each question+answer pair is folded into the build stage's prompt
+alongside the plan; without it, the resume refuses and exits 2. An autonomous
+launch, or any run started without `--interview`, is unaffected.
+
+## Factory CLI (`factory/run.py`)
+
+- `--interview` — after `plan`, pause and write `questions.json` instead of
+  continuing to build. Refused (exit 2) on a workflow with no `plan` stage.
+- `--run-id RUN_ID` — use this id for a fresh run instead of generating one.
+  Validated as a path segment before use: non-empty, ≤64 chars,
+  `[A-Za-z0-9._-]` only, not `.`/`..`, and refused if already in use under the
+  runs root. Mutually exclusive with `--resume` (a resume takes its id from
+  the record it is resuming).
+- `--resume <run_id>` of a run whose `run.json` state is `waiting_input` reads
+  `<run_dir>/answers.json`; missing or malformed answers refuse the resume
+  (exit 2) before any agent runs.
+
+## The on-disk file contract (owned by `factory/adw/interview.py`)
+
+```
+<run_dir>/questions.json   — written by the factory
+{
+  "run_id": "a1b2c3d4",
+  "stage": "plan",
+  "asked_at": "2026-08-14T10:00:00+00:00",
+  "questions": [{ "id": "q1", "question": "<assumption text, verbatim>" }]
+}
+
+<run_dir>/answers.json     — written by the backend, read by the factory
+{
+  "answered_at": "2026-08-14T10:05:00+00:00",
+  "answers": [{ "id": "q1", "question": "<verbatim>", "answer": "<user text>" }]
+}
+```
+
+`<run_dir>` is `<runs root>/<run_id>`; the runs root is a repo's own
+`factory.config.json` `"runs_dir"` when set, else
+`~/.masterwork/runs/<project dir name>`. The backend
+(`app/services/factory_runs.py`) mirrors this rule exactly rather than passing
+a `--runs-dir`, so an interview run's files land where every other run of that
+repo lands. Both files are written atomically (tmp + `os.replace`).
+
+## New schemas
+
+```
+SessionLaunchRead: + run_id: string | null        // set for interview launches only
+
+InterviewState = "not_interview" | "starting" | "running" | "waiting" | "answered" | "finished"
+InterviewQuestion { id: string, question: string }
+InterviewRead {
+  launch_id: number
+  run_id: string | null
+  state: InterviewState
+  run_state?: string | null    // run.json's raw state, for debugging
+  questions?: InterviewQuestion[]   // only populated when state == "waiting"
+}
+InterviewAnswer { id: string, answer: string }        // min length 1
+InterviewAnswersRequest { answers: InterviewAnswer[] }  // min length 1, one per question
+InterviewResumeRead { launch_id: number, run_id: string, resumed: boolean, pid: number | null }
+
+SessionLaunchListItem = SessionLaunchRead + { interview: InterviewRead | null }  // null for autonomous rows
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/launches` | `listSessionLaunches` | — | `SessionLaunchListItem[]` (newest first, up to 20) |
+| GET `/api/v1/launcher/launches/{launch_id}/interview` | `getLaunchInterview` | — | `InterviewRead` (404 unknown launch) |
+| POST `/api/v1/launcher/launches/{launch_id}/answers` | `submitInterviewAnswers` | `InterviewAnswersRequest` | `InterviewResumeRead` (404 unknown launch; 409 not currently `"waiting"`; 400 answer ids don't match the recorded questions one-for-one, or any answer is blank after `.strip()`) |
+
+## Behavior
+
+- **Interview launches get a server-generated run id.** `POST
+  /api/v1/launcher/launch` with `mode: "interview"` generates a run id
+  (`factory_runs.new_run_id()`, same shape as the factory's own), stores it on
+  the `session_launches` row, and passes `--run-id <id> --interview` to
+  `run.py`. An autonomous launch keeps `run_id: null` and its argv
+  byte-for-byte identical to v1.25.
+- **State is derived from the run's own files, not stored.** `starting` (no
+  `run.json` yet) → `waiting` (`questions.json` present, `run.json` state
+  `waiting_input`) → `answered` (`answers.json` written) → `finished`
+  (`run.json` state `finished`/`stopped`), or `running` otherwise. A launch
+  that isn't interview mode, or has no run id, reads `not_interview`.
+- **Submitting answers is the double-submit guard.** Once `answers.json`
+  exists the state is `answered`, not `waiting`, so a second POST 409s instead
+  of spawning a second resume. The answers file is written *before* the resume
+  is spawned — a resume that started before its answers existed would refuse
+  itself.
+- **The resume spawn mirrors the launch spawn.** Same detached, fire-and-forget
+  `Popen` pattern (`start_new_session=True`, argv list, never shell-interpreted):
+  `python3 <repo>/factory/run.py --repo <project> --resume <run_id>`, through
+  an injected `ResumeSpawner` dependency so no test forks a real process.
+- **Frontend**: the Sessions list page polls `listSessionLaunches` (5s) and
+  renders an `InterviewQuestions` card — one required text field per pending
+  question — for every launch currently `waiting`, mounted outside the Radix
+  tabs so it is never hidden behind whichever tab is open.
+- **DB**: one nullable column, `session_launches.run_id` (`String(64)`).
+  Alembic migration `0022_session_launch_run_id` on `0021_work_assignee_sprint`.
+  Additive, reversible, no backfill.
+
+# API Contract v1.27 — server-side folder picker
+
+Additive on top of v1.26. The projects root can now be set by browsing the
+filesystem instead of typing a path: a new read-only endpoint lists a
+directory's subfolders, and the launch dialog's **Browse** panel walks it and
+saves the chosen folder through the existing settings PATCH.
+
+## New schemas
+
+```
+DirectoryEntry { name: string, path: string }   // path is absolute
+DirectoryListing {
+  path: string                  // the resolved directory this listing is for
+  parent?: string | null        // absolute path of the parent; null at the filesystem root
+  entries?: DirectoryEntry[]    // non-hidden subdirectories, sorted by name
+}
+```
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/browse` | `browseDirectories` | `path` query param, optional absolute path | `DirectoryListing` (400 relative/nonexistent/not-a-directory/unreadable `path`) |
+
+## Behavior
+
+- **Browsing is deliberately unrestricted.** Unlike `project_path` on
+  `POST /api/v1/launcher/launch`, `browse` does not confine `path` to
+  `projects_root` via `resolve_within_roots` — the picker exists to let the
+  user *leave* the current root, and `PATCH /api/v1/settings` already accepts
+  any absolute path. This is a local single-user app; no file contents are
+  ever returned, only directory names.
+- **Defaults to the stored `projects_root`.** Omitting `path` browses the same
+  directory `GET /api/v1/launcher/projects` lists from. If that root has since
+  vanished, the response is an empty `entries` list rather than a 400 — the
+  same posture `list_projects` already takes — since the request wasn't
+  parameterized by the caller.
+- **Directories only, hidden entries excluded.** Files are never returned;
+  entries whose name starts with `.` are skipped, matching `list_projects`.
+- **Two-layer permission handling.** A `path` this process cannot list at all
+  (`PermissionError` from `iterdir`) 400s — there's nothing to show. An
+  individual entry that raises `PermissionError` when stat'd is silently
+  skipped so one unreadable subfolder doesn't fail the whole listing.
+- **`parent` is `null` only at the filesystem root** (`path.parent == path`).
+- **Nothing is written by this endpoint.** The only write in the picker flow
+  is the existing `PATCH /api/v1/settings`, which already invalidates both the
+  settings and launcher-projects queries on success.
+- **DB**: none. **Migrations**: none — the alembic head stays
+  `0022_session_launch_run_id`.
+
+# API Contract v1.28 — folder picker home shortcut
+
+Additive on top of v1.27. `DirectoryListing` gains one required field so the
+picker can offer a Home shortcut that points at the *backend's* home directory
+— the browser has no way to learn it, and on a remote backend the browser's own
+home would be the wrong machine's.
+
+## Changed schema
+
+```
+DirectoryListing {
+  path: string                  // unchanged
+  parent?: string | null        // unchanged
+  entries?: DirectoryEntry[]    // unchanged
+  home: string                  // NEW, required — absolute path of the home
+                                //      directory the backend process runs as
+}
+```
+
+## Behavior
+
+- **`home` is `Path.home()` of the backend process**, resolved per request. It
+  is a navigation hint only: `browse` neither defaults to it nor treats it as a
+  boundary, and passing it back as `path` is an ordinary browse.
+- **Required, not optional.** Every `browse` response carries it, so the client
+  never has to guess a home directory from path segments.
+- **DB**: none. **Migrations**: none — the alembic head stays
+  `0022_session_launch_run_id`.
+
+# API Contract v1.29 — context-growth series
+
+Additive on top of v1.28. Claude Code's transcript already carries one
+cumulative `usage` block per API response — every assistant turn says how big
+the context window was at that instant — and the forwarder used to throw all
+of it away except the final sum. It now keeps the shape of that curve: an
+ordered sample per turn, posted on the existing Stop/SessionEnd hook body,
+stored in a new reported table, and read back as a session detail panel.
+
+## New schemas
+
+```
+ContextSampleIn {                 // the hook's inbound shape, one per sample
+  seq: int                        // position in the deduped stream, chronological across lanes
+  message_id: string
+  at?: datetime | null            // falls back to the event's own time when absent
+  total_tokens: int                // input + cache_read + cache_creation
+  output_tokens?: int | null
+  model?: string | null           // accepted, not stored — no column for it
+  is_sidechain?: bool = false
+  tools?: string[] | null         // tool results that landed since the previous sample
+}
+
+ContextSample {                   // the read-back shape
+  seq: int
+  message_id: string
+  at: datetime
+  total_tokens: int
+  output_tokens: int | null
+  delta_tokens: int | null        // null for the first sample of its lane
+  is_truncation: bool             // derived: delta_tokens is not null and negative
+  tools: string[]
+}
+
+ContextToolCost {
+  tool: string
+  delta_tokens: int               // summed POSITIVE delta attributed to it
+  calls: int                      // samples this tool appeared in
+}
+
+ContextSeries {
+  session_id: string
+  baseline_tokens: int | null     // first main-lane sample's total — static preamble + first prompt
+  peak_tokens: int | null         // highest main-lane total reached
+  samples: ContextSample[]        // main lane, ordered by seq
+  sidechain_samples: ContextSample[]  // subagent turns, their own series
+  tools: ContextToolCost[]        // main-lane roll-up, summed delta descending then tool name
+}
+```
+
+`HookEventRequest` gains one optional field: `context_samples: ContextSampleIn[] | null`.
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/coding-sessions/{session_id}/context` | `readSessionContextSeries` | — | `ContextSeries` (404 unknown session; 200 with empty arrays and null baseline/peak for a session with no samples) |
+
+## Behavior
+
+- **The forwarder walks the same transcript `transcript_usage()` reads**, and
+  dedupes by assistant message id the same way — one API response spans
+  several transcript lines carrying the same cumulative usage. The trap:
+  dedupe gates *sample creation* only, never `tool_use` collection, which runs
+  over every assistant line regardless — a tool named on the line after the
+  first (same message id) would otherwise be lost. `tools[]` on a sample is
+  resolved by `tool_use_id` against those blocks; an id that resolves to
+  nothing is dropped, never invented.
+- **Lanes never interleave.** `is_sidechain` is read straight off the
+  transcript's `isSidechain` flag, and the pending-tools accumulator is keyed
+  by it, so a subagent's `tool_result` can never land on the main lane's next
+  sample. `seq` stays one monotonic counter chronological across both lanes;
+  the read side is what splits them apart.
+  Bounded like everything else the hook posts: the last 2000 samples, 20 tool
+  names per sample.
+- **`coding_context_samples` is REPORTED, not derived** — exactly like
+  `coding_envelopes` and `coding_gate_checks`. The hook body carrying the
+  series is never stored, so `service.backfill_session` leaves this table
+  alone rather than clearing it. Ingest upserts by `(session_id, message_id)`
+  in `_apply` only — never `_apply_derived`, which a backfill replays — and
+  recomputes `delta_tokens` for the whole session, per lane, in one pass on
+  every ingest. Recomputing wholesale rather than incrementally is what makes
+  a re-post of the same cumulative list idempotent.
+- **Negative deltas are real and stored verbatim.** A context truncation drops
+  the total mid-session — observed as a −7570-token step in a live transcript.
+  Such a sample is flagged `is_truncation` and excluded from the tool
+  roll-up: a truncation is not something a tool earned.
+- **The roll-up splits a multi-tool sample's delta exactly**: `delta //
+  len(tools)` to each, the remainder to the first tools named, so the parts
+  sum back to the delta. Only samples with a positive `delta_tokens` and at
+  least one named tool contribute; the first sample of a lane (`delta_tokens`
+  is null) and every truncation contribute nothing.
+- **The header describes the main lane only.** `baseline_tokens`,
+  `peak_tokens` and `tools` never fold in sidechain samples — a subagent's
+  totals blended into the main lane's baseline would be a number nobody could
+  point at. `sidechain_samples` is returned as its own ordered array.
+- **Frontend**: a `ContextGrowthPanel` on the session detail page — a
+  hand-rolled SVG line/area of `total_tokens` over `seq` (no charting
+  dependency exists in this repo and none was added), truncation drops marked
+  with a dashed rule and a dot, and beside it the ranked tool roll-up.
+  Clicking a tool row switches the (now controlled) events tab and filters
+  `EventTimeline` to that tool via a new `toolName` prop. An empty series
+  renders no panel at all, so the hundreds of sessions recorded before this
+  shipped stay visually unchanged.
+- **DB**: one new table, additive:
+  ```
+  coding_context_samples
+    id             int pk
+    session_id     varchar(200) fk coding_sessions.id on delete cascade
+    seq            int
+    message_id     varchar(200)
+    is_sidechain   bool
+    at             timestamptz
+    total_tokens   bigint
+    output_tokens  bigint null
+    delta_tokens   int null      -- null = first sample of its lane
+    tools          json null
+    unique (session_id, message_id)
+    index (session_id, seq)
+  ```
+  Alembic migration `0023_coding_context_samples` on `0022_session_launch_run_id`.
+  Additive, reversible, no backfill — nothing in the stored event stream can
+  reconstruct a sample.
+
+# API Contract v1.30 — factory runs list + resume from the UI
+
+Additive on top of v1.29. Every factory run a project's runs root records is
+now visible to the frontend, and a stopped, crashed or rejected run can be
+resumed with one click — no terminal needed. The list reads the run dirs
+themselves (`run.json`), so runs launched outside the UI show up too.
+
+## New schemas
+
+```
+FactoryRun {
+  run_id: string
+  project_path: string           // the project the run worked on
+  project_name: string
+  state: string                  // run.json's raw state: running/stopped/finished/waiting_input
+  request_text: string
+  branch: string | null
+  reason: string | null          // why the run ended, e.g. "cost cap reached: $32.94 of $25 budget"
+  interview: boolean
+  accepted: boolean
+  started_at: string | null
+  ended_at: string | null
+  resumable: boolean             // server-side verdict, mirrors factory plan_resume's gate
+}
+FactoryRunResumeRequest { project_path: string, run_id: string }
+FactoryRunResumeRead { run_id: string, resumed: boolean, pid: number | null }
+```
+
+## New endpoints
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/runs` | `listFactoryRuns` | — | `FactoryRun[]` (all projects under projects_root, started_at desc) |
+| POST `/api/v1/launcher/runs/resume` | `resumeFactoryRun` | `FactoryRunResumeRequest` | `FactoryRunResumeRead` (400 outside projects_root, 404 unknown run, 409 not resumable, 502 spawn failure) |
+
+## Behavior
+
+- **`resumable`** is computed server-side, mirroring `factory/adw/runs.plan_resume`:
+  false while the run is live (state `running` AND its recorded pid is alive),
+  false once a run completed accepted, false without a recorded branch. A
+  `running` record whose pid is dead is a crash — resumable.
+- **The resume never re-imposes a cost cap.** `factory/run.py --resume <id>` reads
+  budget flags from its own argv, and the spawned argv carries none — a run
+  stopped at "cost cap reached" continues uncapped. The spawn is detached
+  (same mechanism as `launchSession`), logs to
+  `<masterwork_home>/launches/run-<run_id>.log`, and writes no DB row: the run
+  dir stays the single source of truth for run state.
+- **Frontend**: a `FactoryRunsCard` on SessionsListPage (outside the tabs,
+  beside `InterviewQuestions`) polls `listFactoryRuns` every 5s and offers
+  Resume on resumable rows.
+- **DB**: none.
+
+# API Contract v1.31 — run outcome, resume hints, session → run link
+
+Additive on top of v1.30, correcting how a run's result is reported.
+
+## Changed schemas
+
+`FactoryRun` gains three fields:
+
+```
+outcome: "running" | "waiting" | "done" | "failed" | "stopped"
+resume_hint: string | null     // why no resume is offered; null when resumable
+session_ids: string[]          // coding sessions this run's stages reported
+```
+
+`state` stays, unchanged and raw, but **`outcome` is the field to read**.
+`state` is the *process's* state, not the run's: a run whose review rejected it
+and a run that was approved both end up `state: "finished"`, and a run that
+crashed is left claiming `state: "running"` forever. `outcome` resolves all
+three — `done` only when `accepted` is true, `failed` for a rejected or crashed
+run, `stopped` for a budget/kill stop.
+
+## New endpoint
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| GET `/api/v1/launcher/runs/by-session/{session_id}` | `getRunForSession` | — | `FactoryRun \| null` |
+
+Null, not 404, when no run owns the session — every plain chat session is that
+case, and it is not an error.
+
+## Behavior
+
+- **The session → run link is exact, not inferred.** The factory records each
+  stage's Claude session id in `<run_dir>/telemetry.jsonl`, and those ids are
+  `coding_sessions.id` values. No time-window or cwd guessing is involved.
+  Parsed ids are cached per file by (mtime, size), since the runs list polls.
+- **`resume_hint` names the blocker** in the same terms as
+  `factory/adw/runs.plan_resume`: `still running`, `completed and approved —
+  nothing to resume`, or `no branch recorded — nothing safe to resume onto`.
+  A run with no recorded branch is the one failure that can never be resumed.
+- **Frontend**: `FactoryRunsCard` folds `done` runs away behind a "Show N
+  completed runs" toggle and prints `resume_hint` where an unresumable row's
+  button would be; `SessionRunBanner` puts the same badge + Resume on the
+  session detail page for the run that spawned that session.
+- **DB**: none.
+
+# API Contract v1.32 — the resume gate, corrected
+
+Fixes two wrong answers v1.31 gave. No new endpoints, no schema changes.
+
+- **A `--no-branch` run is resumable.** v1.31 required `branch` to be set and
+  reported `no branch recorded` otherwise. The factory does not work that way:
+  `factory/adw/runs.py:_resume_ref` falls back to `branch_origin`, which names
+  the branch such a run committed onto. Only a run that started on a detached
+  HEAD (where `branch_origin` is a bare 40-char sha) has no ref to return to;
+  its hint is now `ran on a detached HEAD — no branch to resume onto`.
+- **A run whose branch was deleted is refused, not offered.** `plan_resume`
+  checks the ref still exists; v1.31 did not, so such a run showed a Resume
+  button whose spawn would refuse itself into a log file nobody reads. The
+  list now reports `the branch it worked on ('X') is gone`, and
+  `resumeFactoryRun` returns 409 with that same sentence before spawning
+  anything. Branch names are read once per project per request, and a repo
+  git cannot answer for is trusted rather than reported as gone.
+- **`getRunForSession` also answers for a pipeline run's own session.** The
+  runner's session id is `factory-<run_id>` (built in `factory/adw/telemetry.py`,
+  read in `coding/service.py:FACTORY_SESSION_PREFIX`), which is the page the
+  runs grid links to; only the stage session ids from telemetry were matched
+  before, so that page showed no banner.
+
+# API Contract v1.33 — superseded runs, and a spawn that cannot silently die
+
+Additive on top of v1.32.
+
+## Changed schema
+
+`FactoryRun` gains one field:
+
+```
+superseded_by: string | null   // run id of a newer run of this same request
+```
+
+Same project, same `request_text`, later `started_at`. That is the only signal
+available — the factory records no lineage between runs — and it is exactly
+what the rerun button produces. The frontend offers a link to the newer run
+instead of a second "Run again" on a request already running again.
+
+## Behavior
+
+- **`launchSession` and `resumeFactoryRun` refuse when the agent CLI is
+  missing** (502): a backend started outside a login shell inherits a PATH
+  without `claude`, and the factory then dies about a second after both
+  endpoints have already answered "launched". The child is now spawned with a
+  PATH extended by the usual per-user install dirs (`~/.local/bin`,
+  `~/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`), and a CLI that
+  still cannot be found is reported instead of spawned.
+- **Both endpoints read the child's log back** after a short settle and raise
+  502 with the factory's own words if it already gave up — an `error:` line or
+  a `NOT ACCEPTED` verdict. A run that dies on arrival is no longer reported as
+  started.
+- **DB**: none.
+
+# API Contract v1.34 — dismissing a run out of the list
+
+Additive on top of v1.33. The runs list is a working list, not an archive: a
+run that nobody will act on has to be able to leave it.
+
+## Changed schema
+
+`FactoryRun` gains one field:
+
+```
+dismissed: boolean   // the user waved this run away; out of the way, not gone
+```
+
+## New schema and endpoints
+
+```
+FactoryRunDismissRequest { project_path: string, run_id: string }
+```
+
+| Method & path | operation_id | Request | Response |
+|---|---|---|---|
+| POST `/api/v1/launcher/runs/dismiss` | `dismissFactoryRun` | `FactoryRunDismissRequest` | `FactoryRun` (400 outside projects_root, 404 unknown run) |
+| POST `/api/v1/launcher/runs/restore` | `restoreFactoryRun` | `FactoryRunDismissRequest` | `FactoryRun` |
+
+## Behavior
+
+- **The run dir is never written to.** A dismissal is masterwork's own note in
+  its own table, so the factory's records stay exactly as it wrote them and a
+  dismissal is undone by deleting a row. Dismissing twice is not an error.
+- **Frontend**: every open row carries a × that dismisses it; dismissed runs
+  fold in with the done and superseded ones behind "Show N handled runs",
+  where each offers "Bring back".
+- **DB**: one new table, additive:
+  ```
+  dismissed_runs
+    id            int pk
+    project_path  text
+    run_id        varchar(64)
+    dismissed_at  timestamptz
+    unique (project_path, run_id)
+  ```
+  Alembic migration `0024_dismissed_runs` on `0023_coding_context_samples`.
+
+# API Contract v1.35 — launching a chosen workflow, and the cheap "is it done?" check
+
+Additive on top of v1.34.
+
+## Changed schemas
+
+```
+LaunchRequest.workflow?: "full" | "plan_build" | "build_test" | "build_review" | "document" | "scout"
+FactoryRun.workflow: string | null   // the preset the run recorded, e.g. "scout"
+```
+
+`workflow` is optional and omitted by default, so a plain autonomous launch's
+argv is unchanged to the byte: `--workflow` is appended only when asked for,
+the same rule `--run-id` and `--interview` already follow. An unknown preset is
+rejected by the schema (422) rather than handed to the factory.
+
+## Behavior
+
+- **`scout` is the cheap one.** It is a single read-only stage
+  (`factory/adw/workflows.py`) on a small model, whose role forbids writing
+  files or proposing a plan: it reads the repo and reports `findings` plus a
+  `summary`. That makes "is this already implemented?" answerable for a
+  fraction of a plan-and-build rerun.
+- **Frontend**: a stuck run offers "Check if done" beside "Run again". It
+  launches the same project with `workflow: "scout"` and a request that asks
+  whether the original request's work already landed, quoting it. The runs list
+  labels any non-`full` run with its preset, so a check is never mistaken for a
+  build.
+- **DB**: none — the workflow is already recorded in the run's own `run.json`.
+
+# API Contract v1.36 — every launch names the run it started
+
+Corrects v1.26's "only an interview launch gets a run id".
+
+`launchSession` now generates a run id for **every** launch and passes it as
+`--run-id`, so `SessionLaunchRead.run_id` is always set and the caller knows
+which run its click produced. Before, an autonomous launch answered
+`run_id: null` and the UI had no way to point at the run it had just started —
+the reason a started rerun or check could only say "Started" and leave the user
+guessing. Interview launches are unaffected; they always worked this way.
+
+The `--run-id` flag is the same one `factory/run.py` already accepted, so
+nothing about the factory changes. What changes is that a plain autonomous
+launch's argv now carries it too.
+
+**Frontend**: once the started run reports itself in `listFactoryRuns`, the
+button that started it turns into a link to that run's session page, where its
+stages, events and the agent's own output already stream in. Until then it
+stays an inert label, so the link never opens a page with nothing on it.
+
+**DB**: none — `session_launches.run_id` already existed and is simply always
+populated now.
+
+---
+
+# API Contract v1.37 — the work sync covers the sprint, not just @Me
+
+Corrects v1.24's "read-only inbound only" sync, which only ever pulled items
+`[System.AssignedTo] = @Me`: the work page never saw a teammate's item, so the
+frontend's "Everyone" assignee filter had nothing to add over "@Me".
+
+**`sync_source`** now resolves the team's current iteration path first
+(`current_iteration`, unchanged as a field, just fetched earlier). When one
+resolves, it queries the whole sprint —
+`[System.IterationPath] UNDER '<path>' AND [System.State] NOT IN
+('Closed','Removed','Done')`, every assignee — instead of `DEFAULT_WIQL`.
+`DEFAULT_WIQL` (`[System.AssignedTo] = @Me`) is now only the fallback for when
+no sprint covers today (or the iteration lookup fails); an operator's
+`source.query_wiql` still overrides both, unchanged. The iteration path is
+interpolated into the sprint WIQL with its single quotes doubled — the one
+external-data interpolation the module allows, since DevOps' own sprint-lookup
+API is the source, not user input.
+
+**New field**, `WorkSource.owner_display_name: string | null` — the PAT
+owner's DevOps display name, read from `GET {org_url}/_apis/connectionData`
+(`authenticatedUser.providerDisplayName`) and refreshed on every sync,
+best-effort like `current_iteration`: a failed lookup keeps the source's last
+known value. Not settable — it has no place on `WorkSourceCreateRequest`,
+only ever derived from the PAT.
+
+```
+WorkSource {
+  ...                             // unchanged fields, see v1.24
+  owner_display_name: string | null // PAT owner's display name; refreshed on sync
+}
+```
+
+**Frontend**: `ASSIGNEE_ME` in `features/work/tree.ts` no longer means
+"`!item.pulled_as_parent`" — it means `item.assigned_to` equals the item's
+source's `owner_display_name`. `filterWorkItemTree` takes that name per
+source id as a third argument (`OwnerNames`, keyed by `source_id`); a source
+with no `owner_display_name` yet matches nobody under "@Me". The sprint
+dropdown, search box, and tree building are unchanged.
+
+**DB**: `work_sources.owner_display_name`, nullable text, added by Alembic
+migration `0025_work_source_owner`.
+
+# API Contract v1.38 — a check that reports back
+
+Additive on top of v1.37. v1.35 could start a `scout` check but nothing came
+back from it: the verdict stayed in the run dir, and the run being checked
+never learned a check existed — so the button offered to ask the same question
+again.
+
+## Changed and new schemas
+
+```
+LaunchRequest.checks_run_id?: string | null   // the run this launch exists to check
+FactoryRun.summary: string | null             // what this run's last stage concluded
+FactoryRun.check: FactoryRunCheck | null      // the newest check started for this run
+
+FactoryRunCheck { run_id: string, outcome: RunOutcome, summary: string | null }
+```
+
+## Behavior
+
+- **`summary` is the run's own verdict**, read from the `detail` of the last
+  stage `phase_end` in its telemetry (the closing `run` phase is bookkeeping and
+  is skipped). For a `scout` run that verdict *is* the answer it was asked for.
+- **The link between a check and its subject is recorded, not inferred.** A
+  check asks a question about a run, so the two never share their request text
+  and no matching heuristic could tie them together; `checks_run_id` is stored
+  on the launch row that started the check.
+- **Frontend**: a run with a check shows that check's first sentence, linking to
+  its session, in place of the "Check if done" button — a run already checked is
+  never checked twice. While the check runs it reads "Checking whether this
+  landed anyway…". A run's own page prints its `summary` in full under the
+  banner, which is where a read-only run's whole result now lives.
+- **DB**: `session_launches.checks_run_id`, nullable, Alembic
+  `0026_launch_checks_run` on `0025_work_source_owner` — rebased onto the head
+  the work-source owner migration created rather than opening a second head.
+
+# API Contract v1.39 — a run that is waiting, not gone
+
+Additive on top of v1.38. Every derived status masterwork had was inferred from
+absence: a run with no `SessionEnd` and no recent event was reported
+`abandoned`. A run blocked on a question is silent for the opposite reason —
+something is holding it — and filing it under the bucket nobody revisits is how
+a question asked at 03:11 sat unanswered until the process died at 09:00.
+
+## Changed and new schemas
+
+```
+CodingSession.status: … | "waiting_input"     // derived, and outranks abandoned
+CodingSession.awaiting_input_since: string | null   // when it went blocked
+GET /coding-sessions?status=waiting_input     // matches the derived status
+```
+
+## Behavior
+
+- **`Notification` is now one of the recorded hooks** (eight, up from seven).
+  It is the only Claude Code hook that fires *because* nothing is happening: a
+  permission prompt, or an input box that has gone idle. Its `message` is stored
+  as the event payload.
+- **Only a mid-turn notification counts.** The same hook fires after a `Stop`,
+  when it means "nobody has typed the next prompt yet" rather than "this run is
+  stuck". The event before the notification is what separates them —
+  `Stop`/`SessionStart`/`SessionEnd` mean the turn was closed, anything else
+  means one was in flight. The message text is deliberately not parsed: its
+  wording is the harness's to change.
+- **`awaiting_input_since` is stored, and cleared by the next event** that
+  proves work resumed. `SessionEnd` is the one event that does not clear it, so
+  `ended_at` set *and* `awaiting_input_since` set is a run that died with its
+  question still on screen.
+- **`waiting_input` beats `abandoned` and narrows `running`.** Silence is only
+  read as abandonment when nothing explains it, and the list filter matches the
+  same three-way split so a filtered page never contradicts the cards in it.
+- **Frontend**: a card wears an amber `waiting_input` chip, `Status → Waiting`
+  filters to them, and a banner above the grid — outside the tabs, like the
+  interview form — lists every blocked run with how long it has been waiting,
+  with an opt-in desktop notification the first time a run goes blocked.
+- **DB**: `coding_sessions.awaiting_input_since`, nullable timestamptz, Alembic
+  `0027_coding_awaiting_input` on `0026_launch_checks_run`.
+
+# API Contract v1.40 — pull requests, their review comments, and a session sent to fix them
+
+Additive on top of v1.39. The work surface mirrored work items but stopped at
+the point the work becomes a pull request: review comments lived only in the
+DevOps web UI, and getting one fixed meant reading it there, finding the right
+checkout, and retyping the comment as a prompt. This turns the PR and its
+threads into rows masterwork holds, and makes "fix these comments" one button.
+
+**Read-only, still.** Nothing here writes to Azure DevOps. Replying to a comment
+and resolving a thread are a later, separately-approved change; the delegate
+prompt tells the session so in as many words.
+
+## New endpoints
+
+```
+GET  /api/v1/work/prs?source_id=            listPullRequests       -> WorkPullRequest[]
+POST /api/v1/work/sources/{id}/sync-prs     syncPullRequests       -> WorkSyncResult
+GET  /api/v1/work/prs/{pr_id}/threads       listPullRequestThreads -> WorkPrThread[]
+POST /api/v1/work/prs/{pr_id}/delegate      delegatePullRequest    -> PullRequestDelegateResponse
+POST /api/v1/work/repo-paths                saveRepoPath           -> WorkRepoPath (201)
+```
+
+## New schemas
+
+```
+WorkPullRequest {
+  id, source_id, external_id,                  // external_id is DevOps' pullRequestId
+  repository_id, repository_name,
+  repository_remote_url,                       // the join key, never the name
+  title, description,
+  source_branch, target_branch,                // refs/heads/ stripped
+  status, is_draft, created_by: string | null,
+  external_url, external_changed_at, synced_at,
+}
+
+WorkPrThread {
+  id, pull_request_id, external_id,
+  status: string | null,                       // absent on some system threads
+  is_resolved: boolean,                        // derived, see below
+  file_path: string | null,                    // null on a PR-level thread
+  right_file_line: number | null,
+  comments: WorkPrThreadComment[], synced_at,
+}
+
+WorkPrThreadComment { id, author, content, comment_type, published_at }   // all nullable but content
+
+WorkRepoPath { id, remote_url, local_path, created_at }
+WorkRepoPathCreateRequest { remote_url, local_path }
+
+PullRequestDelegateResponse {
+  resolved: boolean,                           // false means nothing was launched
+  remote_url, local_path: string | null,
+  reason: string | null,                       // set exactly when resolved is false
+  launch_id: number | null, run_id: string | null,
+  prompt: string | null, unresolved_thread_count: number,
+}
+```
+
+## Behavior
+
+- **PRs sync in bulk, threads on demand.** `sync-prs` pulls the source's active
+  PRs and upserts on `(source_id, external_id)`, exactly like work items. Threads
+  are fetched per PR when `listPullRequestThreads` is called, because a bulk sync
+  would be one HTTP round trip per open PR to fill a panel nobody opened. The
+  frontend follows the same rule: a collapsed PR row issues no thread request.
+- **`is_resolved` is derived, not reported.** DevOps has no boolean here, only a
+  `status` string; `fixed`, `closed`, `wontFix` and `byDesign` all count as
+  resolved, anything else does not. A thread with no comments is a system marker
+  and never counts toward the unresolved badge.
+- **A repository is matched by its remote, never by its name.** A local folder is
+  routinely named differently from the DevOps repository, and DevOps reports one
+  repository under several URL forms (ssh clone, https clone, the API's own
+  `remoteUrl`). `repo_paths.normalize_remote_url` drops userinfo and any embedded
+  PAT, rewrites ssh — including Azure's `v3/{org}/{project}/{repo}` form — to the
+  https shape, lowercases the host, and drops a trailing `/` or `.git`, so both
+  forms of one repo land on one key.
+- **Resolution is three steps, and it learns.** Stored mapping → scan of
+  `projects_root`'s immediate subfolders by their git origin → unresolved. The
+  origin is read out of `.git/config` with `configparser`; nothing shells out to
+  `git`. A scan hit is written to `work_repo_paths` before it is returned, so the
+  next delegate for that remote is a stored hit. A stored path that no longer
+  exists on disk is treated as a miss, which lets a moved checkout self-heal via
+  the scan.
+- **Unresolved is a normal answer, not an error.** `delegatePullRequest` returns
+  `200` with `resolved: false` and a `reason` naming the root it searched. The
+  frontend opens the shared `FolderPickerDialog`, `saveRepoPath` records the
+  choice against the normalized remote, and the delegate is retried
+  automatically — so a repository outside `projects_root` is picked once, ever,
+  and every later PR on that remote resolves from the mapping.
+- **The prompt carries the comments, and the limits.** `assemble_pr_prompt`
+  writes the PR identity, a "check out this branch first" line, and only the
+  unresolved threads (resolved ones and comment-less ones are skipped), each
+  under its `file:line` heading. It closes with the rules in plain words: address
+  every comment, run the repo's own checks, do **not** push, and do **not** touch
+  DevOps. The launch itself reuses `launcher_service.launch` — the one spawn path
+  — so a PR run is an ordinary factory run and appears in the runs list as one.
+- **DevOps text is data.** PR titles, descriptions and comment bodies are stored
+  verbatim and rendered as plain text — never as markdown or HTML, and never
+  executed — matching how work-item descriptions have been handled since v1.20.
+- **Frontend**: `Work` gains a `Backlog` / `Pull requests` tab pair driven by
+  `?view=`, the same URL pattern the sessions list uses. A PR row expands to its
+  threads grouped by file (PR-level threads first), resolved threads folded away
+  and de-emphasised, and carries an unresolved count once opened. `Fix comments`
+  is the delegate button.
+- **DB**: three additive tables — `work_pull_requests`, `work_pr_threads`,
+  `work_repo_paths` — Alembic `0028_work_pull_requests` on
+  `0027_coding_awaiting_input`.
+
+# API Contract v1.41 — a catalog of community skills, and installing one
+
+Additive on top of v1.40. The assets surface could only ever show skills that
+were already on disk: the ones written in a chat session and the ones an
+installed Claude Code plugin shipped. Finding a skill someone else published
+meant leaving masterwork for a browser, and installing it meant copying files by
+hand. This adds the other half — search the community registries, read a
+SKILL.md before trusting it, and write a chosen skill into the same directory the
+`claude` asset provider already scans.
+
+**Third-party data, treated as such.** Everything a registry returns is text
+someone else wrote. It is rendered as plain text, never as HTML or markdown, and
+a skill whose license cannot be established is badged and gated rather than
+quietly installed.
+
+## New endpoints
+
+```
+GET    /api/v1/skills/catalog?q=&limit=              searchSkillCatalog -> CatalogSearchResponse
+GET    /api/v1/skills/catalog/{owner}/{repo}/{skill} getCatalogSkill    -> CatalogSkillDetail
+POST   /api/v1/skills/install                        installSkill       -> InstalledSkill
+DELETE /api/v1/skills/installed/{name}               uninstallSkill     -> 204
+```
+
+## New schemas
+
+```
+CatalogSkill {
+  owner, repo,                                 // the GitHub source repo
+  skill,                                       // slug within the repo; a GitHub hit uses the repo name
+  name, description,                           // description is "" when the registry gave none
+  registry: "skills_sh" | "github",
+  installs: number | null,                     // only skills.sh reports one
+  license: string | null,                      // SPDX id when known at search time
+  license_resolved: boolean,                   // false means not looked up yet — see below
+  url,
+  installed: boolean,                          // a directory with this slug already exists
+}
+
+CatalogSourceError { registry, message }       // why one source's results are missing
+
+CatalogSearchResponse { skills: CatalogSkill[], errors: CatalogSourceError[] }
+
+CatalogSkillDetail {
+  owner, repo, skill, name, registry,
+  license: string | null,
+  all_rights_reserved: boolean,                // true exactly when license is null
+  installed: boolean,                          // a directory with this slug already exists
+  installed_by_masterwork: boolean,            // false for a hand-installed skill
+  skill_md,                                    // full SKILL.md text
+  files: string[],                             // companion paths, relative to the skill folder
+}
+
+SkillInstallRequest { owner, repo, skill, overwrite: boolean }
+
+InstalledSkill {
+  asset_id,                                    // "claude:skill:<name>", the id the assets API uses
+  name, owner, repo,
+  license: string | null,
+  registry, installed_at,
+}
+```
+
+## Behavior
+
+- **Two sources, merged, and a failure is partial not fatal.** A search queries
+  the skills.sh no-auth endpoint and GitHub's repo search for `topic:claude-skills`
+  concurrently, dedupes on `(owner, repo, skill)` case-insensitively, and returns
+  200 with the sources that worked. A source that times out, 5xxs or rate-limits
+  lands in `errors` instead of failing the request, because a rate-limited GitHub
+  must never hide working skills.sh results. Only both sources failing is a 502.
+  skills.sh wins a dedupe conflict since it carries install counts, but a license
+  GitHub resolved is carried onto the winning record rather than thrown away.
+- **`license_resolved` is the difference between "unlicensed" and "unknown".**
+  skills.sh reports no license, so its search hits arrive `license: null,
+  license_resolved: false`, which the UI shows as *License unknown*. GitHub
+  reports the license explicitly, and a repo it reports as `null` or
+  `NOASSERTION` really is all rights reserved. Only a resolved null is shown as
+  such, and `getCatalogSkill` always resolves it — which is why a preview is
+  required before the risky install path can be taken.
+- **An unlicensed skill needs a second click.** `all_rights_reserved` is sent as
+  its own boolean rather than left for the client to infer from `license === null`,
+  so a missing field can never read as permissive. The install button on such a
+  skill re-arms into a risk-naming confirmation instead of installing on the
+  first press.
+- **"Is my copy current?" is answered by content, not by a version.** Skill
+  frontmatter has no standard version key — most skills declare none at all, and
+  the ones that do disagree on where it lives (`version`, or nested under
+  `metadata`). `version` and `installed_version` are therefore best-effort and
+  usually null, while `differs_from_installed` compares the registry's SKILL.md
+  against the copy on disk and works for every skill. It is null when nothing is
+  installed, so the client can tell "no copy" from "identical copy".
+- **The dates cost two requests, and are allowed to fail.** `created_at` and
+  `last_modified_at` come from the commits API filtered to the skill folder: the
+  newest commit is one request, and its `Link` header names the last page, whose
+  single entry is the oldest commit. That takes a preview from two API requests
+  to four, so the lookup degrades to nulls on any failure — losing the dates must
+  never cost the SKILL.md. `last_change_summary` is the commit subject only,
+  capped and rendered as plain text like every other registry string.
+- **`url` points at the skill, not the repo.** The tree read already knows which
+  folder the SKILL.md came from, so the link deep-links to it — often several
+  levels down, e.g. `/tree/HEAD/skills/engineering/grill-with-docs`.
+- **Already-installed is a state, not an error.** Install keys on the directory
+  name under the skills root, so both the search rows and the detail report
+  whether that slug is taken; the UI offers a guarded reinstall rather than
+  letting the request 409. The refusal is checked before the fetch, so
+  discovering it costs no GitHub round trip. `installed_by_masterwork`
+  separates a skill masterwork wrote from one that was already there — only the
+  former can be uninstalled here, so the UI must not offer removal for the
+  latter.
+- **A spent GitHub quota is its own answer.** Anonymous GitHub allows 60
+  requests an hour, which a single browse can exhaust, so a 403/429 carrying
+  `x-ratelimit-remaining: 0` becomes a 429 whose message names `GITHUB_TOKEN`
+  as the remedy rather than passing GitHub's raw body to the UI. It is never
+  retried — the quota will not refill within a request — and the nested-folder
+  fallback lets it propagate instead of reporting it as a missing skill.
+- **Four skills are refused outright.** `anthropics/skills` ships `docx`, `pdf`,
+  `pptx` and `xlsx` under a license that forbids extracting them; the refusal is
+  checked before any network call, not after fetching.
+- **A fetch costs two API requests, whatever the layout.** One recursive tree
+  read resolves the skill folder *and* lists it with every file's size, and the
+  bytes come from `raw.githubusercontent.com`, which is outside the API quota —
+  so the file count no longer affects the cost. The only other request is the
+  license lookup. Probing candidate paths one at a time cost up to eight
+  requests for the same skill, which one browse could turn into a spent
+  anonymous quota. A repo too large for a single tree response reports
+  `truncated` and falls back to walking the contents API.
+- **The fetch is bounded in four ways.** 5 MiB total, 200 entries, 5 directory
+  levels, and any entry whose resolved path escapes the skill folder is a refusal
+  rather than a skip. Symlinks and submodules are refused, not followed. Reading
+  the tree first means the size and escape guards run against the listing, so an
+  oversized or escaping skill is refused before a single byte is downloaded.
+- **Installs are atomic, and never escape the skills root.** The tree is staged
+  in a sibling directory and swapped in with `os.replace`, so a failed fetch
+  leaves no half-written skill folder; an overwrite moves the old directory aside
+  and restores it if the write fails. A slug that is not plain lowercase-kebab is
+  rejected before anything is written.
+- **Uninstall only removes what masterwork installed.** The install row is the
+  permission: a skill directory with no matching row is not deleted, so a
+  hand-written skill can never be removed through this endpoint.
+- **No new read path.** An installed skill lands in `settings.claude_skills_root`,
+  which the existing `claude` asset provider already scans, so it appears in the
+  assets list with no change to that provider.
+
+# API Contract v1.42 — where a skill lives, which agents load it, and making one generic
+
+Additive on top of v1.41. Every skill masterwork listed was a Claude Code skill,
+because `~/.claude/skills` was the only skills folder it scanned. A machine with
+more than one coding agent has more than one: Codex reads `~/.codex/skills`, and
+the Agent Skills layout that skills.sh installs into, `~/.agents/skills`, is the
+one folder every agent can share. This makes the folder visible on every asset,
+scans the other two, and adds the one write that moves a skill from an agent's
+own folder into the shared one — without leaving a second copy behind.
+
+## New endpoint
+
+```
+POST /api/v1/assets/{asset_id}/migrate   migrateAssetToGeneric(AssetMigrateRequest?) -> AssetMigrationResult
+```
+
+## Changed and new schemas
+
+```
+AssetSummary {
+  ...,
+  provider: "claude" | "claude-plugin" | "codex" | "generic" | "masterwork",   // "codex" and "generic" are new
+  agents: string[],              // NEW — coding agents that load this asset: "claude", "codex"
+}
+
+AssetMigrateRequest { replace_generic: boolean }   // optional body; default false
+
+AssetMigrationResult {
+  asset: AssetDetail,            // the skill at its new "generic:skill:<name>" id
+  previous_id,                   // the id it had before the move
+  linked_agents: string[],       // agents whose skills dir now links to the generic copy
+  skipped_agents: string[],      // agents that already had an unrelated skill of this name
+  claude_only_keys: string[],    // frontmatter keys kept that only Claude Code honours
+  name_rewritten: boolean,       // `name:` was added or changed to match the folder
+  relinked_projects: number,     // project links re-pointed from the old id to the new one
+  adopted: boolean,              // the generic folder already held an identical copy; nothing was copied
+  replaced_generic: boolean,     // a differing generic copy was replaced, on request
+}
+```
+
+## Behavior
+
+- **Two more providers, one skill scanned once.** `codex` scans
+  `~/.codex/skills` (skipping Codex's hidden `.system` folder, which is Codex's,
+  not the user's) and `generic` scans `~/.agents/skills`. Claude Code and Codex
+  only read their own folder, so a generic skill reaches an agent through a
+  symlink in that agent's folder. The `claude` and `codex` providers skip any
+  entry that resolves into the generic root, so the skill is listed once, under
+  the provider that owns the real files, and never as a duplicate.
+- **`agents` is what the UI reads, `provider` is where the files are.** A
+  Claude skill lists `["claude"]`, a Codex skill `["codex"]`. A generic skill
+  lists the agents whose folder actually links to it — which can be fewer than
+  all of them, so "generic" never silently means "reaches everyone". A factory
+  role lists none.
+- **Migration copies, then swaps, then links.** The skill folder is copied into
+  the generic root under a staging name and moved into place; the source folder
+  is then replaced by a symlink to it, and every other agent's folder gets a
+  symlink too unless it already holds something of that name (reported in
+  `skipped_agents`, left alone). The skill therefore lives on disk exactly once,
+  and every agent still finds it. A failure before the swap leaves the source
+  untouched; a failure after it leaves a complete generic copy.
+- **The generic format is the same file, with `name` guaranteed.** The Agent
+  Skills spec requires `name` and that it match the folder, so the move adds or
+  corrects that one line and changes nothing else — a folded description block
+  and key order survive byte for byte. Claude-only keys
+  (`disable-model-invocation`, `argument-hint`, `model`, …) are kept, because
+  other agents ignore keys they do not know while stripping them would change
+  how Claude uses the skill; they are returned in `claude_only_keys` so the UI
+  can say so.
+- **The id changes, and links follow it.** The skill is `claude:skill:<name>`
+  before and `generic:skill:<name>` after. Every project that linked the old id
+  is re-pointed in the same request (`relinked_projects`), so a project's asset
+  list never dangles. Usage rollups are keyed by name and need no change.
+- **A copy that is already there is adopted, not refused.** skills.sh-style
+  installs leave the same skill in both `~/.claude/skills` and
+  `~/.agents/skills`, which is exactly the duplicate this endpoint exists to
+  remove. When the generic folder already holds a byte-identical tree, nothing
+  is copied: the source folder becomes the link and `adopted` is true. When the
+  generic copy differs, the request is refused with a 409 whose detail says so
+  ("differs"), and only an explicit `replace_generic: true` throws that copy
+  away in favour of this one (`replaced_generic`). The UI must re-arm into a
+  confirmation naming the loss before sending that flag.
+- **What cannot move is a 409, not a silent no-op.** An agent file (no
+  cross-agent format), a plugin asset (its marketplace owns it), a factory role,
+  and a skill that is already generic all answer 409; so does a source folder
+  that is already a link. An unknown id stays 404.
+- **Snapshots as for any write.** The source tree (`~/.claude` or `~/.codex`) is
+  committed before and after when the user made it a repo; `~/.agents` likewise.
+  Neither is ever turned into a repo behind the user's back.

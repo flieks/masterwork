@@ -16,6 +16,7 @@ const WORKFLOW_OPTIONS: FilterOption[] = [
 const STATUS_OPTIONS: FilterOption[] = [
   { value: null, label: 'All' },
   { value: 'running', label: 'Running' },
+  { value: 'waiting_input', label: 'Waiting' },
   { value: 'success', label: 'Success' },
   { value: 'failed', label: 'Failed' },
   { value: 'interrupted', label: 'Interrupted' },

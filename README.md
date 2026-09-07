@@ -89,14 +89,15 @@ The **Sessions** screen is empty until your coding agent tells masterwork that a
 run happened. Open it and click **Connect** — that is the whole setup. It:
 
 - copies a small forwarder script to `~/.masterwork/hooks/`,
-- adds seven hooks to `~/.claude/settings.json` that run it (backing the file up
+- adds eight hooks to `~/.claude/settings.json` that run it (backing the file up
   to `settings.json.masterwork.bak` first),
 - leaves every other hook in that file exactly as it was.
 
-From then on each session posts its start, prompts, tool calls, subagent spawns
-and exit to `http://localhost:8008/api/v1/hooks/events`. **Disconnect** in the
-same place removes those seven entries and nothing else; the runs already
-recorded are kept.
+From then on each session posts its start, prompts, tool calls, subagent spawns,
+the moments it goes blocked on you, and its exit to
+`http://localhost:8008/api/v1/hooks/events`. **Disconnect** in the same place
+removes those eight entries and nothing else; the runs already recorded are
+kept.
 
 Nothing is installed without that click, and nothing is sent anywhere but your
 own machine. Prefer the terminal?

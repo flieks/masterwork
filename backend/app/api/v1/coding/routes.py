@@ -84,10 +84,10 @@ async def list_coding_sessions(
         None,
         alias="status",
         description=(
-            "Keep only runs with this status: running | success | failed | interrupted | "
-            "abandoned. Matched against the derived status, not the stored one. "
-            "`interrupted` is reported by a producer and never derived by masterwork, so "
-            "it matches nothing until one reports it."
+            "Keep only runs with this status: running | waiting_input | success | failed | "
+            "interrupted | abandoned. Matched against the derived status, not the stored "
+            "one. `interrupted` is reported by a producer and never derived by masterwork, "
+            "so it matches nothing until one reports it."
         ),
     ),
     roots_only: bool = Query(
@@ -342,6 +342,19 @@ async def list_coding_session_events(
     db: AsyncSession = Depends(get_db),
 ) -> list[schemas.CodingEvent]:
     return await service.list_events(db, session_id, after=after, limit=limit)
+
+
+@router.get(
+    "/coding-sessions/{session_id}/context",
+    response_model=schemas.ContextSeries,
+    operation_id="readSessionContextSeries",
+    summary="The context-growth curve: total tokens per turn, and which tool grew it",
+)
+async def read_session_context_series(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> schemas.ContextSeries:
+    return await service.get_context_series(db, session_id)
 
 
 @router.get(

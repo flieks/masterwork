@@ -11,6 +11,8 @@ from app.api.v1.assets.schemas import (
     AssetDetail,
     AssetDiagram,
     AssetKind,
+    AssetMigrateRequest,
+    AssetMigrationResult,
     AssetSummary,
     AssetUpdateRequest,
 )
@@ -47,6 +49,22 @@ async def update_asset(
     providers: list[Provider] = Depends(get_providers),
 ) -> AssetDetail:
     return await service.update_asset(providers, asset_id, body.content)
+
+
+@router.post(
+    "/assets/{asset_id}/migrate",
+    response_model=AssetMigrationResult,
+    operation_id="migrateAssetToGeneric",
+)
+async def migrate_asset_to_generic(
+    asset_id: str,
+    body: AssetMigrateRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
+) -> AssetMigrationResult:
+    return await service.migrate_asset(
+        db, providers, asset_id, replace_generic=bool(body and body.replace_generic)
+    )
 
 
 @router.get(

@@ -31,6 +31,9 @@ class ScannedAsset:
     model: str | None = None  # frontmatter `model:`; None means it inherits the session model
     # Filesystem birth time; None where the platform has none. See `file_times`.
     created_at: datetime | None = None
+    # Coding agents that load this asset ("claude", "codex"). A generic skill
+    # lists every agent whose skills dir links to it; a factory role lists none.
+    agents: tuple[str, ...] = ()
 
     @property
     def id(self) -> str:
@@ -98,6 +101,19 @@ class Provider(Protocol):
         keeps a write to a temp tree from being committed to the real one.
         """
         ...
+
+
+def resolves_under(path: Path, root: Path | None) -> bool:
+    """True when `path` (a symlink, typically) resolves to somewhere inside
+    `root`. Lets an agent's own skills dir skip the entries that are links into
+    the generic folder, so one skill is scanned once, by the provider that owns
+    the real files."""
+    if root is None:
+        return False
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except (OSError, RuntimeError):
+        return False
 
 
 def resolve_within_roots(path: Path, roots: Iterable[Path]) -> Path | None:

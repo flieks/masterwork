@@ -1,4 +1,5 @@
-import type { CodingEvent, CodingSession } from '~/api/generated';
+import type { CodingEvent, CodingSession, FactoryRun } from '~/api/generated';
+import { formatDuration } from '~/lib/datetime';
 import { LIVE_WINDOW_MS } from '~/lib/timeline';
 
 /**
@@ -31,6 +32,13 @@ export function isSessionLive(session: CodingSession, now = Date.now()): boolean
   const last = new Date(session.last_event_at).getTime();
   if (Number.isNaN(last)) return false;
   return now - last < (runWorkflow(session) === 'factory' ? FACTORY_IDLE_MS : CHAT_IDLE_MS);
+}
+
+/** How long a question has gone unanswered, as a phrase: "waiting 5h 49m". */
+export function waitedFor(since: string, now = Date.now()): string {
+  const started = Date.parse(since);
+  if (Number.isNaN(started)) return 'waiting';
+  return `waiting ${formatDuration((now - started) / 1000)}`;
 }
 
 /** True when a `claude -p` one-shot started the run — a script, hook or scheduler. */
@@ -208,3 +216,28 @@ export function routeDecision(events: CodingEvent[]): RouteDecision | null {
  */
 export const INTERRUPTED_NEVER_DERIVED =
   'Masterwork never derives this status — only the tool that ran the session can report it, and nothing does yet.';
+
+/** How a factory run's outcome reads: `state` alone cannot say, since a
+ * rejected run and an approved one both end up "finished". */
+export function runOutcomeMeta(run: FactoryRun): {
+  label: string;
+  variant: 'success' | 'destructive' | 'muted' | 'secondary';
+} {
+  switch (run.outcome) {
+    case 'running':
+      return { label: 'running', variant: 'secondary' };
+    case 'waiting':
+      return { label: 'waiting', variant: 'secondary' };
+    case 'done':
+      return { label: 'done', variant: 'success' };
+    case 'stopped':
+      return { label: 'stopped', variant: 'destructive' };
+    default:
+      return { label: 'failed', variant: 'destructive' };
+  }
+}
+
+/** First line of the request, which is all a row has room for. */
+export function factoryRunTitle(run: FactoryRun): string {
+  return run.request_text.split('\n', 1)[0] || run.run_id;
+}

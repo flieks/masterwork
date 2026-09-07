@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useAtom } from 'jotai';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Bot, CircleSlash, Terminal } from 'lucide-react';
+import { AlertTriangle, Bot, CircleSlash, Plus, Terminal } from 'lucide-react';
 import type { CodingSession } from '~/api/generated';
 import { Button } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
@@ -18,9 +19,13 @@ import {
   statusFilterAtom,
 } from '../queries';
 import { AssetUsagePanel } from './AssetUsagePanel';
+import { FactoryRunsCard } from './FactoryRunsCard';
+import { InterviewQuestions } from './InterviewQuestions';
+import { LaunchSessionDialog } from './LaunchSessionDialog';
 import { LiveIndicator } from './LiveIndicator';
 import { RunCard } from './RunCard';
 import { RunFilters } from './RunFilters';
+import { WaitingRuns } from './WaitingRuns';
 
 const VIEWS = ['runs', 'assets', 'analytics'] as const;
 type View = (typeof VIEWS)[number];
@@ -41,18 +46,33 @@ export function SessionsListPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('view');
   const view: View = isView(raw) ? raw : 'runs';
+  const [launchOpen, setLaunchOpen] = useState(false);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 p-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
-        <p className="text-sm text-muted-foreground">
-          Every pipeline run and coding session, recorded from hook events as they fire — and which
-          skills and agents each one used.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
+          <p className="text-sm text-muted-foreground">
+            Every pipeline run and coding session, recorded from hook events as they fire — and
+            which skills and agents each one used.
+          </p>
+        </div>
+        <Button onClick={() => setLaunchOpen(true)}>
+          <Plus className="size-4" />
+          New session
+        </Button>
       </header>
 
+      <LaunchSessionDialog open={launchOpen} onOpenChange={setLaunchOpen} />
+
       <TrackingBanner />
+
+      <InterviewQuestions />
+
+      <WaitingRuns />
+
+      <FactoryRunsCard />
 
       <Tabs
         value={view}

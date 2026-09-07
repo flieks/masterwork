@@ -15,13 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from adw import agent, gitwork, runs, workflows  # noqa: E402
+from adw import agent, gitwork, interview, runs, workflows  # noqa: E402
 from adw.config import (  # noqa: E402
     NO_CHECKS_REFUSAL,
     STARTUP_ERRORS,
     FactoryConfig,
     load_config,
     runs_root_for,
+    validate_run_id,
 )
 from adw.pipeline import UNVERIFIED_VERDICT, Pipeline, format_summary  # noqa: E402
 from adw.roles import EDITED, ROLE_FILES, LibraryFile, RoleStore  # noqa: E402
@@ -63,6 +64,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-branch",
         action="store_true",
         help="Commit onto the branch that is already checked out, as before.",
+    )
+    parser.add_argument(
+        "--interview",
+        action="store_true",
+        help=(
+            "After the plan stage, pause and write the plan's assumptions as "
+            "questions to <run_dir>/questions.json instead of continuing to build. "
+            "Needs a workflow with a 'plan' stage. Resume with --resume once "
+            "<run_dir>/answers.json exists."
+        ),
+    )
+    parser.add_argument(
+        "--run-id",
+        metavar="RUN_ID",
+        help=(
+            "Use this id for a fresh run instead of generating one. Must be an "
+            "unused, path-safe id (letters, digits, '.', '_', '-', <=64 chars)."
+        ),
     )
     parser.add_argument(
         "--max-cost-usd",
@@ -379,6 +398,13 @@ def resume_conflicts(args: argparse.Namespace) -> str:
         return "--resume lands on the branch the original run created; --branch/--no-branch cannot"
     if args.workflow:
         return "--resume replays the workflow the original run recorded; --workflow cannot change it"
+    if args.run_id:
+        return "--resume takes its id from the run being resumed; --run-id only names a fresh run"
+    if args.interview:
+        return (
+            "--resume replays the interview-ness the original run recorded; "
+            "--interview cannot change it"
+        )
     return ""
 
 
@@ -410,6 +436,7 @@ def main(argv: list[str] | None = None) -> int:
         return kill_run(root, args.kill)
 
     resume = None
+    answers: list[interview.Answer] | None = None
     if args.resume:
         conflict = resume_conflicts(args)
         if conflict:
@@ -420,6 +447,26 @@ def main(argv: list[str] | None = None) -> int:
         except (runs.RunError, gitwork.GitError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+        # answers.json outlives the first resume that read it: a *second*
+        # resume (e.g. a later budget stop mid-build) must still fold the
+        # same answers in, not silently fall back to the planner's guesses.
+        # Only a run still waiting_input with no file yet is a hard refusal.
+        run_dir = resume.record.run_dir or (root / args.resume)
+        has_answers = (run_dir / interview.ANSWERS_FILENAME).is_file()
+        if resume.record.state == runs.WAITING_INPUT or has_answers:
+            try:
+                answers = interview.read_answers(run_dir)
+            except interview.InterviewError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+    elif args.run_id:
+        try:
+            validate_run_id(args.run_id, root)
+        except STARTUP_ERRORS as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    interview_flag = resume.record.interview if resume else args.interview
 
     def resolve() -> FactoryConfig:
         record = resume.record if resume else None
@@ -427,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
             repo,
             config_path=args.config,
             model_override=args.model,
-            run_id=record.run_id if record else None,
+            run_id=record.run_id if record else args.run_id,
             max_corrections=args.max_corrections,
             max_review_rounds=args.max_review_rounds,
             no_checks=args.no_checks,
@@ -482,6 +529,13 @@ def main(argv: list[str] | None = None) -> int:
     if config.undetectable_checks:
         print(f"error: {NO_CHECKS_REFUSAL}", file=sys.stderr)
         return 2
+    if interview_flag and "plan" not in config.workflow:
+        print(
+            f"error: --interview needs a 'plan' stage in the workflow "
+            f"({workflows.describe(config.workflow)} has none)",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.dry_run:
         print(stage_table(config, request))
@@ -507,7 +561,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"warning: {UNVERIFIED_VERDICT}; nothing it produces will be verified")
     install_stop_handler(config.run_dir)
     try:
-        result = Pipeline(config, request, telemetry, resume=resume).run()
+        result = Pipeline(
+            config, request, telemetry, resume=resume, interview=interview_flag, answers=answers
+        ).run()
     finally:
         telemetry.close()
     print("\n" + format_summary(result))

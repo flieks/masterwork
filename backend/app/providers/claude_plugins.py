@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from app.providers.base import ScannedAsset, SnapshotTree
-from app.providers.claude import _KIND_AGENT, _KIND_SKILL, build_asset
+from app.providers.claude import _KIND_AGENT, _KIND_SKILL, AGENT_CLAUDE, build_asset
 
 _MANIFEST = "installed_plugins.json"
 
@@ -69,7 +69,9 @@ class ClaudePluginProvider:
                 name = f"{plugin}:{path.parent.name if kind == _KIND_SKILL else path.stem}"
                 if (kind, name) in seen:
                     continue  # same plugin installed under several scopes
-                asset = build_asset(self.name, kind, name, path, read_only=True)
+                asset = build_asset(
+                    self.name, kind, name, path, read_only=True, agents=(AGENT_CLAUDE,)
+                )
                 if asset is not None:
                     seen.add((kind, name))
                     yield asset

@@ -1,0 +1,7 @@
+{
+  "checks": [
+    "backend/.venv/bin/python -m pytest -q backend/tests",
+    "backend/.venv/bin/python -m pytest -q factory/tests",
+    "npm --prefix frontend run typecheck"
+  ]
+}

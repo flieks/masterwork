@@ -14,6 +14,10 @@ dependencies = [
     "alembic>=1.14",
     "pyyaml>=6.0",
     "aiosqlite>=0.22.1",
+    # Azure DevOps client (app/providers/azuredevops.py) — moved from dev-only.
+    "httpx>=0.28",
+    # HTML -> markdown for DevOps rich-text fields (app/services/work_sync.py).
+    "markdownify>=0.13",
 ]
 
 [dependency-groups]

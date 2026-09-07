@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useBlocker, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAtom } from 'jotai';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, Pencil, Save, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Lock, Pencil, Save, X, AlertTriangle, Share2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Skeleton } from '~/components/ui/skeleton';
 import { EmptyState } from '~/components/EmptyState';
@@ -10,20 +10,24 @@ import { MarkdownView } from '~/components/MarkdownView';
 import { CodeEditor } from '~/components/CodeEditor';
 import { toast } from '~/components/ui/sonner';
 import { UnsavedChangesDialog } from '~/components/UnsavedChangesDialog';
-import { apiErrorMessage } from '~/api/client';
+import { apiErrorMessage, isConflictError } from '~/api/client';
 import { shortenPath } from '~/lib/paths';
 import { splitFrontmatter } from '~/lib/frontmatter';
 import { AssetChatPanel } from '~/features/chat';
 import { ProviderBadge } from './ProviderBadge';
+import { AgentsBadge } from './AgentsBadge';
+import { MakeGenericDialog } from './MakeGenericDialog';
 import { ModelBadge } from './ModelBadge';
 import { AssetDatesInline } from './AssetDates';
 import { AssetDiagramSection } from './AssetDiagramSection';
 import { AgentSkillsUsed } from './AgentSkillsUsed';
 import { AssetUsageLog } from './AssetUsageLog';
 import {
+  assetDetailPath,
   assetDetailQueryAtom,
   assetListPath,
   buildAssetId,
+  migrateAssetMutationAtom,
   updateAssetMutationAtom,
   type AssetKind,
 } from '../queries';
@@ -36,7 +40,11 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
 
   const [{ data, isPending, isError, error }] = useAtom(assetDetailQueryAtom(assetId));
   const [{ mutateAsync, isPending: isSaving }] = useAtom(updateAssetMutationAtom);
+  const [{ mutateAsync: migrate, isPending: isMigrating }] = useAtom(migrateAssetMutationAtom);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [confirmGeneric, setConfirmGeneric] = useState(false);
+  const [genericConflict, setGenericConflict] = useState(false);
 
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [draft, setDraft] = useState('');
@@ -78,6 +86,37 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
     }
   }
 
+  function openMakeGeneric() {
+    setGenericConflict(false);
+    setConfirmGeneric(true);
+  }
+
+  async function makeGeneric() {
+    try {
+      const result = await migrate({ assetId, replaceGeneric: genericConflict });
+      setConfirmGeneric(false);
+      const linked = result.linked_agents.join(', ') || 'no agent yet';
+      const where = result.adopted
+        ? 'was already in ~/.agents/skills; this copy became a link to it'
+        : 'now lives in ~/.agents/skills';
+      const kept = result.claude_only_keys.length
+        ? ` Kept Claude-only keys: ${result.claude_only_keys.join(', ')}.`
+        : '';
+      toast.success('Made generic', {
+        description: `${result.asset.title} ${where}, linked into ${linked}.${kept}`,
+      });
+      navigate(assetDetailPath(kind, result.asset.name, result.asset.provider), { replace: true });
+    } catch (err) {
+      // A differing generic copy: re-arm into replacing it rather than failing outright.
+      if (isConflictError(err) && !genericConflict && /differs/.test(apiErrorMessage(err))) {
+        setGenericConflict(true);
+        return;
+      }
+      setConfirmGeneric(false);
+      toast.error("Couldn't make it generic", { description: apiErrorMessage(err) });
+    }
+  }
+
   if (isPending) {
     return (
       <div className="mx-auto w-full max-w-4xl space-y-4 p-6">
@@ -107,6 +146,11 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
   }
 
   const { frontmatter, body } = splitFrontmatter(data.content);
+  // Only a skill in one agent's own folder can move to the shared one.
+  const canMakeGeneric =
+    kind === 'skill' &&
+    !data.read_only &&
+    (data.provider === 'claude' || data.provider === 'codex');
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5 p-6">
@@ -134,9 +178,21 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
                 {data.provider === 'claude-plugin' ? ' · plugin' : null}
               </span>
             ) : mode === 'view' ? (
-              <Button size="sm" variant="outline" onClick={startEdit}>
-                <Pencil /> Edit
-              </Button>
+              <>
+                {canMakeGeneric ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={openMakeGeneric}
+                    title="Move this skill to ~/.agents/skills so every coding agent can use it"
+                  >
+                    <Share2 /> Make generic
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="outline" onClick={startEdit}>
+                  <Pencil /> Edit
+                </Button>
+              </>
             ) : (
               <>
                 <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={isSaving}>
@@ -150,6 +206,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+          <AgentsBadge provider={data.provider} agents={data.agents} />
           <ProviderBadge provider={data.provider} />
           <ModelBadge model={data.model} showInherit={kind === 'agent'} />
           <code className="font-mono">{shortenPath(data.path)}</code>
@@ -184,6 +241,16 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
           minHeight="30rem"
         />
       )}
+
+      <MakeGenericDialog
+        open={confirmGeneric}
+        name={data.name}
+        provider={data.provider}
+        conflict={genericConflict}
+        pending={isMigrating}
+        onConfirm={makeGeneric}
+        onCancel={() => setConfirmGeneric(false)}
+      />
 
       <UnsavedChangesDialog
         open={blocker.state === 'blocked'}

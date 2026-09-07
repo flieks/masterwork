@@ -1,8 +1,26 @@
 import { atom } from 'jotai';
 import { atomFamily, atomWithStorage } from 'jotai/utils';
-import { atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
+import { atomWithMutation, atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
 import { api } from '~/api/client';
-import type { CodingEvent, CodingSession, CodingSessionDetail } from '~/api/generated';
+import type {
+  AppSettings,
+  AppSettingsUpdateRequest,
+  CodingEvent,
+  CodingSession,
+  CodingSessionDetail,
+  ContextSeries,
+  FactoryRun,
+  FactoryRunDismissRequest,
+  FactoryRunResumeRead,
+  FactoryRunResumeRequest,
+  InterviewAnswersRequest,
+  InterviewResumeRead,
+  LaunchRequest,
+  LauncherProject,
+  LauncherProjectCreateRequest,
+  SessionLaunchListItem,
+  SessionLaunchRead,
+} from '~/api/generated';
 import { windowSince, type AssetWindow } from './runs';
 
 const POLL_MS = 2500;
@@ -30,6 +48,129 @@ export {
   type AssetWindow,
   type RunTitle,
 } from './runs';
+
+const LAUNCHER_PROJECTS_QUERY_KEY = ['launcherProjects'];
+const APP_SETTINGS_QUERY_KEY = ['appSettings'];
+
+/** The launcher's project picker — immediate subdirectories of projects_root. */
+export const launcherProjectsQueryAtom = atomWithQuery(() => ({
+  queryKey: LAUNCHER_PROJECTS_QUERY_KEY,
+  queryFn: async (): Promise<LauncherProject[]> =>
+    (await api.launcher.listLauncherProjects()).data,
+}));
+
+/** projects_root and any other persisted app setting. */
+export const appSettingsQueryAtom = atomWithQuery(() => ({
+  queryKey: APP_SETTINGS_QUERY_KEY,
+  queryFn: async (): Promise<AppSettings> => (await api.settings.getSettings()).data,
+}));
+
+export const createLauncherProjectMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: LauncherProjectCreateRequest): Promise<LauncherProject> =>
+    api.launcher.createLauncherProject(body).then((r) => r.data),
+  onSuccess: () =>
+    get(queryClientAtom).invalidateQueries({ queryKey: LAUNCHER_PROJECTS_QUERY_KEY }),
+}));
+
+export const updateSettingsMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: AppSettingsUpdateRequest): Promise<AppSettings> =>
+    api.settings.updateSettings(body).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
+    // A new root points at a different set of project folders.
+    queryClient.invalidateQueries({ queryKey: LAUNCHER_PROJECTS_QUERY_KEY });
+  },
+}));
+
+const FACTORY_RUNS_QUERY_KEY = ['factoryRuns'];
+
+export const launchSessionMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: LaunchRequest): Promise<SessionLaunchRead> =>
+    api.launcher.launchSession(body).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    // The new run writes its own run dir, which the runs list reads.
+    queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
+    // A session's own banner reads a different key; without this it goes on
+    // offering the rerun it just started, inviting a second one.
+    queryClient.invalidateQueries({ queryKey: ['runForSession'] });
+  },
+}));
+
+const SESSION_LAUNCHES_QUERY_KEY = ['sessionLaunches'];
+
+/** Recent launches with their interview state — slower than the run poll
+ * since each tick reads files (questions.json/run.json), not rows. */
+export const sessionLaunchesQueryAtom = atomWithQuery(() => ({
+  queryKey: SESSION_LAUNCHES_QUERY_KEY,
+  queryFn: async (): Promise<SessionLaunchListItem[]> =>
+    (await api.launcher.listSessionLaunches()).data,
+  refetchInterval: 5000,
+  refetchIntervalInBackground: true,
+}));
+
+/** Every project's runs, read from the run dirs themselves — runs launched
+ * from a terminal show up too, not just the ones this UI started. */
+export const factoryRunsQueryAtom = atomWithQuery(() => ({
+  queryKey: FACTORY_RUNS_QUERY_KEY,
+  queryFn: async (): Promise<FactoryRun[]> => (await api.launcher.listFactoryRuns()).data,
+  refetchInterval: 5000,
+  refetchIntervalInBackground: true,
+}));
+
+/** The run that spawned one coding session, or null when no run owns it. */
+export const runForSessionQueryAtom = atomFamily((sessionId: string) =>
+  atomWithQuery(() => ({
+    queryKey: ['runForSession', sessionId],
+    queryFn: async (): Promise<FactoryRun | null> =>
+      (await api.launcher.getRunForSession(sessionId)).data,
+  })),
+);
+
+/** Waves a run out of the list, or brings it back. */
+export const dismissFactoryRunMutationAtom = atomWithMutation((get) => ({
+  mutationFn: ({
+    body,
+    dismissed,
+  }: {
+    body: FactoryRunDismissRequest;
+    dismissed: boolean;
+  }): Promise<FactoryRun> =>
+    (dismissed
+      ? api.launcher.dismissFactoryRun(body)
+      : api.launcher.restoreFactoryRun(body)
+    ).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: ['runForSession'] });
+  },
+}));
+
+export const resumeFactoryRunMutationAtom = atomWithMutation((get) => ({
+  mutationFn: (body: FactoryRunResumeRequest): Promise<FactoryRunResumeRead> =>
+    api.launcher.resumeFactoryRun(body).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
+    // The detail page's own banner reads a different key.
+    queryClient.invalidateQueries({ queryKey: ['runForSession'] });
+  },
+}));
+
+export const submitInterviewAnswersMutationAtom = atomWithMutation((get) => ({
+  mutationFn: ({
+    launchId,
+    body,
+  }: {
+    launchId: number;
+    body: InterviewAnswersRequest;
+  }): Promise<InterviewResumeRead> =>
+    api.launcher.submitInterviewAnswers(launchId, body).then((r) => r.data),
+  onSuccess: () =>
+    get(queryClientAtom).invalidateQueries({ queryKey: SESSION_LAUNCHES_QUERY_KEY }),
+}));
 
 function sessionQueryKey(sessionId: string): [string, string] {
   return ['codingSession', sessionId];
@@ -82,6 +223,32 @@ export const codingSessionsQueryAtom = atomWithQuery((get) => {
     refetchIntervalInBackground: true,
   };
 });
+
+/**
+ * Every run currently blocked on a person, whatever the grid is filtered to.
+ *
+ * A separate query rather than a filter over the list: a question left open is
+ * the one thing that must not be hidden by the filters someone set an hour ago,
+ * and it is the same reason the interview form sits outside the tabs.
+ * `include_automated` is on — a headless run rarely asks, but if one does, it
+ * is stuck until someone notices, which is exactly the case worth surfacing.
+ */
+export const waitingRunsQueryAtom = atomWithQuery(() => ({
+  queryKey: ['codingSessionsWaiting'],
+  queryFn: async (): Promise<CodingSession[]> =>
+    (
+      await api.coding.listCodingSessions(
+        undefined,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        'waiting_input',
+      )
+    ).data,
+  refetchInterval: POLL_MS,
+  refetchIntervalInBackground: true,
+}));
 
 /**
  * The stage runs one pipeline run launched, asked for by name (v1.17's
@@ -162,6 +329,32 @@ export const codingSessionQueryAtom = atomFamily((sessionId: string) =>
     refetchInterval: (query) => (query.state.data?.ended_at ? false : POLL_MS),
     refetchIntervalInBackground: true,
   })),
+);
+
+function contextQueryKey(sessionId: string): [string, string] {
+  return ['codingSessionContext', sessionId];
+}
+
+/**
+ * The context-growth series for one session. Same cache-driven poll as the
+ * event stream: stop once the session closes, since a closed run's transcript
+ * cannot grow another sample.
+ */
+export const sessionContextQueryAtom = atomFamily((sessionId: string) =>
+  atomWithQuery((get) => {
+    const queryClient = get(queryClientAtom);
+    return {
+      queryKey: contextQueryKey(sessionId),
+      queryFn: async (): Promise<ContextSeries> =>
+        (await api.coding.readSessionContextSeries(sessionId)).data,
+      enabled: sessionId.length > 0,
+      refetchInterval: () => {
+        const session = queryClient.getQueryData<CodingSession>(sessionQueryKey(sessionId));
+        return session?.ended_at ? false : POLL_MS;
+      },
+      refetchIntervalInBackground: true,
+    };
+  }),
 );
 
 /** Drain the cursor from `after` so a long history loads in one pass, not one page per poll. */

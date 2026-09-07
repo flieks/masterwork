@@ -140,6 +140,32 @@ export interface AgentLane {
     'turns': number;
 }
 /**
+ * 
+ * @export
+ * @interface AppSettings
+ */
+export interface AppSettings {
+    /**
+     * Absolute folder all code projects live under.
+     * @type {string}
+     * @memberof AppSettings
+     */
+    'projects_root': string;
+}
+/**
+ * 
+ * @export
+ * @interface AppSettingsUpdateRequest
+ */
+export interface AppSettingsUpdateRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof AppSettingsUpdateRequest
+     */
+    'projects_root'?: string | null;
+}
+/**
  * One recorded call of an asset, and what the caller handed it.
  * @export
  * @interface AssetCall
@@ -189,11 +215,17 @@ export interface AssetDetail {
      */
     'kind': AssetKind;
     /**
-     * Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store).
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetDetail
      */
     'provider': string;
+    /**
+     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none.
+     * @type {Array<string>}
+     * @memberof AssetDetail
+     */
+    'agents': Array<string>;
     /**
      * Filename/dir-derived asset name.
      * @type {string}
@@ -297,6 +329,80 @@ export type AssetKind = typeof AssetKind[keyof typeof AssetKind];
 
 
 /**
+ * 
+ * @export
+ * @interface AssetMigrateRequest
+ */
+export interface AssetMigrateRequest {
+    /**
+     * Throw away a differing copy already in the generic folder. Never needed when that copy is identical — it is adopted as is.
+     * @type {boolean}
+     * @memberof AssetMigrateRequest
+     */
+    'replace_generic'?: boolean;
+}
+/**
+ * 
+ * @export
+ * @interface AssetMigrationResult
+ */
+export interface AssetMigrationResult {
+    /**
+     * The skill at its new generic id.
+     * @type {AssetDetail}
+     * @memberof AssetMigrationResult
+     */
+    'asset': AssetDetail;
+    /**
+     * The id the skill had before the move.
+     * @type {string}
+     * @memberof AssetMigrationResult
+     */
+    'previous_id': string;
+    /**
+     * Agents whose skills dir now links to the generic copy.
+     * @type {Array<string>}
+     * @memberof AssetMigrationResult
+     */
+    'linked_agents': Array<string>;
+    /**
+     * Agents that already had an unrelated skill of this name; left alone.
+     * @type {Array<string>}
+     * @memberof AssetMigrationResult
+     */
+    'skipped_agents': Array<string>;
+    /**
+     * Frontmatter keys kept that only Claude Code honours; other agents ignore them.
+     * @type {Array<string>}
+     * @memberof AssetMigrationResult
+     */
+    'claude_only_keys': Array<string>;
+    /**
+     * True when `name:` was added or changed to match the folder.
+     * @type {boolean}
+     * @memberof AssetMigrationResult
+     */
+    'name_rewritten': boolean;
+    /**
+     * Project links that were re-pointed from the old id to the new one.
+     * @type {number}
+     * @memberof AssetMigrationResult
+     */
+    'relinked_projects': number;
+    /**
+     * The generic folder already held an identical copy: nothing was copied, the source just became a link to it.
+     * @type {boolean}
+     * @memberof AssetMigrationResult
+     */
+    'adopted': boolean;
+    /**
+     * A differing generic copy was replaced by this one on request.
+     * @type {boolean}
+     * @memberof AssetMigrationResult
+     */
+    'replaced_generic': boolean;
+}
+/**
  * One run that used an asset, and the calls it made.
  * @export
  * @interface AssetSessionUse
@@ -382,11 +488,17 @@ export interface AssetSummary {
      */
     'kind': AssetKind;
     /**
-     * Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store).
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetSummary
      */
     'provider': string;
+    /**
+     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none.
+     * @type {Array<string>}
+     * @memberof AssetSummary
+     */
+    'agents': Array<string>;
     /**
      * Filename/dir-derived asset name.
      * @type {string}
@@ -617,6 +729,238 @@ export interface BackfillTotals {
      */
     'gate_checks': number;
 }
+/**
+ * 
+ * @export
+ * @interface CatalogSearchResponse
+ */
+export interface CatalogSearchResponse {
+    /**
+     * 
+     * @type {Array<CatalogSkill>}
+     * @memberof CatalogSearchResponse
+     */
+    'skills': Array<CatalogSkill>;
+    /**
+     * Per-source failures; a partial result still returns 200.
+     * @type {Array<CatalogSourceError>}
+     * @memberof CatalogSearchResponse
+     */
+    'errors': Array<CatalogSourceError>;
+}
+/**
+ * 
+ * @export
+ * @interface CatalogSkill
+ */
+export interface CatalogSkill {
+    /**
+     * GitHub owner/org that publishes the source repo.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'owner': string;
+    /**
+     * GitHub repo name.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'repo': string;
+    /**
+     * Skill slug within the repo — a GitHub hit uses the repo name.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'skill': string;
+    /**
+     * Display name.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'name': string;
+    /**
+     * \"\" when the registry supplied none.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'description': string;
+    /**
+     * Which source this record came from.
+     * @type {SkillRegistry}
+     * @memberof CatalogSkill
+     */
+    'registry': SkillRegistry;
+    /**
+     * 
+     * @type {number}
+     * @memberof CatalogSkill
+     */
+    'installs'?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'license'?: string | null;
+    /**
+     * Unresolved (skills.sh) — preview to resolve; null is not \"unlicensed\".
+     * @type {boolean}
+     * @memberof CatalogSkill
+     */
+    'license_resolved': boolean;
+    /**
+     * Link to the source repository on GitHub.
+     * @type {string}
+     * @memberof CatalogSkill
+     */
+    'url': string;
+    /**
+     * A skill directory with this slug already exists on disk.
+     * @type {boolean}
+     * @memberof CatalogSkill
+     */
+    'installed': boolean;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface CatalogSkillDetail
+ */
+export interface CatalogSkillDetail {
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'owner': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'repo': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'skill': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'name': string;
+    /**
+     * 
+     * @type {SkillRegistry}
+     * @memberof CatalogSkillDetail
+     */
+    'registry': SkillRegistry;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'license'?: string | null;
+    /**
+     * True when license is null — explicit, so the UI never reads null as unknown.
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'all_rights_reserved': boolean;
+    /**
+     * Link to the skill\'s folder on GitHub.
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'version'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'installed_version'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'created_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'last_modified_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'last_change_summary'?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'differs_from_installed'?: boolean | null;
+    /**
+     * A skill directory with this slug already exists on disk.
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'installed': boolean;
+    /**
+     * True only when masterwork wrote it; a hand-installed one is not removable.
+     * @type {boolean}
+     * @memberof CatalogSkillDetail
+     */
+    'installed_by_masterwork': boolean;
+    /**
+     * Full SKILL.md text, rendered as plain text only.
+     * @type {string}
+     * @memberof CatalogSkillDetail
+     */
+    'skill_md': string;
+    /**
+     * Companion file paths, relative to the skill folder.
+     * @type {Array<string>}
+     * @memberof CatalogSkillDetail
+     */
+    'files': Array<string>;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface CatalogSourceError
+ */
+export interface CatalogSourceError {
+    /**
+     * 
+     * @type {SkillRegistry}
+     * @memberof CatalogSourceError
+     */
+    'registry': SkillRegistry;
+    /**
+     * Why this source\'s results are missing.
+     * @type {string}
+     * @memberof CatalogSourceError
+     */
+    'message': string;
+}
+
+
 /**
  * 
  * @export
@@ -1088,7 +1432,7 @@ export interface CodingSession {
      */
     'workflow': string | null;
     /**
-     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
+     * running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
      * @type {string}
      * @memberof CodingSession
      */
@@ -1111,6 +1455,12 @@ export interface CodingSession {
      * @memberof CodingSession
      */
     'ended_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSession
+     */
+    'awaiting_input_since': string | null;
     /**
      * 
      * @type {{ [key: string]: any; }}
@@ -1269,7 +1619,7 @@ export interface CodingSessionDetail {
      */
     'workflow': string | null;
     /**
-     * running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
+     * running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite — only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`.
      * @type {string}
      * @memberof CodingSessionDetail
      */
@@ -1292,6 +1642,12 @@ export interface CodingSessionDetail {
      * @memberof CodingSessionDetail
      */
     'ended_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CodingSessionDetail
+     */
+    'awaiting_input_since': string | null;
     /**
      * 
      * @type {{ [key: string]: any; }}
@@ -1390,6 +1746,184 @@ export interface CodingSessionDetail {
     'gate_checks': Array<GateCheckItem>;
 }
 /**
+ * One turn\'s context usage, read back with its delta from the previous sample on the same lane.
+ * @export
+ * @interface ContextSample
+ */
+export interface ContextSample {
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'seq': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextSample
+     */
+    'message_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextSample
+     */
+    'at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'total_tokens': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'output_tokens': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSample
+     */
+    'delta_tokens': number | null;
+    /**
+     * Derived: delta_tokens is not null and negative.
+     * @type {boolean}
+     * @memberof ContextSample
+     */
+    'is_truncation': boolean;
+    /**
+     * Tool results that landed since the previous sample.
+     * @type {Array<string>}
+     * @memberof ContextSample
+     */
+    'tools': Array<string>;
+}
+/**
+ * One context-usage sample as the forwarder reports it — one per deduped assistant message id, in transcript order.
+ * @export
+ * @interface ContextSampleIn
+ */
+export interface ContextSampleIn {
+    /**
+     * Position in the deduped stream, chronological across lanes.
+     * @type {number}
+     * @memberof ContextSampleIn
+     */
+    'seq': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextSampleIn
+     */
+    'message_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextSampleIn
+     */
+    'at'?: string | null;
+    /**
+     * input + cache_read + cache_creation tokens on this turn.
+     * @type {number}
+     * @memberof ContextSampleIn
+     */
+    'total_tokens': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSampleIn
+     */
+    'output_tokens'?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextSampleIn
+     */
+    'model'?: string | null;
+    /**
+     * True for a subagent turn.
+     * @type {boolean}
+     * @memberof ContextSampleIn
+     */
+    'is_sidechain'?: boolean;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof ContextSampleIn
+     */
+    'tools'?: Array<string> | null;
+}
+/**
+ * The context-growth curve for one session — main lane and sidechain kept apart.
+ * @export
+ * @interface ContextSeries
+ */
+export interface ContextSeries {
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextSeries
+     */
+    'session_id': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSeries
+     */
+    'baseline_tokens': number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ContextSeries
+     */
+    'peak_tokens': number | null;
+    /**
+     * Main lane, ordered by seq.
+     * @type {Array<ContextSample>}
+     * @memberof ContextSeries
+     */
+    'samples': Array<ContextSample>;
+    /**
+     * Subagent turns, their own series — never interleaved with the main lane.
+     * @type {Array<ContextSample>}
+     * @memberof ContextSeries
+     */
+    'sidechain_samples': Array<ContextSample>;
+    /**
+     * Main-lane roll-up, summed delta descending then tool name.
+     * @type {Array<ContextToolCost>}
+     * @memberof ContextSeries
+     */
+    'tools': Array<ContextToolCost>;
+}
+/**
+ * One tool\'s share of a session\'s context growth, main lane only.
+ * @export
+ * @interface ContextToolCost
+ */
+export interface ContextToolCost {
+    /**
+     * 
+     * @type {string}
+     * @memberof ContextToolCost
+     */
+    'tool': string;
+    /**
+     * Summed positive delta attributed to this tool.
+     * @type {number}
+     * @memberof ContextToolCost
+     */
+    'delta_tokens': number;
+    /**
+     * Samples this tool appeared in.
+     * @type {number}
+     * @memberof ContextToolCost
+     */
+    'calls': number;
+}
+/**
  * A modification another project made to an asset this project links.
  * @export
  * @interface CrossChange
@@ -1446,6 +1980,56 @@ export const CrossChangeSourceEnum = {
 
 export type CrossChangeSourceEnum = typeof CrossChangeSourceEnum[keyof typeof CrossChangeSourceEnum];
 
+/**
+ * 
+ * @export
+ * @interface DirectoryEntry
+ */
+export interface DirectoryEntry {
+    /**
+     * 
+     * @type {string}
+     * @memberof DirectoryEntry
+     */
+    'name': string;
+    /**
+     * Absolute path.
+     * @type {string}
+     * @memberof DirectoryEntry
+     */
+    'path': string;
+}
+/**
+ * 
+ * @export
+ * @interface DirectoryListing
+ */
+export interface DirectoryListing {
+    /**
+     * The resolved directory this listing is for.
+     * @type {string}
+     * @memberof DirectoryListing
+     */
+    'path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof DirectoryListing
+     */
+    'parent'?: string | null;
+    /**
+     * Non-hidden subdirectories, sorted by name.
+     * @type {Array<DirectoryEntry>}
+     * @memberof DirectoryListing
+     */
+    'entries'?: Array<DirectoryEntry>;
+    /**
+     * Absolute path of the home directory the backend runs as.
+     * @type {string}
+     * @memberof DirectoryListing
+     */
+    'home': string;
+}
 /**
  * One envelope an agent returned, and whether the runner could read it.
  * @export
@@ -1573,6 +2157,225 @@ export interface EnvelopeIn {
      * @memberof EnvelopeIn
      */
     'raw_text'?: string | null;
+}
+/**
+ * One run.json under a project\'s runs root — the factory\'s ground truth, independent of whether the run was launched from this UI or a terminal.
+ * @export
+ * @interface FactoryRun
+ */
+export interface FactoryRun {
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'run_id': string;
+    /**
+     * The project the run worked on.
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'project_name': string;
+    /**
+     * Read this, not `state`.
+     * @type {RunOutcome}
+     * @memberof FactoryRun
+     */
+    'outcome': RunOutcome;
+    /**
+     * run.json\'s raw state, e.g. running/stopped/finished.
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'state': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'request_text': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'workflow'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'branch': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'reason'?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'interview': boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'accepted': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'started_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'ended_at': string | null;
+    /**
+     * True when a resume would be accepted: not live, not completed-accepted.
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'resumable': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'resume_hint'?: string | null;
+    /**
+     * The user waved this run away; it is out of the way, not gone.
+     * @type {boolean}
+     * @memberof FactoryRun
+     */
+    'dismissed'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'superseded_by'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRun
+     */
+    'summary'?: string | null;
+    /**
+     * 
+     * @type {FactoryRunCheck}
+     * @memberof FactoryRun
+     */
+    'check'?: FactoryRunCheck | null;
+    /**
+     * Coding sessions this run\'s stages reported.
+     * @type {Array<string>}
+     * @memberof FactoryRun
+     */
+    'session_ids'?: Array<string>;
+}
+
+
+/**
+ * A read-only run started to answer whether another run\'s work landed.
+ * @export
+ * @interface FactoryRunCheck
+ */
+export interface FactoryRunCheck {
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunCheck
+     */
+    'run_id': string;
+    /**
+     * 
+     * @type {RunOutcome}
+     * @memberof FactoryRunCheck
+     */
+    'outcome': RunOutcome;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunCheck
+     */
+    'summary'?: string | null;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface FactoryRunDismissRequest
+ */
+export interface FactoryRunDismissRequest {
+    /**
+     * Absolute path; must resolve under projects_root.
+     * @type {string}
+     * @memberof FactoryRunDismissRequest
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunDismissRequest
+     */
+    'run_id': string;
+}
+/**
+ * 
+ * @export
+ * @interface FactoryRunResumeRead
+ */
+export interface FactoryRunResumeRead {
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunResumeRead
+     */
+    'run_id': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof FactoryRunResumeRead
+     */
+    'resumed': boolean;
+    /**
+     * 
+     * @type {number}
+     * @memberof FactoryRunResumeRead
+     */
+    'pid': number | null;
+}
+/**
+ * 
+ * @export
+ * @interface FactoryRunResumeRequest
+ */
+export interface FactoryRunResumeRequest {
+    /**
+     * Absolute path; must resolve under projects_root.
+     * @type {string}
+     * @memberof FactoryRunResumeRequest
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof FactoryRunResumeRequest
+     */
+    'run_id': string;
 }
 /**
  * One item a gate checked. Any field it leaves out is taken from the gate block around it, so a gate with a single verdict needs no entry at all.
@@ -1947,7 +2750,64 @@ export interface HookEventRequest {
      * @memberof HookEventRequest
      */
     'gate'?: GateIn | null;
+    /**
+     * 
+     * @type {Array<ContextSampleIn>}
+     * @memberof HookEventRequest
+     */
+    'context_samples'?: Array<ContextSampleIn> | null;
 }
+/**
+ * 
+ * @export
+ * @interface InstalledSkill
+ */
+export interface InstalledSkill {
+    /**
+     * \"claude:skill:<name>\", the id the assets API also uses.
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'asset_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'owner': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'repo': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'license'?: string | null;
+    /**
+     * 
+     * @type {SkillRegistry}
+     * @memberof InstalledSkill
+     */
+    'registry': SkillRegistry;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'installed_at': string;
+}
+
+
 /**
  * 
  * @export
@@ -1991,6 +2851,254 @@ export interface InstructionsUpdateRequest {
      * @memberof InstructionsUpdateRequest
      */
     'content': string;
+}
+/**
+ * 
+ * @export
+ * @interface InterviewAnswer
+ */
+export interface InterviewAnswer {
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewAnswer
+     */
+    'id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewAnswer
+     */
+    'answer': string;
+}
+/**
+ * 
+ * @export
+ * @interface InterviewAnswersRequest
+ */
+export interface InterviewAnswersRequest {
+    /**
+     * 
+     * @type {Array<InterviewAnswer>}
+     * @memberof InterviewAnswersRequest
+     */
+    'answers': Array<InterviewAnswer>;
+}
+/**
+ * 
+ * @export
+ * @interface InterviewQuestion
+ */
+export interface InterviewQuestion {
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewQuestion
+     */
+    'id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewQuestion
+     */
+    'question': string;
+}
+/**
+ * 
+ * @export
+ * @interface InterviewRead
+ */
+export interface InterviewRead {
+    /**
+     * 
+     * @type {number}
+     * @memberof InterviewRead
+     */
+    'launch_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewRead
+     */
+    'run_id': string | null;
+    /**
+     * 
+     * @type {InterviewState}
+     * @memberof InterviewRead
+     */
+    'state': InterviewState;
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewRead
+     */
+    'run_state'?: string | null;
+    /**
+     * 
+     * @type {Array<InterviewQuestion>}
+     * @memberof InterviewRead
+     */
+    'questions'?: Array<InterviewQuestion>;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface InterviewResumeRead
+ */
+export interface InterviewResumeRead {
+    /**
+     * 
+     * @type {number}
+     * @memberof InterviewResumeRead
+     */
+    'launch_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof InterviewResumeRead
+     */
+    'run_id': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof InterviewResumeRead
+     */
+    'resumed': boolean;
+    /**
+     * 
+     * @type {number}
+     * @memberof InterviewResumeRead
+     */
+    'pid': number | null;
+}
+/**
+ * 
+ * @export
+ * @enum {string}
+ */
+
+export const InterviewState = {
+    NotInterview: 'not_interview',
+    Starting: 'starting',
+    Running: 'running',
+    Waiting: 'waiting',
+    Answered: 'answered',
+    Finished: 'finished'
+} as const;
+
+export type InterviewState = typeof InterviewState[keyof typeof InterviewState];
+
+
+/**
+ * 
+ * @export
+ * @enum {string}
+ */
+
+export const LaunchMode = {
+    Autonomous: 'autonomous',
+    Interview: 'interview'
+} as const;
+
+export type LaunchMode = typeof LaunchMode[keyof typeof LaunchMode];
+
+
+/**
+ * 
+ * @export
+ * @interface LaunchRequest
+ */
+export interface LaunchRequest {
+    /**
+     * Absolute path; must resolve under projects_root.
+     * @type {string}
+     * @memberof LaunchRequest
+     */
+    'project_path': string;
+    /**
+     * What to build — handed to the factory as-is.
+     * @type {string}
+     * @memberof LaunchRequest
+     */
+    'request_text': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof LaunchRequest
+     */
+    'checks_run_id'?: string | null;
+    /**
+     * \'autonomous\' never asks; \'interview\' pauses after planning to ask about weak assumptions before building.
+     * @type {LaunchMode}
+     * @memberof LaunchRequest
+     */
+    'mode'?: LaunchMode;
+    /**
+     * 
+     * @type {LaunchWorkflow}
+     * @memberof LaunchRequest
+     */
+    'workflow'?: LaunchWorkflow | null;
+}
+
+
+/**
+ * The factory\'s stage presets (factory/adw/workflows.py). `scout` is the cheap one: a single read-only stage that reads the repo and reports.
+ * @export
+ * @enum {string}
+ */
+
+export const LaunchWorkflow = {
+    Full: 'full',
+    PlanBuild: 'plan_build',
+    BuildTest: 'build_test',
+    BuildReview: 'build_review',
+    Document: 'document',
+    Scout: 'scout'
+} as const;
+
+export type LaunchWorkflow = typeof LaunchWorkflow[keyof typeof LaunchWorkflow];
+
+
+/**
+ * 
+ * @export
+ * @interface LauncherProject
+ */
+export interface LauncherProject {
+    /**
+     * 
+     * @type {string}
+     * @memberof LauncherProject
+     */
+    'name': string;
+    /**
+     * Absolute path under projects_root.
+     * @type {string}
+     * @memberof LauncherProject
+     */
+    'path': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof LauncherProject
+     */
+    'is_git_repo': boolean;
+}
+/**
+ * Named apart from the unrelated `ProjectCreateRequest` (features/projects) — this creates a plain folder under projects_root, not a masterwork Project.
+ * @export
+ * @interface LauncherProjectCreateRequest
+ */
+export interface LauncherProjectCreateRequest {
+    /**
+     * Folder name — no path separators or traversal.
+     * @type {string}
+     * @memberof LauncherProjectCreateRequest
+     */
+    'name': string;
 }
 /**
  * 
@@ -2707,6 +3815,61 @@ export type ProposalStatus = typeof ProposalStatus[keyof typeof ProposalStatus];
 
 
 /**
+ * 
+ * @export
+ * @interface PullRequestDelegateResponse
+ */
+export interface PullRequestDelegateResponse {
+    /**
+     * False means nothing was launched.
+     * @type {boolean}
+     * @memberof PullRequestDelegateResponse
+     */
+    'resolved': boolean;
+    /**
+     * The PR\'s repository_remote_url, as stored.
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'remote_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'local_path': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'reason'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PullRequestDelegateResponse
+     */
+    'launch_id': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'run_id': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof PullRequestDelegateResponse
+     */
+    'prompt'?: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PullRequestDelegateResponse
+     */
+    'unresolved_thread_count': number;
+}
+/**
  * One role across every run: what it costs, and how often it is sent back.
  * @export
  * @interface RoleStat
@@ -2839,6 +4002,23 @@ export interface RoleStat {
      */
     'envelope_failure_rate': number | null;
 }
+/**
+ * What actually happened, which run.json\'s `state` alone does not say: a rejected run and an approved one both end up `state=\"finished\"`.
+ * @export
+ * @enum {string}
+ */
+
+export const RunOutcome = {
+    Running: 'running',
+    Waiting: 'waiting',
+    Done: 'done',
+    Failed: 'failed',
+    Stopped: 'stopped'
+} as const;
+
+export type RunOutcome = typeof RunOutcome[keyof typeof RunOutcome];
+
+
 /**
  * One run as a point on a trend line.
  * @export
@@ -3003,6 +4183,126 @@ export interface ScenarioGenerateResponse {
      */
     'scenario': string;
 }
+/**
+ * 
+ * @export
+ * @interface SessionLaunchListItem
+ */
+export interface SessionLaunchListItem {
+    /**
+     * 
+     * @type {number}
+     * @memberof SessionLaunchListItem
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'request_text': string;
+    /**
+     * 
+     * @type {LaunchMode}
+     * @memberof SessionLaunchListItem
+     */
+    'mode': LaunchMode;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'launched_at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof SessionLaunchListItem
+     */
+    'pid': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchListItem
+     */
+    'run_id'?: string | null;
+    /**
+     * True once the subprocess was spawned.
+     * @type {boolean}
+     * @memberof SessionLaunchListItem
+     */
+    'launched': boolean;
+    /**
+     * 
+     * @type {InterviewRead}
+     * @memberof SessionLaunchListItem
+     */
+    'interview'?: InterviewRead | null;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface SessionLaunchRead
+ */
+export interface SessionLaunchRead {
+    /**
+     * 
+     * @type {number}
+     * @memberof SessionLaunchRead
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'project_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'request_text': string;
+    /**
+     * 
+     * @type {LaunchMode}
+     * @memberof SessionLaunchRead
+     */
+    'mode': LaunchMode;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'launched_at': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof SessionLaunchRead
+     */
+    'pid': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof SessionLaunchRead
+     */
+    'run_id'?: string | null;
+    /**
+     * True once the subprocess was spawned.
+     * @type {boolean}
+     * @memberof SessionLaunchRead
+     */
+    'launched': boolean;
+}
+
+
 /**
  * 
  * @export
@@ -3371,6 +4671,51 @@ export type SimulationSuggestionStatusEnum = typeof SimulationSuggestionStatusEn
 /**
  * 
  * @export
+ * @interface SkillInstallRequest
+ */
+export interface SkillInstallRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof SkillInstallRequest
+     */
+    'owner': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SkillInstallRequest
+     */
+    'repo': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SkillInstallRequest
+     */
+    'skill': string;
+    /**
+     * Replace an existing directory at this slug.
+     * @type {boolean}
+     * @memberof SkillInstallRequest
+     */
+    'overwrite'?: boolean;
+}
+/**
+ * 
+ * @export
+ * @enum {string}
+ */
+
+export const SkillRegistry = {
+    SkillsSh: 'skills_sh',
+    Github: 'github'
+} as const;
+
+export type SkillRegistry = typeof SkillRegistry[keyof typeof SkillRegistry];
+
+
+/**
+ * 
+ * @export
  * @interface SuggestedLink
  */
 export interface SuggestedLink {
@@ -3436,6 +4781,538 @@ export interface ValidationError {
  * @interface ValidationErrorLocInner
  */
 export interface ValidationErrorLocInner {
+}
+/**
+ * 
+ * @export
+ * @interface WorkItem
+ */
+export interface WorkItem {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'source_id': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'external_id': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'parent_external_id': number | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkItem
+     */
+    'pulled_as_parent': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'external_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'item_type': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'title': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'description_md': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'acceptance_md': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'state': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'iteration': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'assigned_to': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkItem
+     */
+    'priority': number | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof WorkItem
+     */
+    'tags': Array<string> | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'external_changed_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItem
+     */
+    'synced_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkItemStartResponse
+ */
+export interface WorkItemStartResponse {
+    /**
+     * The assembled session prompt.
+     * @type {string}
+     * @memberof WorkItemStartResponse
+     */
+    'prompt': string;
+    /**
+     * Always false today — no reusable session-launch path exists yet.
+     * @type {boolean}
+     * @memberof WorkItemStartResponse
+     */
+    'launched': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkItemStartResponse
+     */
+    'session_id': string | null;
+    /**
+     * The work_item_sessions row id.
+     * @type {number}
+     * @memberof WorkItemStartResponse
+     */
+    'link_id': number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkPrThread
+ */
+export interface WorkPrThread {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'id': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'pull_request_id': number;
+    /**
+     * DevOps thread id.
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'external_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThread
+     */
+    'status': string | null;
+    /**
+     * Derived from status being fixed/closed/wontFix/byDesign.
+     * @type {boolean}
+     * @memberof WorkPrThread
+     */
+    'is_resolved': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThread
+     */
+    'file_path': string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThread
+     */
+    'right_file_line': number | null;
+    /**
+     * 
+     * @type {Array<WorkPrThreadComment>}
+     * @memberof WorkPrThread
+     */
+    'comments': Array<WorkPrThreadComment>;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThread
+     */
+    'synced_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkPrThreadComment
+ */
+export interface WorkPrThreadComment {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPrThreadComment
+     */
+    'id': number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'author': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'content': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'comment_type': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPrThreadComment
+     */
+    'published_at': string | null;
+}
+/**
+ * 
+ * @export
+ * @interface WorkPullRequest
+ */
+export interface WorkPullRequest {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkPullRequest
+     */
+    'id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'source_id': string;
+    /**
+     * DevOps pullRequestId.
+     * @type {number}
+     * @memberof WorkPullRequest
+     */
+    'external_id': number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'repository_id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'repository_name': string;
+    /**
+     * What delegatePullRequest resolves to a local checkout.
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'repository_remote_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'title': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'description': string;
+    /**
+     * refs/heads/ prefix stripped.
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'source_branch': string;
+    /**
+     * refs/heads/ prefix stripped.
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'target_branch': string;
+    /**
+     * DevOps status, e.g. \"active\".
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'status': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkPullRequest
+     */
+    'is_draft': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'created_by': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'external_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'external_changed_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkPullRequest
+     */
+    'synced_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkRepoPath
+ */
+export interface WorkRepoPath {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkRepoPath
+     */
+    'id': number;
+    /**
+     * The normalized remote — the key, not the name.
+     * @type {string}
+     * @memberof WorkRepoPath
+     */
+    'remote_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkRepoPath
+     */
+    'local_path': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkRepoPath
+     */
+    'created_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkRepoPathCreateRequest
+ */
+export interface WorkRepoPathCreateRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkRepoPathCreateRequest
+     */
+    'remote_url': string;
+    /**
+     * Absolute path to an existing directory.
+     * @type {string}
+     * @memberof WorkRepoPathCreateRequest
+     */
+    'local_path': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkSource
+ */
+export interface WorkSource {
+    /**
+     * Work source uuid.
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'id': string;
+    /**
+     * Always \"azuredevops\" today.
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'provider': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'org_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'project': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'team': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'query_wiql': string | null;
+    /**
+     * Env var naming the PAT — never the PAT itself.
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'secret_ref': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'current_iteration': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'owner_display_name': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'last_sync_at': string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'created_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSource
+     */
+    'updated_at': string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkSourceCreateRequest
+ */
+export interface WorkSourceCreateRequest {
+    /**
+     * e.g. https://dev.azure.com/myorg
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'org_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'project': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'team'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'query_wiql'?: string | null;
+    /**
+     * Env var naming the PAT.
+     * @type {string}
+     * @memberof WorkSourceCreateRequest
+     */
+    'secret_ref'?: string;
+}
+/**
+ * 
+ * @export
+ * @interface WorkSyncResult
+ */
+export interface WorkSyncResult {
+    /**
+     * Items returned by the WIQL + batch fetch.
+     * @type {number}
+     * @memberof WorkSyncResult
+     */
+    'fetched': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkSyncResult
+     */
+    'inserted': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkSyncResult
+     */
+    'updated': number;
 }
 
 /**
@@ -3588,6 +5465,44 @@ export const AssetsApiAxiosParamCreator = function (configuration?: Configuratio
         },
         /**
          * 
+         * @summary Migrate Asset To Generic
+         * @param {string} assetId 
+         * @param {AssetMigrateRequest} [assetMigrateRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        migrateAssetToGeneric: async (assetId: string, assetMigrateRequest?: AssetMigrateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'assetId' is not null or undefined
+            assertParamExists('migrateAssetToGeneric', 'assetId', assetId)
+            const localVarPath = `/api/v1/assets/{asset_id}/migrate`
+                .replace(`{${"asset_id"}}`, encodeURIComponent(String(assetId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(assetMigrateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Update Asset
          * @param {string} assetId 
          * @param {AssetUpdateRequest} assetUpdateRequest 
@@ -3691,6 +5606,20 @@ export const AssetsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Migrate Asset To Generic
+         * @param {string} assetId 
+         * @param {AssetMigrateRequest} [assetMigrateRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AssetMigrationResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.migrateAssetToGeneric(assetId, assetMigrateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AssetsApi.migrateAssetToGeneric']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Update Asset
          * @param {string} assetId 
          * @param {AssetUpdateRequest} assetUpdateRequest 
@@ -3753,6 +5682,17 @@ export const AssetsApiFactory = function (configuration?: Configuration, basePat
          */
         listAssets(kind?: AssetKind | null, q?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<AssetSummary>> {
             return localVarFp.listAssets(kind, q, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Migrate Asset To Generic
+         * @param {string} assetId 
+         * @param {AssetMigrateRequest} [assetMigrateRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig): AxiosPromise<AssetMigrationResult> {
+            return localVarFp.migrateAssetToGeneric(assetId, assetMigrateRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -3822,6 +5762,19 @@ export class AssetsApi extends BaseAPI {
      */
     public listAssets(kind?: AssetKind | null, q?: string | null, options?: RawAxiosRequestConfig) {
         return AssetsApiFp(this.configuration).listAssets(kind, q, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Migrate Asset To Generic
+     * @param {string} assetId 
+     * @param {AssetMigrateRequest} [assetMigrateRequest] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AssetsApi
+     */
+    public migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig) {
+        return AssetsApiFp(this.configuration).migrateAssetToGeneric(assetId, assetMigrateRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -4607,7 +6560,7 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+         * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
@@ -4882,6 +6835,40 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary The context-growth curve: total tokens per turn, and which tool grew it
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readSessionContextSeries: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('readSessionContextSeries', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/coding-sessions/{session_id}/context`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -4997,7 +6984,7 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+         * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
@@ -5072,6 +7059,19 @@ export const CodingApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStats(since, workflow, includeInspection, includeChildren, limit, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listRunStats']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary The context-growth curve: total tokens per turn, and which tool grew it
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async readSessionContextSeries(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ContextSeries>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.readSessionContextSeries(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CodingApi.readSessionContextSeries']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -5168,7 +7168,7 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
          * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
          * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-         * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+         * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
          * @param {*} [options] Override http request option.
@@ -5229,6 +7229,16 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          */
         listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunStat>> {
             return localVarFp.listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary The context-growth curve: total tokens per turn, and which tool grew it
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readSessionContextSeries(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<ContextSeries> {
+            return localVarFp.readSessionContextSeries(sessionId, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -5338,7 +7348,7 @@ export class CodingApi extends BaseAPI {
      * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
      * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
      * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
-     * @param {string | null} [status] Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
+     * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
      * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
      * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
      * @param {*} [options] Override http request option.
@@ -5408,6 +7418,18 @@ export class CodingApi extends BaseAPI {
      */
     public listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig) {
         return CodingApiFp(this.configuration).listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary The context-growth curve: total tokens per turn, and which tool grew it
+     * @param {string} sessionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CodingApi
+     */
+    public readSessionContextSeries(sessionId: string, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).readSessionContextSeries(sessionId, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
@@ -5791,6 +7813,872 @@ export class InstructionsApi extends BaseAPI {
      */
     public updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, options?: RawAxiosRequestConfig) {
         return InstructionsApiFp(this.configuration).updateInstructions(instructionsUpdateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * LauncherApi - axios parameter creator
+ * @export
+ */
+export const LauncherApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Browse Directories
+         * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        browseDirectories: async (path?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/browse`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (path !== undefined) {
+                localVarQueryParameter['path'] = path;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Create Launcher Project
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createLauncherProject: async (launcherProjectCreateRequest: LauncherProjectCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launcherProjectCreateRequest' is not null or undefined
+            assertParamExists('createLauncherProject', 'launcherProjectCreateRequest', launcherProjectCreateRequest)
+            const localVarPath = `/api/v1/launcher/projects`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(launcherProjectCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        dismissFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'factoryRunDismissRequest' is not null or undefined
+            assertParamExists('dismissFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
+            const localVarPath = `/api/v1/launcher/runs/dismiss`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunDismissRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get Launch Interview
+         * @param {number} launchId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getLaunchInterview: async (launchId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchId' is not null or undefined
+            assertParamExists('getLaunchInterview', 'launchId', launchId)
+            const localVarPath = `/api/v1/launcher/launches/{launch_id}/interview`
+                .replace(`{${"launch_id"}}`, encodeURIComponent(String(launchId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+         * @summary Get Run For Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunForSession: async (sessionId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sessionId' is not null or undefined
+            assertParamExists('getRunForSession', 'sessionId', sessionId)
+            const localVarPath = `/api/v1/launcher/runs/by-session/{session_id}`
+                .replace(`{${"session_id"}}`, encodeURIComponent(String(sessionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Launch Session
+         * @param {LaunchRequest} launchRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        launchSession: async (launchRequest: LaunchRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchRequest' is not null or undefined
+            assertParamExists('launchSession', 'launchRequest', launchRequest)
+            const localVarPath = `/api/v1/launcher/launch`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(launchRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFactoryRuns: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/runs`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Launcher Projects
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listLauncherProjects: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/projects`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Session Launches
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSessionLaunches: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/launcher/launches`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Restore Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        restoreFactoryRun: async (factoryRunDismissRequest: FactoryRunDismissRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'factoryRunDismissRequest' is not null or undefined
+            assertParamExists('restoreFactoryRun', 'factoryRunDismissRequest', factoryRunDismissRequest)
+            const localVarPath = `/api/v1/launcher/runs/restore`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunDismissRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Resume Factory Run
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeFactoryRun: async (factoryRunResumeRequest: FactoryRunResumeRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'factoryRunResumeRequest' is not null or undefined
+            assertParamExists('resumeFactoryRun', 'factoryRunResumeRequest', factoryRunResumeRequest)
+            const localVarPath = `/api/v1/launcher/runs/resume`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(factoryRunResumeRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Submit Interview Answers
+         * @param {number} launchId 
+         * @param {InterviewAnswersRequest} interviewAnswersRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitInterviewAnswers: async (launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'launchId' is not null or undefined
+            assertParamExists('submitInterviewAnswers', 'launchId', launchId)
+            // verify required parameter 'interviewAnswersRequest' is not null or undefined
+            assertParamExists('submitInterviewAnswers', 'interviewAnswersRequest', interviewAnswersRequest)
+            const localVarPath = `/api/v1/launcher/launches/{launch_id}/answers`
+                .replace(`{${"launch_id"}}`, encodeURIComponent(String(launchId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(interviewAnswersRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * LauncherApi - functional programming interface
+ * @export
+ */
+export const LauncherApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = LauncherApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Browse Directories
+         * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async browseDirectories(path?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<DirectoryListing>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.browseDirectories(path, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.browseDirectories']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Create Launcher Project
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<LauncherProject>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createLauncherProject(launcherProjectCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.createLauncherProject']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.dismissFactoryRun(factoryRunDismissRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.dismissFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Get Launch Interview
+         * @param {number} launchId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InterviewRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getLaunchInterview(launchId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getLaunchInterview']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+         * @summary Get Run For Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunForSession(sessionId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.getRunForSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Launch Session
+         * @param {LaunchRequest} launchRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async launchSession(launchRequest: LaunchRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SessionLaunchRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.launchSession(launchRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.launchSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listFactoryRuns(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FactoryRun>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listFactoryRuns(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listFactoryRuns']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Launcher Projects
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listLauncherProjects(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<LauncherProject>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listLauncherProjects(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listLauncherProjects']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Session Launches
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listSessionLaunches(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SessionLaunchListItem>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listSessionLaunches(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.listSessionLaunches']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Restore Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRun>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.restoreFactoryRun(factoryRunDismissRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.restoreFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Resume Factory Run
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FactoryRunResumeRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.resumeFactoryRun(factoryRunResumeRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.resumeFactoryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Submit Interview Answers
+         * @param {number} launchId 
+         * @param {InterviewAnswersRequest} interviewAnswersRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async submitInterviewAnswers(launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InterviewResumeRead>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.submitInterviewAnswers(launchId, interviewAnswersRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['LauncherApi.submitInterviewAnswers']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * LauncherApi - factory interface
+ * @export
+ */
+export const LauncherApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = LauncherApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Browse Directories
+         * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        browseDirectories(path?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<DirectoryListing> {
+            return localVarFp.browseDirectories(path, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Create Launcher Project
+         * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<LauncherProject> {
+            return localVarFp.createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Dismiss Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Get Launch Interview
+         * @param {number} launchId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig): AxiosPromise<InterviewRead> {
+            return localVarFp.getLaunchInterview(launchId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+         * @summary Get Run For Session
+         * @param {string} sessionId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunForSession(sessionId: string, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.getRunForSession(sessionId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Launch Session
+         * @param {LaunchRequest} launchRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        launchSession(launchRequest: LaunchRequest, options?: RawAxiosRequestConfig): AxiosPromise<SessionLaunchRead> {
+            return localVarFp.launchSession(launchRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Factory Runs
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFactoryRuns(options?: RawAxiosRequestConfig): AxiosPromise<Array<FactoryRun>> {
+            return localVarFp.listFactoryRuns(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Launcher Projects
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listLauncherProjects(options?: RawAxiosRequestConfig): AxiosPromise<Array<LauncherProject>> {
+            return localVarFp.listLauncherProjects(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Session Launches
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSessionLaunches(options?: RawAxiosRequestConfig): AxiosPromise<Array<SessionLaunchListItem>> {
+            return localVarFp.listSessionLaunches(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Restore Factory Run
+         * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRun> {
+            return localVarFp.restoreFactoryRun(factoryRunDismissRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Resume Factory Run
+         * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig): AxiosPromise<FactoryRunResumeRead> {
+            return localVarFp.resumeFactoryRun(factoryRunResumeRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Submit Interview Answers
+         * @param {number} launchId 
+         * @param {InterviewAnswersRequest} interviewAnswersRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitInterviewAnswers(launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options?: RawAxiosRequestConfig): AxiosPromise<InterviewResumeRead> {
+            return localVarFp.submitInterviewAnswers(launchId, interviewAnswersRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * LauncherApi - object-oriented interface
+ * @export
+ * @class LauncherApi
+ * @extends {BaseAPI}
+ */
+export class LauncherApi extends BaseAPI {
+    /**
+     * 
+     * @summary Browse Directories
+     * @param {string | null} [path] Absolute path to list; defaults to the stored projects_root.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public browseDirectories(path?: string | null, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).browseDirectories(path, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Create Launcher Project
+     * @param {LauncherProjectCreateRequest} launcherProjectCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public createLauncherProject(launcherProjectCreateRequest: LauncherProjectCreateRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).createLauncherProject(launcherProjectCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Dismiss Factory Run
+     * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public dismissFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).dismissFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Get Launch Interview
+     * @param {number} launchId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public getLaunchInterview(launchId: number, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).getLaunchInterview(launchId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Null — not 404 — when the session came from anywhere but a factory run, which is the common case and not an error.
+     * @summary Get Run For Session
+     * @param {string} sessionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public getRunForSession(sessionId: string, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).getRunForSession(sessionId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Launch Session
+     * @param {LaunchRequest} launchRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public launchSession(launchRequest: LaunchRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).launchSession(launchRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Factory Runs
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listFactoryRuns(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listFactoryRuns(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Launcher Projects
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listLauncherProjects(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listLauncherProjects(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Session Launches
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public listSessionLaunches(options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).listSessionLaunches(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Restore Factory Run
+     * @param {FactoryRunDismissRequest} factoryRunDismissRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public restoreFactoryRun(factoryRunDismissRequest: FactoryRunDismissRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).restoreFactoryRun(factoryRunDismissRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Resume Factory Run
+     * @param {FactoryRunResumeRequest} factoryRunResumeRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public resumeFactoryRun(factoryRunResumeRequest: FactoryRunResumeRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).resumeFactoryRun(factoryRunResumeRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Submit Interview Answers
+     * @param {number} launchId 
+     * @param {InterviewAnswersRequest} interviewAnswersRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof LauncherApi
+     */
+    public submitInterviewAnswers(launchId: number, interviewAnswersRequest: InterviewAnswersRequest, options?: RawAxiosRequestConfig) {
+        return LauncherApiFp(this.configuration).submitInterviewAnswers(launchId, interviewAnswersRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
@@ -6946,6 +9834,178 @@ export class ProposalsApi extends BaseAPI {
 
 
 /**
+ * SettingsApi - axios parameter creator
+ * @export
+ */
+export const SettingsApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Get Settings
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSettings: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/settings`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Update Settings
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSettings: async (appSettingsUpdateRequest: AppSettingsUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'appSettingsUpdateRequest' is not null or undefined
+            assertParamExists('updateSettings', 'appSettingsUpdateRequest', appSettingsUpdateRequest)
+            const localVarPath = `/api/v1/settings`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PATCH', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(appSettingsUpdateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * SettingsApi - functional programming interface
+ * @export
+ */
+export const SettingsApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = SettingsApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Get Settings
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getSettings(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AppSettings>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getSettings(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SettingsApi.getSettings']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Update Settings
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateSettings(appSettingsUpdateRequest: AppSettingsUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AppSettings>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateSettings(appSettingsUpdateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SettingsApi.updateSettings']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * SettingsApi - factory interface
+ * @export
+ */
+export const SettingsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = SettingsApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Get Settings
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSettings(options?: RawAxiosRequestConfig): AxiosPromise<AppSettings> {
+            return localVarFp.getSettings(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Update Settings
+         * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSettings(appSettingsUpdateRequest: AppSettingsUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<AppSettings> {
+            return localVarFp.updateSettings(appSettingsUpdateRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * SettingsApi - object-oriented interface
+ * @export
+ * @class SettingsApi
+ * @extends {BaseAPI}
+ */
+export class SettingsApi extends BaseAPI {
+    /**
+     * 
+     * @summary Get Settings
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SettingsApi
+     */
+    public getSettings(options?: RawAxiosRequestConfig) {
+        return SettingsApiFp(this.configuration).getSettings(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Update Settings
+     * @param {AppSettingsUpdateRequest} appSettingsUpdateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SettingsApi
+     */
+    public updateSettings(appSettingsUpdateRequest: AppSettingsUpdateRequest, options?: RawAxiosRequestConfig) {
+        return SettingsApiFp(this.configuration).updateSettings(appSettingsUpdateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
  * SimulationsApi - axios parameter creator
  * @export
  */
@@ -7556,6 +10616,1084 @@ export class SimulationsApi extends BaseAPI {
      */
     public stopSimulationAutopilot(runId: string, options?: RawAxiosRequestConfig) {
         return SimulationsApiFp(this.configuration).stopSimulationAutopilot(runId, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * SkillsApi - axios parameter creator
+ * @export
+ */
+export const SkillsApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Get Catalog Skill
+         * @param {string} owner 
+         * @param {string} repo 
+         * @param {string} skill 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCatalogSkill: async (owner: string, repo: string, skill: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'owner' is not null or undefined
+            assertParamExists('getCatalogSkill', 'owner', owner)
+            // verify required parameter 'repo' is not null or undefined
+            assertParamExists('getCatalogSkill', 'repo', repo)
+            // verify required parameter 'skill' is not null or undefined
+            assertParamExists('getCatalogSkill', 'skill', skill)
+            const localVarPath = `/api/v1/skills/catalog/{owner}/{repo}/{skill}`
+                .replace(`{${"owner"}}`, encodeURIComponent(String(owner)))
+                .replace(`{${"repo"}}`, encodeURIComponent(String(repo)))
+                .replace(`{${"skill"}}`, encodeURIComponent(String(skill)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Install Skill
+         * @param {SkillInstallRequest} skillInstallRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        installSkill: async (skillInstallRequest: SkillInstallRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'skillInstallRequest' is not null or undefined
+            assertParamExists('installSkill', 'skillInstallRequest', skillInstallRequest)
+            const localVarPath = `/api/v1/skills/install`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(skillInstallRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Search Skill Catalog
+         * @param {string} q Search text.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        searchSkillCatalog: async (q: string, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'q' is not null or undefined
+            assertParamExists('searchSkillCatalog', 'q', q)
+            const localVarPath = `/api/v1/skills/catalog`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (q !== undefined) {
+                localVarQueryParameter['q'] = q;
+            }
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Uninstall Skill
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uninstallSkill: async (name: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'name' is not null or undefined
+            assertParamExists('uninstallSkill', 'name', name)
+            const localVarPath = `/api/v1/skills/installed/{name}`
+                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * SkillsApi - functional programming interface
+ * @export
+ */
+export const SkillsApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = SkillsApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Get Catalog Skill
+         * @param {string} owner 
+         * @param {string} repo 
+         * @param {string} skill 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCatalogSkill(owner: string, repo: string, skill: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CatalogSkillDetail>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCatalogSkill(owner, repo, skill, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.getCatalogSkill']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Install Skill
+         * @param {SkillInstallRequest} skillInstallRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async installSkill(skillInstallRequest: SkillInstallRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstalledSkill>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.installSkill(skillInstallRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.installSkill']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Search Skill Catalog
+         * @param {string} q Search text.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async searchSkillCatalog(q: string, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CatalogSearchResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.searchSkillCatalog(q, limit, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.searchSkillCatalog']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Uninstall Skill
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async uninstallSkill(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.uninstallSkill(name, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.uninstallSkill']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * SkillsApi - factory interface
+ * @export
+ */
+export const SkillsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = SkillsApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Get Catalog Skill
+         * @param {string} owner 
+         * @param {string} repo 
+         * @param {string} skill 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCatalogSkill(owner: string, repo: string, skill: string, options?: RawAxiosRequestConfig): AxiosPromise<CatalogSkillDetail> {
+            return localVarFp.getCatalogSkill(owner, repo, skill, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Install Skill
+         * @param {SkillInstallRequest} skillInstallRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        installSkill(skillInstallRequest: SkillInstallRequest, options?: RawAxiosRequestConfig): AxiosPromise<InstalledSkill> {
+            return localVarFp.installSkill(skillInstallRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Search Skill Catalog
+         * @param {string} q Search text.
+         * @param {number} [limit] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        searchSkillCatalog(q: string, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<CatalogSearchResponse> {
+            return localVarFp.searchSkillCatalog(q, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Uninstall Skill
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uninstallSkill(name: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+            return localVarFp.uninstallSkill(name, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * SkillsApi - object-oriented interface
+ * @export
+ * @class SkillsApi
+ * @extends {BaseAPI}
+ */
+export class SkillsApi extends BaseAPI {
+    /**
+     * 
+     * @summary Get Catalog Skill
+     * @param {string} owner 
+     * @param {string} repo 
+     * @param {string} skill 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public getCatalogSkill(owner: string, repo: string, skill: string, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).getCatalogSkill(owner, repo, skill, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Install Skill
+     * @param {SkillInstallRequest} skillInstallRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public installSkill(skillInstallRequest: SkillInstallRequest, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).installSkill(skillInstallRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Search Skill Catalog
+     * @param {string} q Search text.
+     * @param {number} [limit] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public searchSkillCatalog(q: string, limit?: number, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).searchSkillCatalog(q, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Uninstall Skill
+     * @param {string} name 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public uninstallSkill(name: string, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).uninstallSkill(name, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+
+
+
+/**
+ * WorkApi - axios parameter creator
+ * @export
+ */
+export const WorkApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Create Work Source
+         * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createWorkSource: async (workSourceCreateRequest: WorkSourceCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'workSourceCreateRequest' is not null or undefined
+            assertParamExists('createWorkSource', 'workSourceCreateRequest', workSourceCreateRequest)
+            const localVarPath = `/api/v1/work/sources`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workSourceCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Delegate Pull Request
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        delegatePullRequest: async (prId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'prId' is not null or undefined
+            assertParamExists('delegatePullRequest', 'prId', prId)
+            const localVarPath = `/api/v1/work/prs/{pr_id}/delegate`
+                .replace(`{${"pr_id"}}`, encodeURIComponent(String(prId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Pull Request Threads
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequestThreads: async (prId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'prId' is not null or undefined
+            assertParamExists('listPullRequestThreads', 'prId', prId)
+            const localVarPath = `/api/v1/work/prs/{pr_id}/threads`
+                .replace(`{${"pr_id"}}`, encodeURIComponent(String(prId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Pull Requests
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequests: async (sourceId?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/work/prs`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (sourceId !== undefined) {
+                localVarQueryParameter['source_id'] = sourceId;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Work Items
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkItems: async (sourceId?: string | null, state?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/work/items`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            if (sourceId !== undefined) {
+                localVarQueryParameter['source_id'] = sourceId;
+            }
+
+            if (state !== undefined) {
+                localVarQueryParameter['state'] = state;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Work Sources
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkSources: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/work/sources`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Save Repo Path
+         * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        saveRepoPath: async (workRepoPathCreateRequest: WorkRepoPathCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'workRepoPathCreateRequest' is not null or undefined
+            assertParamExists('saveRepoPath', 'workRepoPathCreateRequest', workRepoPathCreateRequest)
+            const localVarPath = `/api/v1/work/repo-paths`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workRepoPathCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Start Work Item
+         * @param {number} itemId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startWorkItem: async (itemId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'itemId' is not null or undefined
+            assertParamExists('startWorkItem', 'itemId', itemId)
+            const localVarPath = `/api/v1/work/items/{item_id}/start`
+                .replace(`{${"item_id"}}`, encodeURIComponent(String(itemId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Sync Pull Requests
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncPullRequests: async (sourceId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sourceId' is not null or undefined
+            assertParamExists('syncPullRequests', 'sourceId', sourceId)
+            const localVarPath = `/api/v1/work/sources/{source_id}/sync-prs`
+                .replace(`{${"source_id"}}`, encodeURIComponent(String(sourceId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Sync Work Source
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncWorkSource: async (sourceId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'sourceId' is not null or undefined
+            assertParamExists('syncWorkSource', 'sourceId', sourceId)
+            const localVarPath = `/api/v1/work/sources/{source_id}/sync`
+                .replace(`{${"source_id"}}`, encodeURIComponent(String(sourceId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * WorkApi - functional programming interface
+ * @export
+ */
+export const WorkApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = WorkApiAxiosParamCreator(configuration)
+    return {
+        /**
+         * 
+         * @summary Create Work Source
+         * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createWorkSource(workSourceCreateRequest: WorkSourceCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkSource>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createWorkSource(workSourceCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.createWorkSource']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Delegate Pull Request
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async delegatePullRequest(prId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PullRequestDelegateResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.delegatePullRequest(prId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.delegatePullRequest']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Pull Request Threads
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listPullRequestThreads(prId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkPrThread>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listPullRequestThreads(prId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listPullRequestThreads']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Pull Requests
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listPullRequests(sourceId?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkPullRequest>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listPullRequests(sourceId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listPullRequests']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Work Items
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listWorkItems(sourceId?: string | null, state?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkItem>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(sourceId, state, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listWorkItems']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List Work Sources
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listWorkSources(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<WorkSource>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkSources(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listWorkSources']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Save Repo Path
+         * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async saveRepoPath(workRepoPathCreateRequest: WorkRepoPathCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkRepoPath>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.saveRepoPath(workRepoPathCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.saveRepoPath']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Start Work Item
+         * @param {number} itemId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async startWorkItem(itemId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemStartResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.startWorkItem(itemId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.startWorkItem']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Sync Pull Requests
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async syncPullRequests(sourceId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkSyncResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.syncPullRequests(sourceId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.syncPullRequests']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Sync Work Source
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async syncWorkSource(sourceId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkSyncResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.syncWorkSource(sourceId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.syncWorkSource']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+    }
+};
+
+/**
+ * WorkApi - factory interface
+ * @export
+ */
+export const WorkApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = WorkApiFp(configuration)
+    return {
+        /**
+         * 
+         * @summary Create Work Source
+         * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createWorkSource(workSourceCreateRequest: WorkSourceCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkSource> {
+            return localVarFp.createWorkSource(workSourceCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Delegate Pull Request
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        delegatePullRequest(prId: number, options?: RawAxiosRequestConfig): AxiosPromise<PullRequestDelegateResponse> {
+            return localVarFp.delegatePullRequest(prId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Pull Request Threads
+         * @param {number} prId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequestThreads(prId: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkPrThread>> {
+            return localVarFp.listPullRequestThreads(prId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Pull Requests
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequests(sourceId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkPullRequest>> {
+            return localVarFp.listPullRequests(sourceId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Work Items
+         * @param {string | null} [sourceId] Scope to one registered source.
+         * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkItems(sourceId?: string | null, state?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkItem>> {
+            return localVarFp.listWorkItems(sourceId, state, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List Work Sources
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkSources(options?: RawAxiosRequestConfig): AxiosPromise<Array<WorkSource>> {
+            return localVarFp.listWorkSources(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Save Repo Path
+         * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        saveRepoPath(workRepoPathCreateRequest: WorkRepoPathCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkRepoPath> {
+            return localVarFp.saveRepoPath(workRepoPathCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Start Work Item
+         * @param {number} itemId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startWorkItem(itemId: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemStartResponse> {
+            return localVarFp.startWorkItem(itemId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Sync Pull Requests
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncPullRequests(sourceId: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkSyncResult> {
+            return localVarFp.syncPullRequests(sourceId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Sync Work Source
+         * @param {string} sourceId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncWorkSource(sourceId: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkSyncResult> {
+            return localVarFp.syncWorkSource(sourceId, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+
+/**
+ * WorkApi - object-oriented interface
+ * @export
+ * @class WorkApi
+ * @extends {BaseAPI}
+ */
+export class WorkApi extends BaseAPI {
+    /**
+     * 
+     * @summary Create Work Source
+     * @param {WorkSourceCreateRequest} workSourceCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public createWorkSource(workSourceCreateRequest: WorkSourceCreateRequest, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).createWorkSource(workSourceCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Delegate Pull Request
+     * @param {number} prId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public delegatePullRequest(prId: number, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).delegatePullRequest(prId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Pull Request Threads
+     * @param {number} prId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listPullRequestThreads(prId: number, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listPullRequestThreads(prId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Pull Requests
+     * @param {string | null} [sourceId] Scope to one registered source.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listPullRequests(sourceId?: string | null, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listPullRequests(sourceId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Work Items
+     * @param {string | null} [sourceId] Scope to one registered source.
+     * @param {string | null} [state] Scope to one DevOps state, e.g. Active.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listWorkItems(sourceId?: string | null, state?: string | null, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listWorkItems(sourceId, state, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List Work Sources
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public listWorkSources(options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listWorkSources(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Save Repo Path
+     * @param {WorkRepoPathCreateRequest} workRepoPathCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public saveRepoPath(workRepoPathCreateRequest: WorkRepoPathCreateRequest, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).saveRepoPath(workRepoPathCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Start Work Item
+     * @param {number} itemId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public startWorkItem(itemId: number, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).startWorkItem(itemId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Sync Pull Requests
+     * @param {string} sourceId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public syncPullRequests(sourceId: string, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).syncPullRequests(sourceId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Sync Work Source
+     * @param {string} sourceId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkApi
+     */
+    public syncWorkSource(sourceId: string, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).syncWorkSource(sourceId, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

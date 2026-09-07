@@ -1,5 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Boxes, Bot, MessageSquare, FolderKanban, FileText, Activity } from 'lucide-react';
+import {
+  Boxes,
+  Bot,
+  MessageSquare,
+  FolderKanban,
+  FileText,
+  Activity,
+  ListTodo,
+} from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { Logo } from './Logo';
 
@@ -7,6 +15,7 @@ const NAV = [
   { to: '/skills', label: 'Skills', icon: Boxes },
   { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
+  { to: '/work', label: 'Work', icon: ListTodo },
   { to: '/sessions', label: 'Sessions', icon: Activity },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/instructions', label: 'CLAUDE.md', icon: FileText },

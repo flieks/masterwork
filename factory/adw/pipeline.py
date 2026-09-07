@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from adw import envelopes, gates, gitwork, prompts, runs, workflows
+from adw import envelopes, gates, gitwork, interview, prompts, runs, workflows
 from adw.agent import AgentError, AgentSession, AgentTurn
 from adw.config import FactoryConfig, Stage
 from adw.envelopes import Envelope
@@ -75,10 +75,15 @@ class RunResult:
     # Which attempt at this run_id this was: 1 for a fresh run, 2+ after --resume.
     attempt: int = 1
     resumed: bool = False
+    # True when the run stopped after `plan` to ask its assumptions as
+    # questions rather than failing or finishing.
+    paused: bool = False
+    questions: list[interview.Question] = field(default_factory=list)
+    questions_path: Path | None = None
 
     @property
     def exit_code(self) -> int:
-        return 0 if self.accepted else 1
+        return 0 if (self.accepted or self.paused) else 1
 
     @property
     def committed(self) -> list[tuple[str, str]]:
@@ -114,12 +119,18 @@ class Pipeline:
         *,
         session_factory: SessionFactory | None = None,
         resume: runs.ResumePlan | None = None,
+        interview: bool = False,
+        answers: list[interview.Answer] | None = None,
     ) -> None:
         self.cfg = config
         self.request = request
         self.tel = telemetry
         self.repo = config.repo
         self.resume = resume
+        self.interview = interview
+        self.answers = answers or []
+        self._paused_questions: list[interview.Question] = []
+        self._questions_path: Path | None = None
         # Writes the interrupted attempt left in the tree, never gated and never
         # committed. They are neither charged to nor credited to the stage that runs
         # again — until a commit sweeps them up, the gates simply do not count them.
@@ -170,6 +181,7 @@ class Pipeline:
             workflow=self.cfg.workflow,
             workflow_name=self.cfg.workflow_name,
             attempt=self.attempt,
+            interview=self.interview,
         )
         self.tel.emit(
             "phase_start",
@@ -278,7 +290,33 @@ class Pipeline:
                 )
             upstream, upstream_stage = outcome.envelope, name
 
+            if name == "plan" and self.interview and not self.answers:
+                paused = self._maybe_pause_for_interview(outcome.envelope)
+                if paused is not None:
+                    return paused
+
         return self._finish(self._success_reason(), aborted=False)
+
+    def _maybe_pause_for_interview(self, envelope: Envelope | None) -> RunResult | None:
+        """Turns the plan's weak assumptions into questions and stops the run —
+        unless there are none, in which case there is nothing to ask (see plan.md
+        assumption 1) and the caller continues straight on to build."""
+        assumptions = envelope.assumptions if envelope is not None else []
+        questions = interview.questions_from_assumptions(assumptions)
+        if not questions:
+            self.tel.emit(
+                "phase_start",
+                phase="run",
+                result="warn",
+                detail="interview: plan envelope had no assumptions — continuing to build",
+            )
+            return None
+        self._paused_questions = questions
+        self._questions_path = interview.write_questions(
+            self.cfg.run_dir, self.cfg.run_id, questions, stage="plan"
+        )
+        reason = f"paused for interview — {len(questions)} question(s) written to questions.json"
+        return self._finish(reason, aborted=False, paused=True)
 
     def _already_done(self, name: str) -> StageOutcome | None:
         """A stage a resumed run does not have to run again — with the evidence for
@@ -344,7 +382,13 @@ class Pipeline:
             conventions=self.cfg.conventions,
         )
         session.system_prompt = compiled.system
-        turn = self._dispatch(stage, session, compiled.user)
+        user_prompt = compiled.user
+        # Folded into the prompt, not a role template variable: role files live in
+        # the user's seeded ~/.masterwork/agents library, and a new {{...}} in an
+        # already-seeded copy would never render.
+        if name == "build" and self.answers:
+            user_prompt += "\n\n" + interview.prompt_block(self.answers)
+        turn = self._dispatch(stage, session, user_prompt)
         outcome = self._gate_loop(stage, session, snap, turn)
         outcome.duration_ms = int((time.monotonic() - started) * 1000)
         if outcome.passed:
@@ -789,7 +833,7 @@ class Pipeline:
 
     # --- finish ------------------------------------------------------------
 
-    def _finish(self, reason: str, *, aborted: bool) -> RunResult:
+    def _finish(self, reason: str, *, aborted: bool, paused: bool = False) -> RunResult:
         # A cap that fired owns the reason: whatever the stage machinery said next is
         # downstream of the stop, and the figure must not be buried behind it.
         if self.budget_stop:
@@ -802,6 +846,10 @@ class Pipeline:
             and (self.checks_passed or not self.cfg.runs_checks)
             and (self.review_approved or not self.cfg.runs_review)
         )
+        # A paused run has been judged by nobody yet — never "accepted" just because
+        # its workflow happens to have no checks/review stage left to fail.
+        if paused:
+            accepted = False
         result = RunResult(
             run_id=self.cfg.run_id,
             accepted=accepted,
@@ -822,19 +870,30 @@ class Pipeline:
             workflow_name=self.cfg.workflow_name,
             attempt=self.attempt,
             resumed=self.resume is not None,
+            paused=paused,
+            questions=list(self._paused_questions),
+            questions_path=self._questions_path,
         )
-        runs.close_record(
-            self.cfg.run_dir,
-            # A budget stop is not the run finishing: it is a run that can be resumed,
-            # and --list-runs must not describe it as one that ran its course.
-            state=runs.STOPPED if self.budget_stop else runs.FINISHED,
-            accepted=accepted,
-            reason=reason,
-        )
+        if paused:
+            # Waiting on answers, not stopped and not finished — `--resume` reads
+            # this state to know it must find answers.json before an agent runs.
+            runs.pause_record(self.cfg.run_dir, reason=reason)
+        else:
+            runs.close_record(
+                self.cfg.run_dir,
+                # A budget stop is not the run finishing: it is a run that can be
+                # resumed, and --list-runs must not describe it as one that ran its
+                # course.
+                state=runs.STOPPED if self.budget_stop else runs.FINISHED,
+                accepted=accepted,
+                reason=reason,
+            )
         self.tel.emit(
             "run_end",
             phase="run",
-            result="ok" if accepted else "fail",
+            # A pause is not a failure: it is exactly as much "ok" as an accepted
+            # run, just not yet finished.
+            result="ok" if (accepted or paused) else "fail",
             detail=reason,
             cost_usd=result.cost_usd,
             ended=True,
@@ -951,6 +1010,20 @@ def budget_report(result: RunResult) -> list[str]:
     return lines
 
 
+def interview_report(result: RunResult) -> list[str]:
+    """What's blocking a paused run, and the exact command to unblock it."""
+    if not result.paused:
+        return []
+    lines = [f"WAITING FOR ANSWERS — run {result.run_id}"]
+    for q in result.questions:
+        lines.append(f"  {q.id}: {q.question}")
+    if result.questions_path:
+        answers_path = result.questions_path.parent / interview.ANSWERS_FILENAME
+        lines.append(f"  write your answers to: {answers_path}")
+    lines.append(f"  then resume:   python3 factory/run.py --repo <repo> --resume {result.run_id}")
+    return lines
+
+
 def format_summary(result: RunResult) -> str:
     """Per-stage table so runs are comparable over time."""
     lines = [f"workflow: {result.workflow_name} — {workflows.describe(result.workflow)}", ""]
@@ -971,15 +1044,26 @@ def format_summary(result: RunResult) -> str:
     lines += [
         "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip() for row in rows
     ]
-    for block in (branch_report(result), resume_report(result), budget_report(result)):
+    blocks = (
+        branch_report(result),
+        resume_report(result),
+        budget_report(result),
+        interview_report(result),
+    )
+    for block in blocks:
         if block:
             lines += ["", *block]
 
-    verdict = "ACCEPTED" if result.accepted else "NOT ACCEPTED"
+    # A pause is neither an acceptance nor a rejection — say so plainly rather
+    # than making a reader parse "NOT ACCEPTED" as if the run had failed.
+    if result.paused:
+        verdict = "WAITING FOR INPUT"
+    else:
+        verdict = "ACCEPTED" if result.accepted else "NOT ACCEPTED"
     # What the run did NOT do rides the verdict itself, so no reader of this line
     # can take "ACCEPTED" for "built, verified and reviewed".
     done = ((result.verified, UNVERIFIED_VERDICT), (result.reviewed, UNREVIEWED_VERDICT))
-    caveats = [text for flag, text in done if not flag]
+    caveats = [text for flag, text in done if not flag and not result.paused]
     if caveats:
         verdict += f" ({'; '.join(caveats)})"
     lines.append("")

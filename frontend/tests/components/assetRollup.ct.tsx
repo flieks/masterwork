@@ -23,6 +23,11 @@ async function mockSessionsScreen(page: Page): Promise<{ urls: string[] }> {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
       return;
     }
+    if (route.request().url().includes('/launcher/')) {
+      // The FactoryRunsCard poll — these tests are about the asset rollup.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      return;
+    }
     const url = route.request().url();
     if (url.includes('/observability/')) {
       await route.fulfill({
@@ -31,6 +36,11 @@ async function mockSessionsScreen(page: Page): Promise<{ urls: string[] }> {
         headers: CORS,
         body: JSON.stringify([integration()]),
       });
+      return;
+    }
+    if (url.includes('status=waiting_input')) {
+      // The WaitingRuns banner — nothing is blocked in these fixtures.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
       return;
     }
     urls.push(url);
@@ -141,6 +151,11 @@ async function mockInspectionScope(page: Page): Promise<{ urls: string[] }> {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
       return;
     }
+    if (route.request().url().includes('/launcher/')) {
+      // The FactoryRunsCard poll — these tests are about the asset rollup.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      return;
+    }
     const url = route.request().url();
     if (url.includes('/observability/')) {
       await route.fulfill({
@@ -149,6 +164,11 @@ async function mockInspectionScope(page: Page): Promise<{ urls: string[] }> {
         headers: CORS,
         body: JSON.stringify([integration()]),
       });
+      return;
+    }
+    if (url.includes('status=waiting_input')) {
+      // The WaitingRuns banner — nothing is blocked in these fixtures.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
       return;
     }
     urls.push(url);
@@ -225,6 +245,11 @@ test('the per-asset drill-in follows the same scope as the table', async ({ moun
   await page.route('**/api/v1/**', async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
+      return;
+    }
+    if (route.request().url().includes('/launcher/')) {
+      // The FactoryRunsCard poll — these tests are about the asset rollup.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
       return;
     }
     const url = route.request().url();
@@ -309,6 +334,16 @@ test('the grid keeps the order the server chose, live first', async ({ mount, pa
   await page.route('**/api/v1/**', async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
+      return;
+    }
+    if (route.request().url().includes('/launcher/')) {
+      // The FactoryRunsCard poll — these tests are about the asset rollup.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      return;
+    }
+    if (route.request().url().includes('status=waiting_input')) {
+      // The WaitingRuns banner — none of these three is blocked on a person.
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
       return;
     }
     await route.fulfill({

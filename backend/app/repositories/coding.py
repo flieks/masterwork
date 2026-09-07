@@ -17,11 +17,13 @@ from app.db.models.coding import (
     LAUNCH_AUTOMATED,
     STATUS_ABANDONED,
     STATUS_RUNNING,
+    STATUS_WAITING_INPUT,
     WORKFLOW_CHAT,
     WORKFLOW_FACTORY,
     CodingAgent,
     CodingAsset,
     CodingAssetUse,
+    CodingContextSample,
     CodingEnvelope,
     CodingEvent,
     CodingGateCheck,
@@ -96,16 +98,31 @@ def _is_empty_session(cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     return and_(not_(did_something), finished)
 
 
+def _is_waiting() -> ColumnElement[bool]:
+    """Open and blocked on its human — see `derived_status`, which ranks this
+    above both of the statuses silence produces."""
+    return and_(
+        CodingSession.status == STATUS_RUNNING,
+        CodingSession.ended_at.is_(None),
+        CodingSession.awaiting_input_since.is_not(None),
+    )
+
+
 def _status_filter(status: str, cutoff: tuple[datetime, datetime]) -> ColumnElement[bool]:
     """Match the status the reader will actually see, not the stored one.
 
-    `abandoned` is derived from silence and `running` is narrowed by it, so
-    filtering on the column alone would contradict the serialized payload.
+    `abandoned` is derived from silence, `waiting_input` from a notification and
+    `running` is narrowed by both, so filtering on the column alone would
+    contradict the serialized payload.
     """
+    if status == STATUS_WAITING_INPUT:
+        return _is_waiting()
     if status == STATUS_ABANDONED:
-        return and_(CodingSession.status == STATUS_RUNNING, not_(_is_live(cutoff)))
+        return and_(
+            CodingSession.status == STATUS_RUNNING, not_(_is_live(cutoff)), not_(_is_waiting())
+        )
     if status == STATUS_RUNNING:
-        return and_(CodingSession.status == STATUS_RUNNING, _is_live(cutoff))
+        return and_(CodingSession.status == STATUS_RUNNING, _is_live(cutoff), not_(_is_waiting()))
     return CodingSession.status == status
 
 
@@ -258,6 +275,19 @@ async def add_event(
     db.add(event)
     await db.flush()
     return event
+
+
+async def previous_event_type(db: AsyncSession, session_id: str, *, before_id: int) -> str | None:
+    """What the run was doing just before this event. Asked only when a
+    notification arrives — rare enough that one indexed lookup beats carrying a
+    "last event type" column that every other event would have to maintain."""
+    result = await db.execute(
+        select(CodingEvent.event_type)
+        .where(CodingEvent.session_id == session_id, CodingEvent.id < before_id)
+        .order_by(CodingEvent.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_events(
@@ -893,6 +923,61 @@ async def clear_derived(db: AsyncSession, session_id: str) -> None:
     await db.execute(delete(CodingPhase).where(CodingPhase.session_id == session_id))
     await db.execute(delete(CodingAgent).where(CodingAgent.session_id == session_id))
     await db.flush()
+
+
+# --- context samples: reported, like evidence — never cleared by a backfill ---
+
+
+async def get_context_sample(
+    db: AsyncSession, session_id: str, message_id: str
+) -> CodingContextSample | None:
+    result = await db.execute(
+        select(CodingContextSample).where(
+            CodingContextSample.session_id == session_id,
+            CodingContextSample.message_id == message_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def add_context_sample(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    seq: int,
+    message_id: str,
+    is_sidechain: bool,
+    at: datetime,
+    total_tokens: int,
+    output_tokens: int | None,
+    tools: list[str] | None,
+) -> CodingContextSample:
+    sample = CodingContextSample(
+        session_id=session_id,
+        seq=seq,
+        message_id=message_id,
+        is_sidechain=is_sidechain,
+        at=at,
+        total_tokens=total_tokens,
+        output_tokens=output_tokens,
+        tools=tools,
+    )
+    db.add(sample)
+    await db.flush()
+    return sample
+
+
+async def context_samples_for_session(
+    db: AsyncSession, session_id: str
+) -> list[CodingContextSample]:
+    """Every sample of one session, ordered the way `delta_tokens` is recomputed
+    and the way the read side re-splits it into lanes."""
+    result = await db.execute(
+        select(CodingContextSample)
+        .where(CodingContextSample.session_id == session_id)
+        .order_by(CodingContextSample.seq, CodingContextSample.id)
+    )
+    return list(result.scalars().all())
 
 
 async def event_counts(db: AsyncSession, session_ids: list[str]) -> dict[str, tuple[int, int]]:

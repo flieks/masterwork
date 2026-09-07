@@ -150,3 +150,162 @@ class NoLinkedAssetsError(DomainError):
     """A simulation/scenario was requested for a project with no linked assets."""
 
     status_code = 409
+
+
+class WorkSourceNotFoundError(DomainError):
+    status_code = 404
+
+
+class WorkItemNotFoundError(DomainError):
+    status_code = 404
+
+
+class PullRequestNotFoundError(DomainError):
+    status_code = 404
+
+
+class InvalidRepoPathError(DomainError):
+    """A repo path was relative, nonexistent, or not a directory."""
+
+    status_code = 400
+
+
+class InvalidWorkSourceError(DomainError):
+    status_code = 400
+
+
+class WorkSyncError(DomainError):
+    """The DevOps call failed, or the PAT env var named by secret_ref is unset."""
+
+    status_code = 502
+
+
+class InvalidSettingError(DomainError):
+    status_code = 400
+
+
+class InvalidProjectNameError(DomainError):
+    status_code = 400
+
+
+class ProjectPathOutsideRootError(DomainError):
+    status_code = 400
+
+
+class ProjectExistsError(DomainError):
+    """A project folder with this name already exists under projects_root."""
+
+    status_code = 409
+
+
+class ProjectCreationError(DomainError):
+    """`git init` failed for a just-created project folder; the folder is
+    removed before this is raised, so a retry sees a clean projects_root."""
+
+    status_code = 502
+
+
+class LaunchFailedError(DomainError):
+    """The factory subprocess could not be spawned."""
+
+    status_code = 502
+
+
+class LaunchNotFoundError(DomainError):
+    status_code = 404
+
+
+class InterviewNotWaitingError(DomainError):
+    """The launch isn't currently paused for answers — also the double-submit guard."""
+
+    status_code = 409
+
+
+class InterviewAnswerMismatchError(DomainError):
+    """The submitted answers don't match the recorded questions one-for-one, or one is blank."""
+
+    status_code = 400
+
+
+class InvalidBrowsePathError(DomainError):
+    """A browse path was relative, nonexistent, not a directory, or unreadable."""
+
+    status_code = 400
+
+
+class RunNotFoundError(DomainError):
+    """No run.json for that run id under the project's runs root."""
+
+    status_code = 404
+
+
+class RunNotResumableError(DomainError):
+    """The run is still running, or completed accepted — nothing to resume."""
+
+    status_code = 409
+
+
+class SkillCatalogError(DomainError):
+    """Both skills.sh and GitHub search failed — a single source failing degrades
+    to a partial result instead, see app/services/skill_catalog.py."""
+
+    status_code = 502
+
+
+class SkillNotFoundError(DomainError):
+    """No SKILL.md at any resolved path candidate for this owner/repo/skill."""
+
+    status_code = 404
+
+
+class SkillFetchError(DomainError):
+    """The GitHub contents fetch failed, or tripped the size/entry/escape guard."""
+
+    status_code = 502
+
+
+class GitHubRateLimitError(DomainError):
+    """GitHub's hourly quota is spent. Anonymous requests get 60/h, which one
+    catalog browse can exhaust — the message names the token as the fix."""
+
+    status_code = 429
+
+
+class InvalidSkillNameError(DomainError):
+    """Not a plain lowercase-kebab slug."""
+
+    status_code = 400
+
+
+class SkillAlreadyInstalledError(DomainError):
+    """A directory already exists at this slug and overwrite was not passed."""
+
+    status_code = 409
+
+
+class SkillLicenseRefusedError(DomainError):
+    """anthropics/skills' docx/pdf/pptx/xlsx carry an all-rights-reserved
+    license that forbids extraction — refused before any fetch."""
+
+    status_code = 403
+
+
+class InstalledSkillNotFoundError(DomainError):
+    """No installed_skills row for this name — never delete a directory
+    masterwork did not itself install."""
+
+    status_code = 404
+
+
+class AssetNotMigratableError(DomainError):
+    """Only a skill in one agent's own dir can be made generic: an agent file
+    has no cross-agent format, a plugin asset belongs to its marketplace, and a
+    generic skill already is one."""
+
+    status_code = 409
+
+
+class GenericSkillExistsError(DomainError):
+    """The generic folder already holds a skill with this name."""
+
+    status_code = 409

@@ -4,10 +4,23 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from app.api.v1.assets.schemas import AssetDetail, AssetKind, AssetSummary
-from app.core.exceptions import AssetNotFoundError, InvalidAssetIdError, ReadOnlyAssetError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.v1.assets.schemas import AssetDetail, AssetKind, AssetMigrationResult, AssetSummary
+from app.core.exceptions import (
+    AssetNotFoundError,
+    AssetNotMigratableError,
+    InvalidAssetIdError,
+    ReadOnlyAssetError,
+)
 from app.providers.base import Provider, ScannedAsset, resolve_within_roots
+from app.providers.generic import GenericSkillProvider
+from app.repositories import projects as project_repo
+from app.services import skill_migrate
 from app.services.asset_history import prepare_snapshots, snapshot_writes
+
+# Providers whose skills sit in one agent's own dir and can move to the generic one.
+MIGRATABLE_PROVIDERS = frozenset({"claude", "codex"})
 
 
 def parse_asset_id(asset_id: str) -> tuple[str, str, str]:
@@ -28,6 +41,7 @@ def _to_summary(asset: ScannedAsset) -> AssetSummary:
         title=asset.title,
         description=asset.description,
         model=asset.model,
+        agents=list(asset.agents),
         path=str(asset.path),
         created_at=asset.created_at,
         updated_at=asset.updated_at,
@@ -102,3 +116,57 @@ async def update_asset(providers: list[Provider], asset_id: str, content: str) -
     resolved.write_text(content, encoding="utf-8")
     await snapshot_writes(providers, [resolved], f"masterwork: edit asset: {asset_id}")
     return get_asset(providers, asset_id)
+
+
+def _generic_provider(providers: Iterable[Provider]) -> GenericSkillProvider:
+    for provider in providers:
+        if isinstance(provider, GenericSkillProvider):
+            return provider
+    raise AssetNotMigratableError("no generic skills folder is configured")
+
+
+async def migrate_asset(
+    db: AsyncSession, providers: list[Provider], asset_id: str, *, replace_generic: bool = False
+) -> AssetMigrationResult:
+    """Move a Claude or Codex skill into the generic folder, link it back into
+    every agent's dir, and re-point project links to its new id."""
+    asset = find_asset(providers, asset_id)
+    if asset.kind != AssetKind.skill.value:
+        raise AssetNotMigratableError("only skills have a cross-agent format; agents stay put")
+    if asset.provider not in MIGRATABLE_PROVIDERS or asset.read_only:
+        raise AssetNotMigratableError(
+            f"{asset_id} is not a skill in an agent's own folder and cannot be made generic"
+        )
+    generic = _generic_provider(providers)
+    source_root = asset.path.parent.parent
+    agent_roots = generic.agent_roots
+    if asset.provider not in agent_roots:
+        raise AssetNotMigratableError(f"no skills folder is known for {asset.provider}")
+
+    # The source tree loses a directory and gains a link; the generic tree gains
+    # the copy. Both are snapshotted where they are versioned.
+    touched = [asset.path, generic.skills_root / asset.name / "SKILL.md"]
+    await prepare_snapshots(providers, touched)
+    outcome = skill_migrate.migrate_to_generic(
+        asset.name,
+        source_root=source_root,
+        generic_root=generic.skills_root,
+        agent_roots=agent_roots,
+        replace_generic=replace_generic,
+    )
+    await snapshot_writes(providers, touched, f"masterwork: make skill generic: {asset.name}")
+
+    new_id = f"{generic.name}:{asset.kind}:{asset.name}"
+    relinked = await project_repo.replace_asset_id(db, asset_id, new_id)
+    await db.commit()
+    return AssetMigrationResult(
+        asset=get_asset(providers, new_id),
+        previous_id=asset_id,
+        linked_agents=list(outcome.linked),
+        skipped_agents=list(outcome.skipped),
+        claude_only_keys=list(outcome.claude_only_keys),
+        name_rewritten=outcome.name_rewritten,
+        relinked_projects=relinked,
+        adopted=outcome.adopted,
+        replaced_generic=outcome.replaced_generic,
+    )

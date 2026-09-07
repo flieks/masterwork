@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated
 
+from dotenv import dotenv_values
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -44,6 +46,12 @@ class Settings(BaseSettings):
     claude_skills_root: Path = Path.home() / ".claude" / "skills"
     claude_agents_root: Path = Path.home() / ".claude" / "agents"
     claude_plugins_root: Path = Path.home() / ".claude" / "plugins"
+    # The cross-agent skill folder (the Agent Skills layout skills.sh installs
+    # into): a skill here is loaded by every coding agent whose own skills dir
+    # links to it. Claude Code and Codex read only their own dirs, so a generic
+    # skill is symlinked into each rather than copied.
+    generic_skills_root: Path = Path.home() / ".agents" / "skills"
+    codex_skills_root: Path = Path.home() / ".codex" / "skills"
     # Claude Code's own settings file — where the observability hooks are written.
     claude_settings_file: Path = Path.home() / ".claude" / "settings.json"
     # Everything masterwork installs on disk (database, forwarder scripts).
@@ -64,6 +72,20 @@ class Settings(BaseSettings):
     # roots, so chat proposals can never write it), edited through its own
     # endpoint.
     claude_instructions_file: Path = Path.home() / ".claude" / "CLAUDE.md"
+    # Repo root for the factory pipeline runner (factory/run.py), derived from
+    # this file's own location rather than an env var.
+    masterwork_repo_root: Path = Path(__file__).resolve().parents[2]
+    # Interpreter the launcher spawns factory/run.py with.
+    factory_python: str = "python3"
+    # Default projects_root before any app_settings row overrides it.
+    default_projects_root: Path = Path.home() / "Projects"
+    # Mirrors the factory's own runs-root default (factory/adw/config.py
+    # DEFAULT_RUNS_ROOT) so an interview run's questions/answers files land
+    # exactly where every other run of that repo lands.
+    factory_runs_root: Path = MASTERWORK_HOME / "runs"
+    # Optional GitHub PAT for the skill catalog search — unset means anonymous
+    # GitHub requests (60 req/h), not a startup failure.
+    github_token: str | None = None
 
     @property
     def ingest_url(self) -> str:
@@ -80,3 +102,21 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def read_secret(name: str) -> str | None:
+    """The named env var's value, or None. `secret_ref` (e.g. a work source's
+    PAT variable name) is dynamic and so can't be a Settings field — this
+    keeps config.py the only module that touches the environment regardless.
+
+    Falls back to backend/.env because the launchd-run backend never sees
+    shell env. Anchored to this file, not cwd — launchd's WorkingDirectory
+    is the repo root.
+    """
+    value = os.environ.get(name)
+    if not value:
+        value = dotenv_values(_ENV_PATH).get(name)
+    return value or None
+
+
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"

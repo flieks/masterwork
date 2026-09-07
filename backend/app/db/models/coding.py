@@ -10,10 +10,11 @@ autoincrementing integer rather than a uuid.
 nothing outside this backend writes them, and `service.backfill_session` can
 rebuild all three from the event stream alone.
 
-`coding_envelopes` and `coding_gate_checks` are the exception — they are
-*reported*, on the hook body, which is not what gets stored. A replay can
-reconstruct part of a gate check from the event's payload and none of an
-envelope body, so those two are preserved across a backfill rather than rebuilt.
+`coding_envelopes`, `coding_gate_checks` and `coding_context_samples` are the
+exception — they are *reported*, on the hook body, which is not what gets
+stored. A replay can reconstruct part of a gate check from the event's payload
+and none of an envelope body or a context sample, so all three are preserved
+across a backfill rather than rebuilt.
 """
 
 from __future__ import annotations
@@ -54,11 +55,26 @@ LAUNCH_AUTOMATED = "automated"
 # would be a claim masterwork has no evidence for, so silence stays `abandoned`
 # and this value is set only when a producer states it on the hook body (which
 # no producer does today; the factory reports an aborted run as `failed`).
+# `waiting_input` is the third derived one, and the only one derived from
+# evidence rather than from its absence: the harness said out loud that it is
+# blocked on the person. It outranks `abandoned` — a run stuck on a question is
+# silent by construction, and calling that "went quiet" is how a question can go
+# unanswered for six hours without the grid ever saying so.
 STATUS_RUNNING = "running"
 STATUS_SUCCESS = "success"
 STATUS_FAILED = "failed"
 STATUS_INTERRUPTED = "interrupted"
 STATUS_ABANDONED = "abandoned"
+STATUS_WAITING_INPUT = "waiting_input"
+
+# Claude Code fires this when it needs the person: a permission prompt, or an
+# input box that has sat idle. Both mean the same thing to a watcher.
+NOTIFICATION_EVENT = "Notification"
+
+# After one of these, nothing is in flight, so a notification is just the person
+# not typing yet — not a run blocked mid-turn. Anything else means a turn was
+# open when the harness asked, which is the state worth reporting.
+TURN_CLOSED_EVENTS = frozenset({"Stop", "SessionEnd", "SessionStart"})
 
 # Live means recent. A run with no `ended_at` that has been silent this long is
 # reported as abandoned, and sorts below the ones that are genuinely working.
@@ -197,6 +213,12 @@ class CodingSession(Base):
         UTCDateTime, server_default=func.now(), index=True
     )
     ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    # When the run last said it was blocked on the person, cleared by whatever
+    # event proves it no longer is. Stored rather than derived from the last
+    # event: the list filters and sorts on it, and re-reading the tail of the
+    # event stream per row to answer "is this one waiting?" is the same question
+    # asked once per card.
+    awaiting_input_since: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     # Free-form roll-up (tokens, cost, turn counts), shallow-merged per event.
     stats: Mapped[dict[str, Any] | None] = mapped_column(JSONColumn, nullable=True)
@@ -419,6 +441,41 @@ class CodingGateCheck(Base):
     __table_args__ = (
         Index("ix_coding_gate_checks_session_phase", "session_id", "phase_id"),
         Index("ix_coding_gate_checks_event_id", "event_id"),
+    )
+
+
+class CodingContextSample(Base):
+    """One assistant turn's cumulative context usage, as the transcript reported it.
+
+    Reported like an envelope is: the hook body carries the whole series and
+    only `payload` is stored, so a replay cannot rebuild a sample and must not
+    drop it — `service.backfill_session` leaves this table alone.
+    """
+
+    __tablename__ = "coding_context_samples"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(
+        String(200), ForeignKey("coding_sessions.id", ondelete="CASCADE")
+    )
+    # Monotonic across both lanes in transcript order; read-time code splits
+    # them apart by is_sidechain rather than losing the interleaving here.
+    seq: Mapped[int] = mapped_column(Integer)
+    message_id: Mapped[str] = mapped_column(String(200))
+    is_sidechain: Mapped[bool] = mapped_column(Boolean)
+    at: Mapped[datetime] = mapped_column(UTCDateTime)
+    total_tokens: Mapped[int] = mapped_column(BigInteger)
+    output_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Recomputed wholesale on every ingest — see service._record_context_samples.
+    # Null means "first sample of this lane", not "no growth".
+    delta_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tools: Mapped[list[str] | None] = mapped_column(JSONColumn, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "message_id", name="uq_coding_context_samples_session_message"
+        ),
+        Index("ix_coding_context_samples_session_seq", "session_id", "seq"),
     )
 
 

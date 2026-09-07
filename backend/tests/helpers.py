@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from app.providers.codex import CodexProvider
+from app.providers.generic import GenericSkillProvider
+
 from app.providers.base import Provider
 from app.providers.claude import ClaudeProvider
 from app.providers.claude_plugins import ClaudePluginProvider
@@ -62,11 +65,22 @@ def providers_for(
     tree: tuple[Path, Path],
     plugins_root: Path | None = None,
     roles_root: Path | None = None,
+    generic_root: Path | None = None,
+    codex_root: Path | None = None,
 ) -> list[Provider]:
     skills_root, agents_root = tree
-    providers: list[Provider] = [ClaudeProvider(skills_root=skills_root, agents_root=agents_root)]
+    providers: list[Provider] = [
+        ClaudeProvider(skills_root=skills_root, agents_root=agents_root, generic_root=generic_root)
+    ]
     if plugins_root is not None:
         providers.append(ClaudePluginProvider(plugins_root=plugins_root))
     if roles_root is not None:
         providers.append(MasterworkRoleProvider(store_root=roles_root))
+    if codex_root is not None:
+        providers.append(CodexProvider(skills_root=codex_root, generic_root=generic_root))
+    if generic_root is not None:
+        agent_roots = {"claude": skills_root}
+        if codex_root is not None:
+            agent_roots["codex"] = codex_root
+        providers.append(GenericSkillProvider(skills_root=generic_root, agent_roots=agent_roots))
     return providers

@@ -141,6 +141,7 @@ function asset(id: string, dates: { created: string | null; updated: string }): 
     path: `/skills/${id}/SKILL.md`,
     created_at: dates.created,
     updated_at: dates.updated,
+    agents: ['claude'],
     read_only: false,
   } as AssetSummary;
 }

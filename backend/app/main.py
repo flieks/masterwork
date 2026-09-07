@@ -15,10 +15,14 @@ from app.api.v1.chat.routes import router as chat_router
 from app.api.v1.coding.routes import hooks_router
 from app.api.v1.coding.routes import router as coding_router
 from app.api.v1.instructions.routes import router as instructions_router
+from app.api.v1.launcher.routes import router as launcher_router
 from app.api.v1.observability.routes import router as observability_router
 from app.api.v1.projects.routes import router as projects_router
 from app.api.v1.proposals.routes import router as proposals_router
+from app.api.v1.settings.routes import router as settings_router
 from app.api.v1.simulations.routes import router as simulations_router
+from app.api.v1.skills.routes import router as skills_router
+from app.api.v1.work.routes import router as work_router
 from app.config import settings
 from app.core.exceptions import DomainError
 
@@ -73,10 +77,14 @@ def create_app() -> FastAPI:
     app.include_router(coding_router, prefix=API_PREFIX)
     app.include_router(hooks_router, prefix=API_PREFIX)
     app.include_router(instructions_router, prefix=API_PREFIX)
+    app.include_router(launcher_router, prefix=API_PREFIX)
     app.include_router(observability_router, prefix=API_PREFIX)
     app.include_router(projects_router, prefix=API_PREFIX)
     app.include_router(proposals_router, prefix=API_PREFIX)
+    app.include_router(settings_router, prefix=API_PREFIX)
     app.include_router(simulations_router, prefix=API_PREFIX)
+    app.include_router(skills_router, prefix=API_PREFIX)
+    app.include_router(work_router, prefix=API_PREFIX)
     return app
 
 

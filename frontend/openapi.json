@@ -195,6 +195,65 @@
                 }
             }
         },
+        "/api/v1/assets/{asset_id}/migrate": {
+            "post": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Migrate Asset To Generic",
+                "operationId": "migrateAssetToGeneric",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "anyOf": [
+                                    {
+                                        "$ref": "#/components/schemas/AssetMigrateRequest"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ],
+                                "title": "Body"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetMigrationResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/assets/{asset_id}/diagram": {
             "get": {
                 "tags": [
@@ -656,10 +715,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.",
+                            "description": "Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.",
                             "title": "Status"
                         },
-                        "description": "Keep only runs with this status: running | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it."
+                        "description": "Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. `interrupted` is reported by a producer and never derived by masterwork, so it matches nothing until one reports it."
                     },
                     {
                         "name": "roots_only",
@@ -1462,6 +1521,48 @@
                 }
             }
         },
+        "/api/v1/coding-sessions/{session_id}/context": {
+            "get": {
+                "tags": [
+                    "coding"
+                ],
+                "summary": "The context-growth curve: total tokens per turn, and which tool grew it",
+                "operationId": "readSessionContextSeries",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ContextSeries"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/coding-sessions/{session_id}/media/{media_id}": {
             "get": {
                 "tags": [
@@ -1587,6 +1688,480 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/InstructionsDoc"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/browse": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Browse Directories",
+                "operationId": "browseDirectories",
+                "parameters": [
+                    {
+                        "name": "path",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Absolute path to list; defaults to the stored projects_root.",
+                            "title": "Path"
+                        },
+                        "description": "Absolute path to list; defaults to the stored projects_root."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DirectoryListing"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/projects": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Launcher Projects",
+                "operationId": "listLauncherProjects",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/LauncherProject"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listlauncherprojects"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Create Launcher Project",
+                "operationId": "createLauncherProject",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LauncherProjectCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LauncherProject"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launch": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Launch Session",
+                "operationId": "launchSession",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LaunchRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SessionLaunchRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Factory Runs",
+                "operationId": "listFactoryRuns",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/FactoryRun"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listfactoryruns"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/by-session/{session_id}": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Get Run For Session",
+                "description": "Null \u2014 not 404 \u2014 when the session came from anywhere but a factory run,\nwhich is the common case and not an error.",
+                "operationId": "getRunForSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Session Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "$ref": "#/components/schemas/FactoryRun"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ],
+                                    "title": "Response Getrunforsession"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/resume": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Resume Factory Run",
+                "operationId": "resumeFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunResumeRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRunResumeRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/dismiss": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Dismiss Factory Run",
+                "operationId": "dismissFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRun"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/runs/restore": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Restore Factory Run",
+                "operationId": "restoreFactoryRun",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FactoryRunDismissRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FactoryRun"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launches": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "List Session Launches",
+                "operationId": "listSessionLaunches",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/SessionLaunchListItem"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listsessionlaunches"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launches/{launch_id}/interview": {
+            "get": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Get Launch Interview",
+                "operationId": "getLaunchInterview",
+                "parameters": [
+                    {
+                        "name": "launch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Launch Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InterviewRead"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/launcher/launches/{launch_id}/answers": {
+            "post": {
+                "tags": [
+                    "launcher"
+                ],
+                "summary": "Submit Interview Answers",
+                "operationId": "submitInterviewAnswers",
+                "parameters": [
+                    {
+                        "name": "launch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Launch Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InterviewAnswersRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InterviewResumeRead"
                                 }
                             }
                         }
@@ -2197,6 +2772,66 @@
                 }
             }
         },
+        "/api/v1/settings": {
+            "get": {
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Get Settings",
+                "operationId": "getSettings",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AppSettings"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Update Settings",
+                "operationId": "updateSettings",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AppSettingsUpdateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AppSettings"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/projects/{project_id}/simulations": {
             "get": {
                 "tags": [
@@ -2547,6 +3182,646 @@
                     }
                 }
             }
+        },
+        "/api/v1/skills/catalog": {
+            "get": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Search Skill Catalog",
+                "operationId": "searchSkillCatalog",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Search text.",
+                            "title": "Q"
+                        },
+                        "description": "Search text."
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 25,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CatalogSearchResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/catalog/{owner}/{repo}/{skill}": {
+            "get": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Get Catalog Skill",
+                "operationId": "getCatalogSkill",
+                "parameters": [
+                    {
+                        "name": "owner",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Owner"
+                        }
+                    },
+                    {
+                        "name": "repo",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Repo"
+                        }
+                    },
+                    {
+                        "name": "skill",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Skill"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CatalogSkillDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/install": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Install Skill",
+                "operationId": "installSkill",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SkillInstallRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstalledSkill"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/installed/{name}": {
+            "delete": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Uninstall Skill",
+                "operationId": "uninstallSkill",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/sources": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Work Sources",
+                "operationId": "listWorkSources",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkSource"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listworksources"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Create Work Source",
+                "operationId": "createWorkSource",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/WorkSourceCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkSource"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/items": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Work Items",
+                "operationId": "listWorkItems",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Scope to one registered source.",
+                            "title": "Source Id"
+                        },
+                        "description": "Scope to one registered source."
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Scope to one DevOps state, e.g. Active.",
+                            "title": "State"
+                        },
+                        "description": "Scope to one DevOps state, e.g. Active."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkItem"
+                                    },
+                                    "title": "Response Listworkitems"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/sources/{source_id}/sync": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Sync Work Source",
+                "operationId": "syncWorkSource",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Source Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkSyncResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/items/{item_id}/start": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Start Work Item",
+                "operationId": "startWorkItem",
+                "parameters": [
+                    {
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Item Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkItemStartResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/prs": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Pull Requests",
+                "operationId": "listPullRequests",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Scope to one registered source.",
+                            "title": "Source Id"
+                        },
+                        "description": "Scope to one registered source."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkPullRequest"
+                                    },
+                                    "title": "Response Listpullrequests"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/sources/{source_id}/sync-prs": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Sync Pull Requests",
+                "operationId": "syncPullRequests",
+                "parameters": [
+                    {
+                        "name": "source_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Source Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkSyncResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/prs/{pr_id}/threads": {
+            "get": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "List Pull Request Threads",
+                "operationId": "listPullRequestThreads",
+                "parameters": [
+                    {
+                        "name": "pr_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Pr Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/WorkPrThread"
+                                    },
+                                    "title": "Response Listpullrequestthreads"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/prs/{pr_id}/delegate": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Delegate Pull Request",
+                "operationId": "delegatePullRequest",
+                "parameters": [
+                    {
+                        "name": "pr_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Pr Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PullRequestDelegateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/work/repo-paths": {
+            "post": {
+                "tags": [
+                    "work"
+                ],
+                "summary": "Save Repo Path",
+                "operationId": "saveRepoPath",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/WorkRepoPathCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WorkRepoPath"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -2752,6 +4027,38 @@
                 "title": "AgentLane",
                 "description": "One horizontal lane of the run's timeline."
             },
+            "AppSettings": {
+                "properties": {
+                    "projects_root": {
+                        "type": "string",
+                        "title": "Projects Root",
+                        "description": "Absolute folder all code projects live under."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "projects_root"
+                ],
+                "title": "AppSettings"
+            },
+            "AppSettingsUpdateRequest": {
+                "properties": {
+                    "projects_root": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Projects Root",
+                        "description": "New projects root; omitted or null leaves it unchanged."
+                    }
+                },
+                "type": "object",
+                "title": "AppSettingsUpdateRequest"
+            },
             "AssetCall": {
                 "properties": {
                     "used_at": {
@@ -2815,7 +4122,15 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store)."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
+                    },
+                    "agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none."
                     },
                     "name": {
                         "type": "string",
@@ -2884,6 +4199,7 @@
                     "id",
                     "kind",
                     "provider",
+                    "agents",
                     "name",
                     "title",
                     "description",
@@ -2932,6 +4248,88 @@
                     "agent"
                 ],
                 "title": "AssetKind"
+            },
+            "AssetMigrateRequest": {
+                "properties": {
+                    "replace_generic": {
+                        "type": "boolean",
+                        "title": "Replace Generic",
+                        "description": "Throw away a differing copy already in the generic folder. Never needed when that copy is identical \u2014 it is adopted as is.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "title": "AssetMigrateRequest"
+            },
+            "AssetMigrationResult": {
+                "properties": {
+                    "asset": {
+                        "$ref": "#/components/schemas/AssetDetail",
+                        "description": "The skill at its new generic id."
+                    },
+                    "previous_id": {
+                        "type": "string",
+                        "title": "Previous Id",
+                        "description": "The id the skill had before the move."
+                    },
+                    "linked_agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Linked Agents",
+                        "description": "Agents whose skills dir now links to the generic copy."
+                    },
+                    "skipped_agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Skipped Agents",
+                        "description": "Agents that already had an unrelated skill of this name; left alone."
+                    },
+                    "claude_only_keys": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Claude Only Keys",
+                        "description": "Frontmatter keys kept that only Claude Code honours; other agents ignore them."
+                    },
+                    "name_rewritten": {
+                        "type": "boolean",
+                        "title": "Name Rewritten",
+                        "description": "True when `name:` was added or changed to match the folder."
+                    },
+                    "relinked_projects": {
+                        "type": "integer",
+                        "title": "Relinked Projects",
+                        "description": "Project links that were re-pointed from the old id to the new one."
+                    },
+                    "adopted": {
+                        "type": "boolean",
+                        "title": "Adopted",
+                        "description": "The generic folder already held an identical copy: nothing was copied, the source just became a link to it."
+                    },
+                    "replaced_generic": {
+                        "type": "boolean",
+                        "title": "Replaced Generic",
+                        "description": "A differing generic copy was replaced by this one on request."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset",
+                    "previous_id",
+                    "linked_agents",
+                    "skipped_agents",
+                    "claude_only_keys",
+                    "name_rewritten",
+                    "relinked_projects",
+                    "adopted",
+                    "replaced_generic"
+                ],
+                "title": "AssetMigrationResult"
             },
             "AssetSessionUse": {
                 "properties": {
@@ -3029,7 +4427,15 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), or \"masterwork\" (the factory role store)."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
+                    },
+                    "agents": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none."
                     },
                     "name": {
                         "type": "string",
@@ -3093,6 +4499,7 @@
                     "id",
                     "kind",
                     "provider",
+                    "agents",
                     "name",
                     "title",
                     "description",
@@ -3285,6 +4692,291 @@
                 ],
                 "title": "BackfillTotals",
                 "description": "The same, summed over a whole-history rebuild."
+            },
+            "CatalogSearchResponse": {
+                "properties": {
+                    "skills": {
+                        "items": {
+                            "$ref": "#/components/schemas/CatalogSkill"
+                        },
+                        "type": "array",
+                        "title": "Skills"
+                    },
+                    "errors": {
+                        "items": {
+                            "$ref": "#/components/schemas/CatalogSourceError"
+                        },
+                        "type": "array",
+                        "title": "Errors",
+                        "description": "Per-source failures; a partial result still returns 200."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "skills",
+                    "errors"
+                ],
+                "title": "CatalogSearchResponse"
+            },
+            "CatalogSkill": {
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner",
+                        "description": "GitHub owner/org that publishes the source repo."
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo",
+                        "description": "GitHub repo name."
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill",
+                        "description": "Skill slug within the repo \u2014 a GitHub hit uses the repo name."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Display name."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "\"\" when the registry supplied none."
+                    },
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry",
+                        "description": "Which source this record came from."
+                    },
+                    "installs": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installs",
+                        "description": "Install count; only skills.sh reports one."
+                    },
+                    "license": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "License",
+                        "description": "SPDX id when known at search time, else null."
+                    },
+                    "license_resolved": {
+                        "type": "boolean",
+                        "title": "License Resolved",
+                        "description": "Unresolved (skills.sh) \u2014 preview to resolve; null is not \"unlicensed\"."
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "Link to the source repository on GitHub."
+                    },
+                    "installed": {
+                        "type": "boolean",
+                        "title": "Installed",
+                        "description": "A skill directory with this slug already exists on disk."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "owner",
+                    "repo",
+                    "skill",
+                    "name",
+                    "description",
+                    "registry",
+                    "license_resolved",
+                    "url",
+                    "installed"
+                ],
+                "title": "CatalogSkill"
+            },
+            "CatalogSkillDetail": {
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo"
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry"
+                    },
+                    "license": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "License",
+                        "description": "SPDX id, or null when all rights reserved."
+                    },
+                    "all_rights_reserved": {
+                        "type": "boolean",
+                        "title": "All Rights Reserved",
+                        "description": "True when license is null \u2014 explicit, so the UI never reads null as unknown."
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "Link to the skill's folder on GitHub."
+                    },
+                    "version": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Version",
+                        "description": "Version from the registry copy's frontmatter; most skills declare none."
+                    },
+                    "installed_version": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installed Version",
+                        "description": "Version from the copy on disk, when it declares one."
+                    },
+                    "created_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created At",
+                        "description": "First commit that touched the skill folder; null if unavailable."
+                    },
+                    "last_modified_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Modified At",
+                        "description": "Most recent commit that touched the skill folder."
+                    },
+                    "last_change_summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Change Summary",
+                        "description": "Subject of that commit \u2014 third-party text, render as plain text."
+                    },
+                    "differs_from_installed": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Differs From Installed",
+                        "description": "Null when nothing is installed; true when the disk SKILL.md differs."
+                    },
+                    "installed": {
+                        "type": "boolean",
+                        "title": "Installed",
+                        "description": "A skill directory with this slug already exists on disk."
+                    },
+                    "installed_by_masterwork": {
+                        "type": "boolean",
+                        "title": "Installed By Masterwork",
+                        "description": "True only when masterwork wrote it; a hand-installed one is not removable."
+                    },
+                    "skill_md": {
+                        "type": "string",
+                        "title": "Skill Md",
+                        "description": "Full SKILL.md text, rendered as plain text only."
+                    },
+                    "files": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Files",
+                        "description": "Companion file paths, relative to the skill folder."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "owner",
+                    "repo",
+                    "skill",
+                    "name",
+                    "registry",
+                    "all_rights_reserved",
+                    "url",
+                    "installed",
+                    "installed_by_masterwork",
+                    "skill_md",
+                    "files"
+                ],
+                "title": "CatalogSkillDetail"
+            },
+            "CatalogSourceError": {
+                "properties": {
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry"
+                    },
+                    "message": {
+                        "type": "string",
+                        "title": "Message",
+                        "description": "Why this source's results are missing."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "registry",
+                    "message"
+                ],
+                "title": "CatalogSourceError"
             },
             "ChangeAction": {
                 "type": "string",
@@ -3914,7 +5606,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
+                        "description": "running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -3939,6 +5631,19 @@
                         ],
                         "title": "Ended At",
                         "description": "Set by an event with ended=true."
+                    },
+                    "awaiting_input_since": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Awaiting Input Since",
+                        "description": "When the run last reported being blocked on a person \u2014 a permission prompt or a question asked mid-turn. Cleared by the next event that proves work resumed, but deliberately not by `SessionEnd`: a run that died with its question unanswered keeps the timestamp, so `ended_at` plus this field is how that is told apart from a run that simply finished."
                     },
                     "stats": {
                         "anyOf": [
@@ -4074,6 +5779,7 @@
                     "started_at",
                     "last_event_at",
                     "ended_at",
+                    "awaiting_input_since",
                     "stats",
                     "cost_usd",
                     "tokens_total",
@@ -4199,7 +5905,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
-                        "description": "running | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `running` therefore only ever means genuinely live. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
+                        "description": "running | waiting_input | success | failed | interrupted | abandoned. `abandoned` is derived, never stored: an open run that has been silent for over 2 minutes. `waiting_input` is derived too, and outranks it: the run said it is blocked on a person, so its silence is explained. `running` therefore only ever means genuinely live and unblocked. `interrupted` is the opposite \u2014 only ever stored, never derived: masterwork cannot tell a killed run from a lost hook, so silence reports `abandoned` and only a producer says `interrupted`."
                     },
                     "started_at": {
                         "type": "string",
@@ -4224,6 +5930,19 @@
                         ],
                         "title": "Ended At",
                         "description": "Set by an event with ended=true."
+                    },
+                    "awaiting_input_since": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Awaiting Input Since",
+                        "description": "When the run last reported being blocked on a person \u2014 a permission prompt or a question asked mid-turn. Cleared by the next event that proves work resumed, but deliberately not by `SessionEnd`: a run that died with its question unanswered keeps the timestamp, so `ended_at` plus this field is how that is told apart from a run that simply finished."
                     },
                     "stats": {
                         "anyOf": [
@@ -4375,6 +6094,7 @@
                     "started_at",
                     "last_event_at",
                     "ended_at",
+                    "awaiting_input_since",
                     "stats",
                     "cost_usd",
                     "tokens_total",
@@ -4394,6 +6114,253 @@
                 ],
                 "title": "CodingSessionDetail",
                 "description": "The same session with whole phase rows instead of card summaries, plus\nthe run's evidence \u2014 kept as sibling arrays keyed by `phase_id`."
+            },
+            "ContextSample": {
+                "properties": {
+                    "seq": {
+                        "type": "integer",
+                        "title": "Seq"
+                    },
+                    "message_id": {
+                        "type": "string",
+                        "title": "Message Id"
+                    },
+                    "at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "At"
+                    },
+                    "total_tokens": {
+                        "type": "integer",
+                        "title": "Total Tokens"
+                    },
+                    "output_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Output Tokens"
+                    },
+                    "delta_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Delta Tokens",
+                        "description": "Null for the first sample of its lane."
+                    },
+                    "is_truncation": {
+                        "type": "boolean",
+                        "title": "Is Truncation",
+                        "description": "Derived: delta_tokens is not null and negative."
+                    },
+                    "tools": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Tools",
+                        "description": "Tool results that landed since the previous sample."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seq",
+                    "message_id",
+                    "at",
+                    "total_tokens",
+                    "output_tokens",
+                    "delta_tokens",
+                    "is_truncation",
+                    "tools"
+                ],
+                "title": "ContextSample",
+                "description": "One turn's context usage, read back with its delta from the previous\nsample on the same lane."
+            },
+            "ContextSampleIn": {
+                "properties": {
+                    "seq": {
+                        "type": "integer",
+                        "title": "Seq",
+                        "description": "Position in the deduped stream, chronological across lanes."
+                    },
+                    "message_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Message Id"
+                    },
+                    "at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "At",
+                        "description": "Falls back to the event's own time when absent."
+                    },
+                    "total_tokens": {
+                        "type": "integer",
+                        "title": "Total Tokens",
+                        "description": "input + cache_read + cache_creation tokens on this turn."
+                    },
+                    "output_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Output Tokens"
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "Accepted but not stored \u2014 no column for it."
+                    },
+                    "is_sidechain": {
+                        "type": "boolean",
+                        "title": "Is Sidechain",
+                        "description": "True for a subagent turn.",
+                        "default": false
+                    },
+                    "tools": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tools",
+                        "description": "Tool results that landed in context since the previous sample."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seq",
+                    "message_id",
+                    "total_tokens"
+                ],
+                "title": "ContextSampleIn",
+                "description": "One context-usage sample as the forwarder reports it \u2014 one per deduped\nassistant message id, in transcript order."
+            },
+            "ContextSeries": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "baseline_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Baseline Tokens",
+                        "description": "The first main-lane sample's total \u2014 preamble plus first prompt."
+                    },
+                    "peak_tokens": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Peak Tokens",
+                        "description": "The highest main-lane total reached."
+                    },
+                    "samples": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextSample"
+                        },
+                        "type": "array",
+                        "title": "Samples",
+                        "description": "Main lane, ordered by seq."
+                    },
+                    "sidechain_samples": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextSample"
+                        },
+                        "type": "array",
+                        "title": "Sidechain Samples",
+                        "description": "Subagent turns, their own series \u2014 never interleaved with the main lane."
+                    },
+                    "tools": {
+                        "items": {
+                            "$ref": "#/components/schemas/ContextToolCost"
+                        },
+                        "type": "array",
+                        "title": "Tools",
+                        "description": "Main-lane roll-up, summed delta descending then tool name."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "baseline_tokens",
+                    "peak_tokens",
+                    "samples",
+                    "sidechain_samples",
+                    "tools"
+                ],
+                "title": "ContextSeries",
+                "description": "The context-growth curve for one session \u2014 main lane and sidechain kept apart."
+            },
+            "ContextToolCost": {
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "title": "Tool"
+                    },
+                    "delta_tokens": {
+                        "type": "integer",
+                        "title": "Delta Tokens",
+                        "description": "Summed positive delta attributed to this tool."
+                    },
+                    "calls": {
+                        "type": "integer",
+                        "title": "Calls",
+                        "description": "Samples this tool appeared in."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "tool",
+                    "delta_tokens",
+                    "calls"
+                ],
+                "title": "ContextToolCost",
+                "description": "One tool's share of a session's context growth, main lane only."
             },
             "CrossChange": {
                 "properties": {
@@ -4459,6 +6426,65 @@
                 ],
                 "title": "CrossChange",
                 "description": "A modification another project made to an asset this project links."
+            },
+            "DirectoryEntry": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "path"
+                ],
+                "title": "DirectoryEntry"
+            },
+            "DirectoryListing": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "The resolved directory this listing is for."
+                    },
+                    "parent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent",
+                        "description": "Absolute path of the parent, null at the filesystem root."
+                    },
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/DirectoryEntry"
+                        },
+                        "type": "array",
+                        "title": "Entries",
+                        "description": "Non-hidden subdirectories, sorted by name."
+                    },
+                    "home": {
+                        "type": "string",
+                        "title": "Home",
+                        "description": "Absolute path of the home directory the backend runs as."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "home"
+                ],
+                "title": "DirectoryListing"
             },
             "EnvelopeAttempt": {
                 "properties": {
@@ -4680,6 +6706,282 @@
                 "type": "object",
                 "title": "EnvelopeIn",
                 "description": "The envelope an agent returned on one attempt, as the runner read it."
+            },
+            "FactoryRun": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "The project the run worked on."
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "title": "Project Name"
+                    },
+                    "outcome": {
+                        "$ref": "#/components/schemas/RunOutcome",
+                        "description": "Read this, not `state`."
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State",
+                        "description": "run.json's raw state, e.g. running/stopped/finished."
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow",
+                        "description": "The preset the run used, e.g. \"scout\"."
+                    },
+                    "branch": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Branch"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason",
+                        "description": "Why the run ended, e.g. 'cost cap reached\u2026'."
+                    },
+                    "interview": {
+                        "type": "boolean",
+                        "title": "Interview"
+                    },
+                    "accepted": {
+                        "type": "boolean",
+                        "title": "Accepted"
+                    },
+                    "started_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Started At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At"
+                    },
+                    "resumable": {
+                        "type": "boolean",
+                        "title": "Resumable",
+                        "description": "True when a resume would be accepted: not live, not completed-accepted."
+                    },
+                    "resume_hint": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Resume Hint",
+                        "description": "Why a resume is not offered; null when `resumable` is true."
+                    },
+                    "dismissed": {
+                        "type": "boolean",
+                        "title": "Dismissed",
+                        "description": "The user waved this run away; it is out of the way, not gone.",
+                        "default": false
+                    },
+                    "superseded_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Superseded By",
+                        "description": "Run id of a newer run of this same request, when one exists."
+                    },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "What this run's last stage concluded, from its own telemetry."
+                    },
+                    "check": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FactoryRunCheck"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "The newest check started for this run, if any."
+                    },
+                    "session_ids": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Session Ids",
+                        "description": "Coding sessions this run's stages reported."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "project_path",
+                    "project_name",
+                    "outcome",
+                    "state",
+                    "request_text",
+                    "branch",
+                    "interview",
+                    "accepted",
+                    "started_at",
+                    "ended_at",
+                    "resumable"
+                ],
+                "title": "FactoryRun",
+                "description": "One run.json under a project's runs root \u2014 the factory's ground truth,\nindependent of whether the run was launched from this UI or a terminal."
+            },
+            "FactoryRunCheck": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "outcome": {
+                        "$ref": "#/components/schemas/RunOutcome"
+                    },
+                    "summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Summary",
+                        "description": "What it concluded; null while it runs."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "outcome"
+                ],
+                "title": "FactoryRunCheck",
+                "description": "A read-only run started to answer whether another run's work landed."
+            },
+            "FactoryRunDismissRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "run_id"
+                ],
+                "title": "FactoryRunDismissRequest"
+            },
+            "FactoryRunResumeRead": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "resumed": {
+                        "type": "boolean",
+                        "title": "Resumed"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "resumed",
+                    "pid"
+                ],
+                "title": "FactoryRunResumeRead"
+            },
+            "FactoryRunResumeRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "run_id"
+                ],
+                "title": "FactoryRunResumeRequest"
             },
             "GateCheckIn": {
                 "properties": {
@@ -5250,6 +7552,21 @@
                             }
                         ],
                         "description": "The gate this event reports, and the note each check wrote."
+                    },
+                    "context_samples": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "$ref": "#/components/schemas/ContextSampleIn"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Context Samples",
+                        "description": "The context-usage curve since the previous Stop/SessionEnd."
                     }
                 },
                 "type": "object",
@@ -5259,6 +7576,56 @@
                 ],
                 "title": "HookEventRequest",
                 "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
+            },
+            "InstalledSkill": {
+                "properties": {
+                    "asset_id": {
+                        "type": "string",
+                        "title": "Asset Id",
+                        "description": "\"claude:skill:<name>\", the id the assets API also uses."
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo"
+                    },
+                    "license": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "License"
+                    },
+                    "registry": {
+                        "$ref": "#/components/schemas/SkillRegistry"
+                    },
+                    "installed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Installed At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "asset_id",
+                    "name",
+                    "owner",
+                    "repo",
+                    "registry",
+                    "installed_at"
+                ],
+                "title": "InstalledSkill"
             },
             "InstructionsDoc": {
                 "properties": {
@@ -5312,6 +7679,264 @@
                     "content"
                 ],
                 "title": "InstructionsUpdateRequest"
+            },
+            "InterviewAnswer": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "answer": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Answer"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "answer"
+                ],
+                "title": "InterviewAnswer"
+            },
+            "InterviewAnswersRequest": {
+                "properties": {
+                    "answers": {
+                        "items": {
+                            "$ref": "#/components/schemas/InterviewAnswer"
+                        },
+                        "type": "array",
+                        "minItems": 1,
+                        "title": "Answers"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "answers"
+                ],
+                "title": "InterviewAnswersRequest"
+            },
+            "InterviewQuestion": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "question": {
+                        "type": "string",
+                        "title": "Question"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "question"
+                ],
+                "title": "InterviewQuestion"
+            },
+            "InterviewRead": {
+                "properties": {
+                    "launch_id": {
+                        "type": "integer",
+                        "title": "Launch Id"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id"
+                    },
+                    "state": {
+                        "$ref": "#/components/schemas/InterviewState"
+                    },
+                    "run_state": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run State",
+                        "description": "run.json's raw state, for debugging."
+                    },
+                    "questions": {
+                        "items": {
+                            "$ref": "#/components/schemas/InterviewQuestion"
+                        },
+                        "type": "array",
+                        "title": "Questions"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "launch_id",
+                    "run_id",
+                    "state"
+                ],
+                "title": "InterviewRead"
+            },
+            "InterviewResumeRead": {
+                "properties": {
+                    "launch_id": {
+                        "type": "integer",
+                        "title": "Launch Id"
+                    },
+                    "run_id": {
+                        "type": "string",
+                        "title": "Run Id"
+                    },
+                    "resumed": {
+                        "type": "boolean",
+                        "title": "Resumed"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "launch_id",
+                    "run_id",
+                    "resumed",
+                    "pid"
+                ],
+                "title": "InterviewResumeRead"
+            },
+            "InterviewState": {
+                "type": "string",
+                "enum": [
+                    "not_interview",
+                    "starting",
+                    "running",
+                    "waiting",
+                    "answered",
+                    "finished"
+                ],
+                "title": "InterviewState"
+            },
+            "LaunchMode": {
+                "type": "string",
+                "enum": [
+                    "autonomous",
+                    "interview"
+                ],
+                "title": "LaunchMode"
+            },
+            "LaunchRequest": {
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path",
+                        "description": "Absolute path; must resolve under projects_root."
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Request Text",
+                        "description": "What to build \u2014 handed to the factory as-is."
+                    },
+                    "checks_run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Checks Run Id",
+                        "description": "Run id this launch exists to check; ties a scout run to its subject."
+                    },
+                    "mode": {
+                        "$ref": "#/components/schemas/LaunchMode",
+                        "description": "'autonomous' never asks; 'interview' pauses after planning to ask about weak assumptions before building.",
+                        "default": "autonomous"
+                    },
+                    "workflow": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/LaunchWorkflow"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Which stages run. Omitted means the factory's own default (full)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "project_path",
+                    "request_text"
+                ],
+                "title": "LaunchRequest"
+            },
+            "LaunchWorkflow": {
+                "type": "string",
+                "enum": [
+                    "full",
+                    "plan_build",
+                    "build_test",
+                    "build_review",
+                    "document",
+                    "scout"
+                ],
+                "title": "LaunchWorkflow",
+                "description": "The factory's stage presets (factory/adw/workflows.py). `scout` is the\ncheap one: a single read-only stage that reads the repo and reports."
+            },
+            "LauncherProject": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Absolute path under projects_root."
+                    },
+                    "is_git_repo": {
+                        "type": "boolean",
+                        "title": "Is Git Repo"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "path",
+                    "is_git_repo"
+                ],
+                "title": "LauncherProject"
+            },
+            "LauncherProjectCreateRequest": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Folder name \u2014 no path separators or traversal."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "LauncherProjectCreateRequest",
+                "description": "Named apart from the unrelated `ProjectCreateRequest` (features/projects) \u2014\nthis creates a plain folder under projects_root, not a masterwork Project."
             },
             "MessageRole": {
                 "type": "string",
@@ -6284,6 +8909,91 @@
                 ],
                 "title": "ProposalStatus"
             },
+            "PullRequestDelegateResponse": {
+                "properties": {
+                    "resolved": {
+                        "type": "boolean",
+                        "title": "Resolved",
+                        "description": "False means nothing was launched."
+                    },
+                    "remote_url": {
+                        "type": "string",
+                        "title": "Remote Url",
+                        "description": "The PR's repository_remote_url, as stored."
+                    },
+                    "local_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Local Path"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason",
+                        "description": "Set exactly when resolved is false."
+                    },
+                    "launch_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Launch Id"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id"
+                    },
+                    "prompt": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Prompt",
+                        "description": "What the launched session received."
+                    },
+                    "unresolved_thread_count": {
+                        "type": "integer",
+                        "title": "Unresolved Thread Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "resolved",
+                    "remote_url",
+                    "local_path",
+                    "launch_id",
+                    "run_id",
+                    "unresolved_thread_count"
+                ],
+                "title": "PullRequestDelegateResponse"
+            },
             "RoleStat": {
                 "properties": {
                     "role": {
@@ -6459,6 +9169,18 @@
                 ],
                 "title": "RoleStat",
                 "description": "One role across every run: what it costs, and how often it is sent back."
+            },
+            "RunOutcome": {
+                "type": "string",
+                "enum": [
+                    "running",
+                    "waiting",
+                    "done",
+                    "failed",
+                    "stopped"
+                ],
+                "title": "RunOutcome",
+                "description": "What actually happened, which run.json's `state` alone does not say: a\nrejected run and an approved one both end up `state=\"finished\"`."
             },
             "RunStat": {
                 "properties": {
@@ -6673,6 +9395,143 @@
                     "scenario"
                 ],
                 "title": "ScenarioGenerateResponse"
+            },
+            "SessionLaunchListItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path"
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "mode": {
+                        "$ref": "#/components/schemas/LaunchMode"
+                    },
+                    "launched_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Launched At"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id",
+                        "description": "Set for interview launches only."
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "True once the subprocess was spawned."
+                    },
+                    "interview": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/InterviewRead"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Only for interview-mode launches; null for autonomous ones."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "project_path",
+                    "request_text",
+                    "mode",
+                    "launched_at",
+                    "pid",
+                    "launched"
+                ],
+                "title": "SessionLaunchListItem"
+            },
+            "SessionLaunchRead": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "title": "Project Path"
+                    },
+                    "request_text": {
+                        "type": "string",
+                        "title": "Request Text"
+                    },
+                    "mode": {
+                        "$ref": "#/components/schemas/LaunchMode"
+                    },
+                    "launched_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Launched At"
+                    },
+                    "pid": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pid"
+                    },
+                    "run_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Run Id",
+                        "description": "Set for interview launches only."
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "True once the subprocess was spawned."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "project_path",
+                    "request_text",
+                    "mode",
+                    "launched_at",
+                    "pid",
+                    "launched"
+                ],
+                "title": "SessionLaunchRead"
             },
             "Simulation": {
                 "properties": {
@@ -7163,6 +10022,43 @@
                 ],
                 "title": "SimulationSuggestion"
             },
+            "SkillInstallRequest": {
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "title": "Owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "title": "Repo"
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill"
+                    },
+                    "overwrite": {
+                        "type": "boolean",
+                        "title": "Overwrite",
+                        "description": "Replace an existing directory at this slug.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "owner",
+                    "repo",
+                    "skill"
+                ],
+                "title": "SkillInstallRequest"
+            },
+            "SkillRegistry": {
+                "type": "string",
+                "enum": [
+                    "skills_sh",
+                    "github"
+                ],
+                "title": "SkillRegistry"
+            },
             "SuggestedLink": {
                 "properties": {
                     "asset_id": {
@@ -7229,6 +10125,662 @@
                     "type"
                 ],
                 "title": "ValidationError"
+            },
+            "WorkItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "title": "Source Id"
+                    },
+                    "external_id": {
+                        "type": "integer",
+                        "title": "External Id"
+                    },
+                    "parent_external_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent External Id"
+                    },
+                    "pulled_as_parent": {
+                        "type": "boolean",
+                        "title": "Pulled As Parent"
+                    },
+                    "external_url": {
+                        "type": "string",
+                        "title": "External Url"
+                    },
+                    "item_type": {
+                        "type": "string",
+                        "title": "Item Type"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "description_md": {
+                        "type": "string",
+                        "title": "Description Md"
+                    },
+                    "acceptance_md": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Acceptance Md"
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State"
+                    },
+                    "iteration": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Iteration"
+                    },
+                    "assigned_to": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Assigned To"
+                    },
+                    "priority": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Priority"
+                    },
+                    "tags": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tags"
+                    },
+                    "external_changed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "External Changed At"
+                    },
+                    "synced_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Synced At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "source_id",
+                    "external_id",
+                    "parent_external_id",
+                    "pulled_as_parent",
+                    "external_url",
+                    "item_type",
+                    "title",
+                    "description_md",
+                    "acceptance_md",
+                    "state",
+                    "iteration",
+                    "assigned_to",
+                    "priority",
+                    "tags",
+                    "external_changed_at",
+                    "synced_at"
+                ],
+                "title": "WorkItem"
+            },
+            "WorkItemStartResponse": {
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "title": "Prompt",
+                        "description": "The assembled session prompt."
+                    },
+                    "launched": {
+                        "type": "boolean",
+                        "title": "Launched",
+                        "description": "Always false today \u2014 no reusable session-launch path exists yet."
+                    },
+                    "session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Session Id",
+                        "description": "Null until a launched session is linked."
+                    },
+                    "link_id": {
+                        "type": "integer",
+                        "title": "Link Id",
+                        "description": "The work_item_sessions row id."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "prompt",
+                    "launched",
+                    "session_id",
+                    "link_id"
+                ],
+                "title": "WorkItemStartResponse"
+            },
+            "WorkPrThread": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "pull_request_id": {
+                        "type": "integer",
+                        "title": "Pull Request Id"
+                    },
+                    "external_id": {
+                        "type": "integer",
+                        "title": "External Id",
+                        "description": "DevOps thread id."
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status"
+                    },
+                    "is_resolved": {
+                        "type": "boolean",
+                        "title": "Is Resolved",
+                        "description": "Derived from status being fixed/closed/wontFix/byDesign."
+                    },
+                    "file_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "File Path",
+                        "description": "Null for a PR-level thread."
+                    },
+                    "right_file_line": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Right File Line"
+                    },
+                    "comments": {
+                        "items": {
+                            "$ref": "#/components/schemas/WorkPrThreadComment"
+                        },
+                        "type": "array",
+                        "title": "Comments"
+                    },
+                    "synced_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Synced At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "pull_request_id",
+                    "external_id",
+                    "status",
+                    "is_resolved",
+                    "file_path",
+                    "right_file_line",
+                    "comments",
+                    "synced_at"
+                ],
+                "title": "WorkPrThread"
+            },
+            "WorkPrThreadComment": {
+                "properties": {
+                    "id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Id"
+                    },
+                    "author": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Author"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    },
+                    "comment_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Comment Type"
+                    },
+                    "published_at": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Published At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "author",
+                    "content",
+                    "comment_type",
+                    "published_at"
+                ],
+                "title": "WorkPrThreadComment"
+            },
+            "WorkPullRequest": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "source_id": {
+                        "type": "string",
+                        "title": "Source Id"
+                    },
+                    "external_id": {
+                        "type": "integer",
+                        "title": "External Id",
+                        "description": "DevOps pullRequestId."
+                    },
+                    "repository_id": {
+                        "type": "string",
+                        "title": "Repository Id"
+                    },
+                    "repository_name": {
+                        "type": "string",
+                        "title": "Repository Name"
+                    },
+                    "repository_remote_url": {
+                        "type": "string",
+                        "title": "Repository Remote Url",
+                        "description": "What delegatePullRequest resolves to a local checkout."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "source_branch": {
+                        "type": "string",
+                        "title": "Source Branch",
+                        "description": "refs/heads/ prefix stripped."
+                    },
+                    "target_branch": {
+                        "type": "string",
+                        "title": "Target Branch",
+                        "description": "refs/heads/ prefix stripped."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "DevOps status, e.g. \"active\"."
+                    },
+                    "is_draft": {
+                        "type": "boolean",
+                        "title": "Is Draft"
+                    },
+                    "created_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Created By"
+                    },
+                    "external_url": {
+                        "type": "string",
+                        "title": "External Url"
+                    },
+                    "external_changed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "External Changed At"
+                    },
+                    "synced_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Synced At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "source_id",
+                    "external_id",
+                    "repository_id",
+                    "repository_name",
+                    "repository_remote_url",
+                    "title",
+                    "description",
+                    "source_branch",
+                    "target_branch",
+                    "status",
+                    "is_draft",
+                    "created_by",
+                    "external_url",
+                    "external_changed_at",
+                    "synced_at"
+                ],
+                "title": "WorkPullRequest"
+            },
+            "WorkRepoPath": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "remote_url": {
+                        "type": "string",
+                        "title": "Remote Url",
+                        "description": "The normalized remote \u2014 the key, not the name."
+                    },
+                    "local_path": {
+                        "type": "string",
+                        "title": "Local Path"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "remote_url",
+                    "local_path",
+                    "created_at"
+                ],
+                "title": "WorkRepoPath"
+            },
+            "WorkRepoPathCreateRequest": {
+                "properties": {
+                    "remote_url": {
+                        "type": "string",
+                        "title": "Remote Url"
+                    },
+                    "local_path": {
+                        "type": "string",
+                        "title": "Local Path",
+                        "description": "Absolute path to an existing directory."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "remote_url",
+                    "local_path"
+                ],
+                "title": "WorkRepoPathCreateRequest"
+            },
+            "WorkSource": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "Work source uuid."
+                    },
+                    "provider": {
+                        "type": "string",
+                        "title": "Provider",
+                        "description": "Always \"azuredevops\" today."
+                    },
+                    "org_url": {
+                        "type": "string",
+                        "title": "Org Url"
+                    },
+                    "project": {
+                        "type": "string",
+                        "title": "Project"
+                    },
+                    "team": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Team"
+                    },
+                    "query_wiql": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Query Wiql",
+                        "description": "Overrides the default assigned-to-me WIQL when set."
+                    },
+                    "secret_ref": {
+                        "type": "string",
+                        "title": "Secret Ref",
+                        "description": "Env var naming the PAT \u2014 never the PAT itself."
+                    },
+                    "current_iteration": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Current Iteration",
+                        "description": "The team's current sprint (iteration path), refreshed on sync."
+                    },
+                    "owner_display_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Owner Display Name",
+                        "description": "Display name of the PAT owner, refreshed on sync; what @Me matches."
+                    },
+                    "last_sync_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Sync At"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "provider",
+                    "org_url",
+                    "project",
+                    "team",
+                    "query_wiql",
+                    "secret_ref",
+                    "current_iteration",
+                    "owner_display_name",
+                    "last_sync_at",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "WorkSource"
+            },
+            "WorkSourceCreateRequest": {
+                "properties": {
+                    "org_url": {
+                        "type": "string",
+                        "title": "Org Url",
+                        "description": "e.g. https://dev.azure.com/myorg"
+                    },
+                    "project": {
+                        "type": "string",
+                        "title": "Project"
+                    },
+                    "team": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Team"
+                    },
+                    "query_wiql": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Query Wiql",
+                        "description": "Overrides the default assigned-to-me WIQL."
+                    },
+                    "secret_ref": {
+                        "type": "string",
+                        "title": "Secret Ref",
+                        "description": "Env var naming the PAT.",
+                        "default": "AZURE_DEVOPS_PAT"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "org_url",
+                    "project"
+                ],
+                "title": "WorkSourceCreateRequest"
+            },
+            "WorkSyncResult": {
+                "properties": {
+                    "fetched": {
+                        "type": "integer",
+                        "title": "Fetched",
+                        "description": "Items returned by the WIQL + batch fetch."
+                    },
+                    "inserted": {
+                        "type": "integer",
+                        "title": "Inserted"
+                    },
+                    "updated": {
+                        "type": "integer",
+                        "title": "Updated"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "fetched",
+                    "inserted",
+                    "updated"
+                ],
+                "title": "WorkSyncResult"
             }
         }
     }

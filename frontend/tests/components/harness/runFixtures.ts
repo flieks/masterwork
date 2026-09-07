@@ -6,6 +6,8 @@ import type {
   CodingPhase,
   CodingSession,
   CodingSessionDetail,
+  ContextSample,
+  ContextSeries,
   EnvelopeAttempt,
   GateCheckItem,
 } from '~/api/generated';
@@ -127,6 +129,7 @@ export function factoryRun(overrides: Partial<CodingSessionDetail> = {}): Coding
     started_at: RUN_START,
     last_event_at: RUN_END,
     ended_at: RUN_END,
+    awaiting_input_since: null,
     stats: { turns: 5, cost_usd: 0.192431, corrections: 1 },
     cost_usd: 0.192431,
     tokens_total: 899_924,
@@ -182,6 +185,7 @@ export function chatRun(overrides: Partial<CodingSessionDetail> = {}): CodingSes
     started_at: '2026-08-08T09:00:00.000Z',
     last_event_at: '2026-08-08T09:04:00.000Z',
     ended_at: null,
+    awaiting_input_since: null,
     stats: null,
     cost_usd: null,
     tokens_total: null,
@@ -372,6 +376,39 @@ export function envelopeAttempt(
     raw_text: '```json\n{"status": "ok"}\n```',
     origin: 'reported',
     created_at: '2026-08-08T00:00:30.000Z',
+    ...overrides,
+  };
+}
+
+/* ── context growth ─────────────────────────────────────────────────────── */
+
+export function contextSample(
+  seq: number,
+  totalTokens: number,
+  overrides: Partial<ContextSample> = {},
+): ContextSample {
+  return {
+    seq,
+    message_id: `msg_${seq}`,
+    at: '2026-08-08T00:00:20.000Z',
+    total_tokens: totalTokens,
+    output_tokens: 50,
+    delta_tokens: null,
+    is_truncation: false,
+    tools: [],
+    ...overrides,
+  };
+}
+
+/** Empty by default — every session recorded before this shipped looks like this. */
+export function contextSeries(overrides: Partial<ContextSeries> = {}): ContextSeries {
+  return {
+    session_id: 'factory-3f5a20b0',
+    baseline_tokens: null,
+    peak_tokens: null,
+    samples: [],
+    sidechain_samples: [],
+    tools: [],
     ...overrides,
   };
 }

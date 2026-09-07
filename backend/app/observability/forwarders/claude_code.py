@@ -211,6 +211,96 @@ def transcript_usage(path: str) -> dict[str, Any]:
     }
 
 
+# Bounded like everything else the hook posts: the tail of a long session is
+# the interesting end of the context curve, so a cap keeps the *last* samples.
+MAX_CONTEXT_SAMPLES = 2000
+MAX_SAMPLE_TOOLS = 20
+
+
+def _content_blocks(message: dict[str, Any]) -> list[Any]:
+    content = message.get("content")
+    return content if isinstance(content, list) else []
+
+
+def context_samples(path: str) -> list[dict[str, Any]]:
+    """One ordered sample per deduped assistant message id — the shape of the
+    context curve `transcript_usage()` collapses to a single sum.
+
+    Same message-id dedupe as `transcript_usage()`, and the same trap: one API
+    response spans several transcript lines, so `tool_use` blocks are collected
+    from *every* assistant line regardless of dedupe — only sample creation is
+    gated by it, or a tool named on the line after the first (same message id)
+    is lost. Pending tool names, resolved by `tool_use_id` against those blocks,
+    accumulate from `tool_result`s in user lines and attach to the next sample
+    on the same lane — `is_sidechain` keeps a subagent's results out of main's.
+    """
+    samples: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    tool_names: dict[str, str] = {}
+    pending: dict[bool, list[str]] = {False: [], True: []}
+    seq = 0
+    try:
+        with open(path, encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue  # a half-written last line while the session runs
+                message = record.get("message")
+                if not isinstance(message, dict):
+                    continue
+                is_sidechain = bool(record.get("isSidechain"))
+                record_type = record.get("type")
+
+                if record_type == "user":
+                    for block in _content_blocks(message):
+                        if not isinstance(block, dict) or block.get("type") != "tool_result":
+                            continue
+                        use_id = block.get("tool_use_id")
+                        name = tool_names.get(use_id) if isinstance(use_id, str) else None
+                        if name:  # an id that resolves to nothing is skipped, never invented
+                            pending[is_sidechain].append(name)
+                    continue
+                if record_type != "assistant":
+                    continue
+
+                for block in _content_blocks(message):
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        use_id, name = block.get("id"), block.get("name")
+                        if isinstance(use_id, str) and isinstance(name, str):
+                            tool_names[use_id] = name
+
+                usage = message.get("usage")
+                message_id = message.get("id")
+                if not isinstance(usage, dict) or not isinstance(message_id, str):
+                    continue
+                if message_id in seen:
+                    continue
+                seen.add(message_id)
+
+                seq += 1
+                sample: dict[str, Any] = {"seq": seq, "message_id": message_id}
+                at = record.get("timestamp")
+                if isinstance(at, str):
+                    sample["at"] = at
+                sample["total_tokens"] = (
+                    int(usage.get("input_tokens") or 0)
+                    + int(usage.get("cache_read_input_tokens") or 0)
+                    + int(usage.get("cache_creation_input_tokens") or 0)
+                )
+                sample["output_tokens"] = int(usage.get("output_tokens") or 0)
+                model = message.get("model")
+                if isinstance(model, str):
+                    sample["model"] = model
+                sample["is_sidechain"] = is_sidechain
+                sample["tools"] = pending[is_sidechain][:MAX_SAMPLE_TOOLS]
+                pending[is_sidechain] = []
+                samples.append(sample)
+    except OSError:
+        return []
+    return samples[-MAX_CONTEXT_SAMPLES:]
+
+
 def compact(value: Any, limit: int) -> Any:
     """Keep JSON structure when small; collapse to a truncated string when huge."""
     try:
@@ -335,6 +425,11 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
         payload["tool_response"] = compact(
             extract_images(raw.get("tool_response", {}), media), 2000
         )
+    elif event == "Notification":
+        # The one event that fires *because* nothing is happening: a permission
+        # prompt or an idle input box. The message is what the person would have
+        # seen on screen, so it is the whole payload worth keeping.
+        payload["message"] = raw.get("message", "")
     elif event == "SubagentStop":
         for key in ("agent_type", "agent_transcript_path"):
             if raw.get(key):
@@ -360,6 +455,9 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
         stats = transcript_usage(raw["transcript_path"])
         if stats:
             body["stats"] = stats
+        samples = context_samples(raw["transcript_path"])
+        if samples:
+            body["context_samples"] = samples
 
     if payload:
         body["payload"] = payload
