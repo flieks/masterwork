@@ -9,3 +9,4 @@ __pycache__/
 
 # local scratch files, not part of the project
 yt.html
+site/.vercel

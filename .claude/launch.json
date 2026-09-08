@@ -58,6 +58,18 @@
         "--strictPort"
       ],
       "port": 5201
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5310",
+        "--directory",
+        "site"
+      ],
+      "port": 5310
     }
   ]
 }
