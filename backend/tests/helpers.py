@@ -5,12 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.providers.codex import CodexProvider
-from app.providers.generic import GenericSkillProvider
-
 from app.providers.base import Provider
 from app.providers.claude import ClaudeProvider
 from app.providers.claude_plugins import ClaudePluginProvider
+from app.providers.codex import CodexProvider
+from app.providers.generic import GenericSkillProvider
 from app.providers.masterwork_roles import MasterworkRoleProvider
 from app.services.claude_runner import ClaudeResult, ClaudeRunnerError
 
