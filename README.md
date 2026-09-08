@@ -119,6 +119,10 @@ merges the results, and shows you the `SKILL.md` before you install anything.
 Licensing is on the card: a GitHub repo with no license means all rights
 reserved, not unknown, so installing one takes a second click that names the
 risk. Uninstall only removes what masterwork installed, never a skill you wrote.
+An installed skill's page can check it against its source on demand: it tells
+you whether you edited it, whether the repo moved on, or both, shows the
+`SKILL.md` diff, and updates in place — asking first when that would overwrite
+your edits.
 
 ![Catalog search results, each with its source and license](docs/images/catalog.png)
 
