@@ -143,6 +143,7 @@ function asset(id: string, dates: { created: string | null; updated: string }): 
     updated_at: dates.updated,
     agents: ['claude'],
     read_only: false,
+    disabled: false,
   } as AssetSummary;
 }
 

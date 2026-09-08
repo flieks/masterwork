@@ -4,6 +4,7 @@ import type {
   CatalogSkillDetail,
   CatalogSourceError,
   InstalledSkill,
+  UpstreamCheckResult,
 } from '~/api/generated';
 
 /** A licensed skills.sh hit — the common case. */
@@ -41,7 +42,9 @@ export function unlicensedCatalogSkill(overrides: Partial<CatalogSkill> = {}): C
   });
 }
 
-export function catalogSourceError(overrides: Partial<CatalogSourceError> = {}): CatalogSourceError {
+export function catalogSourceError(
+  overrides: Partial<CatalogSourceError> = {},
+): CatalogSourceError {
   return {
     registry: 'github',
     message: 'GitHub rate limit exceeded',
@@ -59,7 +62,9 @@ export function catalogSearchResponse(
   };
 }
 
-export function catalogSkillDetail(overrides: Partial<CatalogSkillDetail> = {}): CatalogSkillDetail {
+export function catalogSkillDetail(
+  overrides: Partial<CatalogSkillDetail> = {},
+): CatalogSkillDetail {
   return {
     owner: 'acme',
     repo: 'frontend-dev',
@@ -108,6 +113,32 @@ export function installedSkill(overrides: Partial<InstalledSkill> = {}): Install
     license: 'MIT',
     registry: 'skills_sh',
     installed_at: '2026-08-20T09:00:00Z',
+    source_url: 'https://github.com/acme/frontend-dev/tree/HEAD/frontend-dev',
+    installed_sha: '1111111111111111111111111111111111111111',
+    root_path: 'frontend-dev',
+    last_checked_at: null,
+    upstream_sha: null,
+    drift_status: null,
+    ...overrides,
+  };
+}
+
+/** The source moved on: a SKILL.md diff plus one new companion file. */
+export function upstreamCheckResult(
+  overrides: Partial<UpstreamCheckResult> = {},
+): UpstreamCheckResult {
+  return {
+    name: 'frontend-dev',
+    status: 'upstream_changed',
+    checked_at: '2026-09-08T10:00:00Z',
+    source_url: 'https://github.com/acme/frontend-dev/tree/HEAD/frontend-dev',
+    installed_sha: '1111111111111111111111111111111111111111',
+    upstream_sha: '2222222222222222222222222222222222222222',
+    upstream_last_modified_at: '2026-08-15T20:48:40Z',
+    upstream_last_change_summary: 'Clarify the steps',
+    skill_md_diff:
+      '--- SKILL.md (installed)\n+++ SKILL.md (upstream)\n@@ -1,3 +1,3 @@\n # Frontend Dev\n \n-Use React.\n+Use React and Vite.\n',
+    other_changes: [{ path: 'reference.md', change: 'added' }],
     ...overrides,
   };
 }

@@ -3367,3 +3367,220 @@ AssetMigrationResult {
 - **Snapshots as for any write.** The source tree (`~/.claude` or `~/.codex`) is
   committed before and after when the user made it a repo; `~/.agents` likewise.
   Neither is ever turned into a repo behind the user's back.
+
+# API Contract v1.43 — switching a skill off without deleting it
+
+Additive on top of v1.42. Until now the only way to stop a coding agent loading
+a skill was to delete the folder or move it by hand, and both lose the skill's
+history in the UI. Coding agents read `<skills_root>/<name>/SKILL.md` one level
+deep and nothing else, so a folder parked under `<skills_root>/.disabled/` is
+invisible to every one of them while staying readable, editable and one rename
+away from coming back. This exposes that state on every asset and adds the one
+write that flips it.
+
+## New endpoint
+
+```
+PUT /api/v1/assets/{asset_id}/enabled   setAssetEnabled(AssetEnabledRequest) -> AssetDetail
+```
+
+## Changed and new schemas
+
+```
+AssetSummary {
+  ...,
+  disabled: boolean,             // NEW — parked under .disabled/; no agent loads it
+}
+
+AssetEnabledRequest { enabled: boolean }
+```
+
+## Behavior
+
+- **The id survives; the path moves.** `claude:skill:<name>` is
+  `~/.claude/skills/<name>/SKILL.md` while enabled and
+  `~/.claude/skills/.disabled/<name>/SKILL.md` while disabled; Codex likewise
+  under `~/.codex/skills`. Every read, edit, chat, diagram and snapshot keeps
+  working on the parked path, and project links need no re-pointing.
+- **A disabled skill claims no agent.** Its `agents` is `[]` whatever its
+  provider, because nothing loads it — the UI must not read that as a generic
+  skill nobody linked yet; `disabled` is the flag that tells the two apart.
+- **A generic skill moves with its links.** The real folder goes to
+  `~/.agents/skills/.disabled/<name>`, and every agent link that resolved to it
+  moves to that agent's own `.disabled/<name>`, re-pointed at the new home.
+  Enabling reverses it and recreates exactly the links found parked: an agent
+  that never linked the skill does not gain a link on the way back. The parked
+  links are not listed as skills of their own.
+- **Search still finds it.** Disabled skills are listed and searched like any
+  other; a `.disabled/` folder itself is never an asset.
+- **Idempotent.** Setting the state the skill already has is a 200 with the
+  asset unchanged and nothing touched on disk.
+- **Never overwrites, never half-moves.** A destination that already exists —
+  the parked folder, or an agent's parked link — is a 409 before anything moves.
+  Renames are atomic, and a failure partway through a generic toggle is rolled
+  back so the tree is either fully toggled or as it was.
+- **What cannot be toggled is a 409.** An agent file (no `.disabled` convention
+  for agents yet) and a plugin asset (its marketplace owns the folder) both
+  answer 409 with a message saying so. An unknown id stays 404.
+- **Snapshots as for any write.** Every tree the toggle touches (`~/.claude`,
+  `~/.codex`, `~/.agents`) is committed before and after where the user made
+  it a repo; none is ever turned into one behind their back.
+
+# API Contract v1.44 — is my installed skill still what I installed, and is upstream ahead of it?
+
+Additive on top of v1.43. A skill installed from the catalog can drift two ways:
+the user edits it, or the repo it came from moves on. Until now nothing said
+which, and the only remedy was a blind reinstall. This records a baseline at
+install time, adds an on-demand check that classifies the drift, and an update
+that reinstalls from upstream without ever overwriting local edits by accident.
+
+## New endpoints
+
+```
+GET  /api/v1/skills/installed                 listInstalledSkills() -> InstalledSkill[]
+POST /api/v1/skills/installed/{name}/check    checkSkillUpstream() -> UpstreamCheckResult
+POST /api/v1/skills/installed/{name}/update   updateSkillFromUpstream(SkillUpdateRequest) -> InstalledSkill
+```
+
+## Changed and new schemas
+
+```
+InstalledSkill {
+  ...,
+  source_url: string,                  // NEW — the skill's folder on GitHub
+  installed_sha: string | null,        // NEW — upstream commit for the folder at install time
+  root_path: string | null,            // NEW — folder inside the repo; "" for the repo root
+  last_checked_at: datetime | null,    // NEW — cache of the last check, null until one has run
+  upstream_sha: string | null,         // NEW
+  drift_status: DriftStatus | null,    // NEW
+}
+
+DriftStatus = "current" | "edited_locally" | "upstream_changed" | "diverged" | "unknown_origin"
+
+UpstreamCheckResult {
+  name, status: DriftStatus, checked_at,
+  source_url: string | null,
+  installed_sha: string | null,
+  upstream_sha: string | null,                   // newest upstream commit touching the folder
+  upstream_last_modified_at: datetime | null,
+  upstream_last_change_summary: string | null,   // commit subject — third-party text, plain only
+  skill_md_diff: string,                         // unified diff, installed -> upstream; "" when identical
+  other_changes: UpstreamFileChange[],           // companion files: {path, change: "added"|"removed"|"changed"}
+}
+
+SkillUpdateRequest { force: boolean }   // default false
+```
+
+## Behavior
+
+- **An install records where it came from and what it wrote.** `installed_sha`
+  is the newest commit touching the skill folder, read from the commits API the
+  same way the preview's dates are; `installed_tree_hash` (server-side only) is
+  a sha256 over the installed files' sorted paths and bytes, computed from what
+  landed on disk; `root_path` is the folder the tree read resolved, so a later
+  check re-fetches exactly that folder rather than re-guessing the layout. The
+  sha lookup is allowed to fail — it leaves null and the install goes ahead.
+- **The check is user-initiated, and the list never costs GitHub.** A check
+  re-fetches the folder (the same two API requests as a preview, plus the
+  commits lookup) and writes its result onto the row. `GET /skills/installed`
+  returns that cache, so a list can badge every installed skill from one request
+  and a page load never spends quota. The UI must not check on mount.
+- **Two baselines, one status.** The tree hash says whether the local copy
+  changed; the sha says whether upstream did. `current` is neither,
+  `edited_locally` and `upstream_changed` are one each, `diverged` is both. When
+  either sha is unknown, content stands in: upstream counts as changed when its
+  files no longer hash to what was installed. A row from before v1.43 has no
+  baseline at all, so the check can only compare the two copies directly: equal
+  is `current`, and anything else is `diverged` — the status that makes the
+  update ask first — because nothing can say whose change it is.
+- **`unknown_origin` is an answer, not an error.** A name with no install row
+  (a hand-written skill) and a folder upstream no longer has both return 200
+  with that status; the latter is cached on the row so the list can show it.
+- **The diff is SKILL.md only; other files are listed.** `skill_md_diff` is a
+  unified diff of the installed SKILL.md against upstream, rendered as plain
+  text by the client. Companion files are reported by path and kind of change
+  rather than diffed — they may be binary.
+- **Update is a reinstall, guarded by the status.** It reruns the comparison
+  and refuses with 409 when the status is `edited_locally` or `diverged` unless
+  `force` is true; the UI must re-arm into a confirmation naming the loss before
+  sending it. The new tree goes through the same staging-then-`os.replace`
+  swap as an install, so a failed fetch or a failed write leaves the old copy
+  in place and the row untouched. A successful update resets the baseline and
+  caches `current`. A skill masterwork did not install answers 404; a folder
+  upstream no longer has answers 404 too, since there is nothing to update to.
+- **Snapshots as for any write.** The skills tree is committed before and after
+  the update when the user made it a repo, so the overwritten copy stays
+  diffable and revertible there.
+
+# API Contract v1.45 — Codex sessions, recorded the way Claude Code's are
+
+Additive on top of v1.44. Session recording was Claude Code only: one
+`Integration`, one forwarder, one hook vocabulary. Codex has had hooks of its
+own since spring 2026 — `~/.codex/hooks.json`, the same `{"hooks": {"<Event>":
+[{"matcher", "hooks": [...]}]}}` shape, a near-identical event list — so it gets
+the same treatment: a second card on the Sessions screen, a second forwarder,
+and a session row that says which agent ran it.
+
+## No new endpoints
+
+`GET /api/v1/observability/integrations` now lists two entries, `claude-code`
+and `codex`; `connect`/`disconnect` take either id. `POST /api/v1/hooks/events`
+gains one optional field.
+
+## Changed schemas
+
+```
+HookEventRequest {
+  ...,
+  source: "claude-code" | "codex",   // NEW — default "claude-code"; used on first sight only
+}
+
+CodingSession / CodingSessionDetail {
+  ...,
+  source: string,   // was 'always "claude-code"'; now "claude-code" | "codex"
+}
+
+AssetCall.source   // spawn_call now also covers a Codex SubagentStart (carries agent_type,
+                   // agent_id); skill_read now also covers a Codex shell command that
+                   // prints a SKILL.md
+```
+
+## Behavior
+
+- **`source` is set once, by the forwarder that created the session.** Every
+  Codex event says `source: "codex"`; a Claude Code forwarder says nothing and
+  gets the default, so an install that never upgrades its hooks keeps filing
+  where it always did. The value is not an enum on the read side: a session
+  recorded by an agent this backend has not heard of still reads back. A value
+  the ingest does not know on the *write* side is dropped for the default, not
+  422'd — same posture as every other optional hook field.
+- **Codex's hook vocabulary maps onto the same turns and lanes.** `SessionStart`,
+  `UserPromptSubmit`, `PostToolUse`, `Stop`, `SessionEnd` mean what they mean
+  for Claude Code. `SubagentStart` opens a span on the subagent's own lane
+  (there is no spawn tool to watch), `SubagentStop` closes it. `Interrupt`
+  closes the main lane's turn as `abandoned` — the person cut it short, and it
+  will never get a `Stop`. `PermissionRequest` is Claude Code's permission
+  `Notification`: mid-turn it puts the run in `waiting_input`, after a
+  `Stop`/`Interrupt` it is nothing. `PreCompact`/`PostCompact` and anything
+  else Codex adds later are stored as events in no lane, never dropped.
+- **Skill attribution reads shell commands under every skills root.** Codex has
+  no Skill tool and no Read: it loads a skill by printing the file, so a
+  `PostToolUse` from one of its shell tools (`exec_command`, `exec`, `shell`,
+  …) whose command names `<root>/skills/<name>/SKILL.md` counts as a
+  `skill_read`, with the path as its input. The roots recognised are
+  `.claude/skills`, `.codex/skills` and `.agents/skills`, wherever they sit —
+  which also means a Claude Code `Read` of a shared `~/.agents/skills` skill
+  now counts, where before only `.claude/skills` did. Claude Code's `Bash` is
+  deliberately not read this way.
+- **Cost is null for a model without a known price.** The Codex forwarder reads
+  the thread's running token totals off the rollout file (`token_count`
+  lines, cumulative — the last one is the total) and prices them only for
+  models on its short list of published rates. `gpt-6-*` is not on it;
+  `tokens_*` and `cache_read_tokens` land regardless, `cost_usd` stays null.
+- **Launch mode knows `codex exec`.** A `launched_by` chain naming `codex exec`
+  classifies the run `automated`, as `claude -p` does.
+- **Connecting Codex writes `~/.codex/hooks.json` only.** `config.toml` is
+  read, never written, for one thing: `[features] hooks = false`, which makes
+  the integration `unavailable` with a detail saying so, rather than a
+  "connected" card recording nothing. Hooks are on by default in Codex, so no
+  flag is ever set.

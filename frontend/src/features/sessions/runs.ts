@@ -193,12 +193,18 @@ export interface RouteDecision {
   reason: string | null;
 }
 
+/** The shell command a tool call ran — Claude Code's `command`, Codex's `cmd`. */
+function commandOf(event: CodingEvent): string | null {
+  const input = event.payload?.['tool_input'] as { command?: unknown; cmd?: unknown } | undefined;
+  const command = input?.command ?? input?.cmd;
+  return typeof command === 'string' ? command : null;
+}
+
 /** The router's latest verdict in this session, or null if it never spoke. */
 export function routeDecision(events: CodingEvent[]): RouteDecision | null {
   for (let i = events.length - 1; i >= 0; i--) {
-    const input = events[i].payload?.['tool_input'] as { command?: unknown } | undefined;
-    const command = input?.command;
-    if (typeof command !== 'string') continue;
+    const command = commandOf(events[i]);
+    if (command === null) continue;
     const match = ROUTE_MARKER.exec(command);
     if (!match) continue;
     const reason = match[2]?.trim();

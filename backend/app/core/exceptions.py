@@ -297,6 +297,13 @@ class InstalledSkillNotFoundError(DomainError):
     status_code = 404
 
 
+class SkillLocallyEditedError(DomainError):
+    """The installed copy differs from what was installed; an update would
+    overwrite the user's edits, so it needs an explicit force."""
+
+    status_code = 409
+
+
 class AssetNotMigratableError(DomainError):
     """Only a skill in one agent's own dir can be made generic: an agent file
     has no cross-agent format, a plugin asset belongs to its marketplace, and a
@@ -307,5 +314,18 @@ class AssetNotMigratableError(DomainError):
 
 class GenericSkillExistsError(DomainError):
     """The generic folder already holds a skill with this name."""
+
+    status_code = 409
+
+
+class AssetNotToggleableError(DomainError):
+    """Only a skill in a writable folder can be switched off: an agent file has
+    no `.disabled` convention yet, and a plugin asset belongs to its marketplace."""
+
+    status_code = 409
+
+
+class SkillToggleConflictError(DomainError):
+    """The folder the skill would move to already holds something of that name."""
 
     status_code = 409

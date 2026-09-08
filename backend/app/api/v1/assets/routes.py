@@ -10,6 +10,7 @@ from app.api.v1.assets import diagram_service, service
 from app.api.v1.assets.schemas import (
     AssetDetail,
     AssetDiagram,
+    AssetEnabledRequest,
     AssetKind,
     AssetMigrateRequest,
     AssetMigrationResult,
@@ -49,6 +50,19 @@ async def update_asset(
     providers: list[Provider] = Depends(get_providers),
 ) -> AssetDetail:
     return await service.update_asset(providers, asset_id, body.content)
+
+
+@router.put(
+    "/assets/{asset_id}/enabled",
+    response_model=AssetDetail,
+    operation_id="setAssetEnabled",
+)
+async def set_asset_enabled(
+    asset_id: str,
+    body: AssetEnabledRequest,
+    providers: list[Provider] = Depends(get_providers),
+) -> AssetDetail:
+    return await service.set_asset_enabled(providers, asset_id, enabled=body.enabled)
 
 
 @router.post(

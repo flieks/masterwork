@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masterwork — prove your coding agent's skills</title>
+<meta name="description" content="A local workbench for the skills and subagents Claude Code and Codex load. Browse every folder, install from the catalog, and score a skill against real scenarios before you rely on it. npx masterwork.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:title" content="Masterwork — prove your coding agent's skills">
+<meta property="og:description" content="Browse, edit and install the skills your AI coding agents use, then score them against real scenarios. Runs on your machine, on your Claude subscription.">
+<meta property="og:image" content="/assets/og.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f1f3f0;
+    --paper-deep: #e4e8e3;
+    --ink: #0f2a3d;
+    --ink-soft: #4a5d6b;
+    --line: #c9d0cc;
+    --brass: #b8932a;
+    --brass-deep: #8a6d18;
+    --verdigris: #2f7f6f;
+    --signal: #b23a3a;
+    --plate: #101114;
+    --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+    --body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --measure: 62ch;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
+  img { max-width: 100%; height: auto; display: block; }
+  code, pre, kbd { font-family: var(--mono); font-size: 0.92em; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; margin: 0; }
+  h2 { font-size: clamp(1.9rem, 3.4vw, 2.7rem); max-width: 22ch; }
+  h3 { font-size: 1.25rem; letter-spacing: -0.01em; line-height: 1.25; }
+  p { margin: 0; max-width: var(--measure); }
+  p + p { margin-top: 0.9em; }
+  .wrap { width: min(1160px, 100% - 2.5rem); margin-inline: auto; }
+  section { padding-block: clamp(4rem, 9vw, 7.5rem); }
+  section + section { border-top: 1px solid var(--line); }
+  .lede { font-size: 1.15rem; color: var(--ink-soft); }
+  .muted { color: var(--ink-soft); }
+
+  /* header */
+  header { padding-block: 1.25rem; }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .brand { display: inline-flex; align-items: center; gap: 0.6rem; text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 1.15rem; }
+  .brand svg { width: 28px; height: 28px; }
+  nav a { text-decoration: none; margin-left: 1.4rem; color: var(--ink-soft); font-weight: 500; }
+  nav a:hover { color: var(--ink); }
+
+  /* hero */
+  .hero { padding-block: clamp(2rem, 6vw, 5rem) clamp(3rem, 7vw, 6rem); }
+  .hero .wrap { display: grid; grid-template-columns: 1fr; gap: clamp(2.5rem, 5vw, 4rem); }
+  .hero .intro { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: end; }
+  .hero h1 { font-size: clamp(2.8rem, 6vw, 5rem); font-weight: 800; max-width: 12ch; }
+  .hero h1 em { font-style: normal; font-weight: 500; color: var(--ink-soft); display: block; font-size: 0.6em; letter-spacing: -0.01em; margin-top: 0.5rem; line-height: 1.2; }
+  .hero .lede { margin-top: 0; }
+  .command { margin-top: 1.5rem; display: flex; align-items: stretch; border: 1.5px solid var(--ink); border-radius: 10px; overflow: hidden; background: #fff; max-width: 420px; }
+  .command code { flex: 1; padding: 0.85rem 1.1rem; font-size: 1.15rem; display: flex; align-items: center; gap: 0.6rem; }
+  .command code span { color: var(--ink-soft); user-select: none; }
+  .command button { border: 0; border-left: 1.5px solid var(--ink); background: var(--ink); color: var(--paper); font: inherit; font-weight: 600; padding: 0 1.1rem; cursor: pointer; }
+  .command button:hover { background: #163a52; }
+  .fine { margin-top: 0.9rem; font-size: 0.95rem; color: var(--ink-soft); }
+  .plate { background: var(--plate); padding: 8px; border-radius: 14px; box-shadow: 0 30px 60px -30px rgba(15, 42, 61, 0.55), 0 1px 0 rgba(255,255,255,0.6) inset; }
+  .plate img, .plate video { border-radius: 8px; display: block; width: 100%; height: auto; }
+  .plate figcaption { color: #9aa3ab; font-size: 0.85rem; padding: 0.55rem 0.5rem 0.2rem; }
+
+  /* scorecard */
+  .proof .wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 5rem); align-items: start; }
+  .proof .copy { position: sticky; top: 2rem; }
+  .proof .copy p { margin-top: 1.25rem; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.3rem; border-bottom: 1px solid var(--line); }
+  .card-head strong { font-family: var(--display); font-size: 1.05rem; }
+  .card-head .scenario { font-size: 0.9rem; color: var(--ink-soft); max-width: 34ch; }
+  .checklist { list-style: none; margin: 0; padding: 0; }
+  .checklist li { display: grid; grid-template-columns: 26px 1fr; gap: 0.8rem; padding: 0.95rem 1.3rem; border-bottom: 1px solid var(--paper-deep); align-items: start; }
+  .checklist li:last-child { border-bottom: 0; }
+  .checklist .why { font-size: 0.9rem; color: var(--ink-soft); margin-top: 0.15rem; }
+  .mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; margin-top: 2px; }
+  .mark svg { width: 13px; height: 13px; }
+  .pass .mark { background: color-mix(in srgb, var(--verdigris) 16%, white); color: var(--verdigris); }
+  .fail .mark { background: color-mix(in srgb, var(--signal) 14%, white); color: var(--signal); }
+  .fail .why { color: var(--signal); }
+  .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.3rem; background: var(--paper); border-top: 1px solid var(--line); }
+  .card-foot button { font: inherit; font-weight: 600; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 8px; padding: 0.6rem 1rem; cursor: pointer; }
+  .card-foot button:hover { background: #fff; }
+  .card-foot button[disabled] { opacity: 0.5; cursor: default; }
+  .stamp { position: relative; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 2rem; letter-spacing: -0.04em; color: var(--brass-deep); border: 3px solid var(--brass); box-shadow: inset 0 2px 6px rgba(138, 109, 24, 0.35), inset 0 -1px 0 rgba(255,255,255,0.7); background: radial-gradient(circle at 50% 35%, #fff8e1, #f3e6b8); }
+  .stamp small { position: absolute; bottom: 9px; font-size: 0.55rem; font-weight: 600; letter-spacing: 0.02em; color: var(--brass-deep); }
+  .stamp.pressed { animation: press 420ms cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes press { 0% { transform: scale(1.35) rotate(-8deg); opacity: 0; } 60% { transform: scale(0.96) rotate(1deg); opacity: 1; } 100% { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .stamp.pressed { animation: none; } }
+  .diff { font-family: var(--mono); font-size: 0.85rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1.1rem; margin-top: 1rem; line-height: 1.6; white-space: pre; overflow-x: auto; }
+  .diff .add { background: color-mix(in srgb, var(--verdigris) 14%, white); display: block; }
+  .diff .del { background: color-mix(in srgb, var(--signal) 12%, white); display: block; }
+  .diff[hidden] { display: none; }
+
+  /* folders */
+  .folders { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 2.5rem; }
+  .folder { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem 1.3rem; }
+  .folder code { display: block; font-size: 0.95rem; margin-bottom: 0.6rem; }
+  .folder .who { font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
+  .folder p { font-size: 0.95rem; color: var(--ink-soft); margin-top: 0.4rem; }
+  .badge { display: inline-block; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.6rem; margin-top: 0.8rem; background: var(--paper); }
+  .badge.linked { border-color: color-mix(in srgb, var(--verdigris) 45%, white); color: var(--verdigris); background: color-mix(in srgb, var(--verdigris) 8%, white); }
+  .badge.unlinked { color: var(--brass-deep); border-color: color-mix(in srgb, var(--brass) 55%, white); background: color-mix(in srgb, var(--brass) 10%, white); }
+
+  /* features */
+  .features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem 3rem; margin-top: 2.5rem; }
+  .feature p { margin-top: 0.5rem; color: var(--ink-soft); font-size: 1rem; }
+  .feature .plate { margin-top: 1.1rem; padding: 6px; }
+  .feature .plate img { border-radius: 6px; }
+  .feature .plate figcaption { display: none; }
+
+  /* comparison */
+  .compare { overflow-x: auto; margin-top: 2.5rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.97rem; }
+  th, td { text-align: left; padding: 0.85rem 1rem; border-bottom: 1px solid var(--paper-deep); vertical-align: top; }
+  thead th { font-family: var(--display); font-weight: 700; background: var(--paper); border-bottom: 1px solid var(--line); }
+  thead th:first-child { width: 34%; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.yes { color: var(--verdigris); font-weight: 600; }
+  td.no { color: var(--ink-soft); }
+  td.part { color: var(--brass-deep); }
+  .compare-note { margin-top: 0.9rem; font-size: 0.9rem; color: var(--ink-soft); }
+
+  /* install */
+  .install .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 5rem); }
+  .install ul { padding-left: 1.2rem; margin: 1rem 0 0; }
+  .install li { margin-bottom: 0.4rem; }
+  pre.block { background: var(--plate); color: #e6e9ec; padding: 1rem 1.2rem; border-radius: 10px; overflow-x: auto; margin: 1rem 0 0; font-size: 0.95rem; line-height: 1.6; }
+  pre.block .c { color: #8a949e; }
+
+  footer { border-top: 1px solid var(--line); padding-block: 2.5rem 3.5rem; font-size: 0.95rem; color: var(--ink-soft); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; align-items: center; }
+  footer a { color: var(--ink); }
+
+  @media (max-width: 900px) {
+    .hero .intro, .proof .wrap, .install .wrap { grid-template-columns: 1fr; }
+    .proof .copy { position: static; }
+    .folders, .features { grid-template-columns: 1fr; }
+    nav a { margin-left: 1rem; }
+  }
+  @media (max-width: 600px) {
+    nav a:not([href^="https"]) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Masterwork home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#0f2a3d"/><path d="M9 22V10l7 6 7-6v12" fill="none" stroke="#f1f3f0" stroke-width="2.6" stroke-linejoin="miter"/></svg>
+      Masterwork
+    </a>
+    <nav aria-label="Page">
+      <a href="#proof">Proof</a>
+      <a href="#folders">Folders</a>
+      <a href="#compare">Compare</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/flieks/masterwork">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="intro">
+      <h1>Your agent's skills, proven.
+        <em>A local workbench for the skills and subagents Claude Code and Codex load.</em>
+      </h1>
+      <div>
+        <p class="lede">Writing a skill is easy. Knowing it fires at the right moment, does the right thing, and isn't overfitted to the one example you wrote it against is the hard part. Masterwork scores a skill against real scenarios, so you rely on evidence instead of hope.</p>
+        <div class="command">
+          <code><span>$</span>npx masterwork</code>
+          <button type="button" data-copy="npx masterwork">Copy</button>
+        </div>
+        <p class="fine">Runs on your machine and talks to your own <code>claude</code> CLI, so it uses the subscription you already pay for. No API key. Your skills never leave your disk.</p>
+      </div>
+    </div>
+    <figure class="plate">
+      <video src="/assets/demo.mp4" poster="/assets/simulation.jpg" width="1600" height="900" autoplay muted loop playsinline aria-label="A 35-second walkthrough: the skills list, one skill's page, a catalog search, and a project's scored simulation"></video>
+      <figcaption>Thirty-five seconds of the real thing: the skills list, one skill, a catalog search, and a project's scored simulation.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="proof" id="proof">
+  <div class="wrap">
+    <div class="copy">
+      <h2>Score it. Fix it. Score it again.</h2>
+      <p class="lede">A simulation runs a skill against a scenario and grades the result on a checklist of capabilities. A miss names the criterion and the line that failed, so the edit is obvious. Re-run, and the score tells you whether the fix held.</p>
+      <p>A generality audit runs after, asking whether the skill would survive a different repository or a differently worded request, and flags what was tuned to a single example.</p>
+      <p>Every score is kept, so a skill has a history rather than a feeling.</p>
+    </div>
+    <div>
+      <div class="card" id="scorecard">
+        <div class="card-head">
+          <div>
+            <strong>alembic-heads</strong>
+            <div class="scenario">Scenario: two branches each added a migration, and <code>alembic upgrade head</code> now refuses to run.</div>
+          </div>
+          <div class="stamp" id="stamp" aria-live="polite"><span id="score">75</span><small>score</small></div>
+        </div>
+        <ul class="checklist">
+          <li class="pass"><span class="mark"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 8.5l3 3 7-7"/></svg></span><div>Fires when the request mentions divergent or conflicting heads<div class="why">The description names "Multiple head revisions" and the merge case explicitly.</div></div></li>
+          <li class="pass"><span class="mark"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 8.5l3 3 7-7"/></svg></span><div>Diagnoses before writing: lists heads and their parents first<div class="why">Step 1 runs <code>alembic heads</code> and <code>alembic history</code> before any file is touched.</div></div></li>
+          <li class="pass"><span class="mark"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 8.5l3 3 7-7"/></svg></span><div>Prefers a merge migration over rewriting history<div class="why">The skill forbids editing an applied revision and reaches for <code>alembic merge</code>.</div></div></li>
+          <li class="fail" id="crit4"><span class="mark"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 4l8 8M12 4l-8 8"/></svg></span><div>Checks the hotfix that exists only in production<div class="why" id="why4">Nothing tells the agent to compare against the deployed environment, so a hotfix-only revision is missed.</div></div></li>
+        </ul>
+        <div class="card-foot">
+          <span class="muted" id="foot-note">One criterion missed. The fix is a paragraph in <code>SKILL.md</code>.</span>
+          <button type="button" id="rerun">Apply the fix and re-run</button>
+        </div>
+      </div>
+      <div class="diff" id="diff" hidden><span class="c">SKILL.md</span>
+ ## Before authoring
+<span class="del">- Run `alembic heads` and `alembic history`.</span>
+<span class="add">+ Run `alembic heads` and `alembic history`, then `alembic current`</span>
+<span class="add">+ against staging and production: a hotfix revision applied there</span>
+<span class="add">+ but absent from this branch is also a divergent head.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="folders">
+  <div class="wrap">
+    <h2>Every agent's folder, one list.</h2>
+    <p class="lede" style="margin-top:1.25rem">A <code>SKILL.md</code> is the same file for every agent, but each agent reads only its own folder. Masterwork lists them all and says which agents actually load each skill, so a copy nothing reads is visible instead of silent.</p>
+    <div class="folders">
+      <div class="folder">
+        <code>~/.claude/skills</code>
+        <div class="who">Claude Code</div>
+        <p>Read by Claude Code alone. A skill here is invisible to Codex.</p>
+        <span class="badge">Claude only</span>
+      </div>
+      <div class="folder">
+        <code>~/.codex/skills</code>
+        <div class="who">Codex</div>
+        <p>Read by Codex alone. Scanned when the folder exists. A skill can also be switched off here without deleting it.</p>
+        <span class="badge">Codex only</span>
+      </div>
+      <div class="folder">
+        <code>~/.agents/skills</code>
+        <div class="who">Shared</div>
+        <p>One copy on disk, linked into each agent's folder. <strong>Make generic</strong> does the move and the links in one click.</p>
+        <span class="badge linked">Generic · Claude, Codex</span> <span class="badge unlinked">Generic · unlinked</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>The rest of the bench.</h2>
+    <div class="features">
+      <div class="feature">
+        <h3>Install from the catalog</h3>
+        <p>Search skills.sh and GitHub's <code>claude-skills</code> topic in one box, read the <code>SKILL.md</code> before you commit, and install. A repo without a license says so, and takes a second click. Check an installed skill against its source later and pull the update.</p>
+        <figure class="plate"><img src="/assets/catalog.jpg" width="1800" height="1125" alt="Catalog search results, each with its source and license" loading="lazy"><figcaption></figcaption></figure>
+      </div>
+      <div class="feature">
+        <h3>Sessions your agent actually ran</h3>
+        <p>Switch on recording and every Claude Code and Codex session is kept: which skills and subagents it used, where the time went, what it cost. A skill's score and its real usage sit in the same place.</p>
+        <figure class="plate"><img src="/assets/session.jpg" width="1800" height="1125" alt="A recorded coding session with its timeline of tool calls, skills used and cost" loading="lazy"><figcaption></figcaption></figure>
+      </div>
+      <div class="feature">
+        <h3>Refine by chat, accept by diff</h3>
+        <p>Describe the change you want. The assistant reads the file and answers with a proposal, one diff per file, with Accept and Reject under it. Its tools are read-only, and every accepted change is a git snapshot you can revert.</p>
+        <figure class="plate"><img src="/assets/chat.jpg" width="1800" height="1125" alt="A chat proposal shown as a diff with Accept and Reject under it" loading="lazy"><figcaption></figcaption></figure>
+      </div>
+      <div class="feature">
+        <h3>Projects and subagents</h3>
+        <p>Group the skills and agents that serve one goal, get a summary and a Mermaid flow of how they fit, and simulate the whole set against the goal in one run. Subagents get the same treatment as skills, with the skills each one calls on shown beside it.</p>
+        <figure class="plate"><img src="/assets/projects.jpg" width="1800" height="1125" alt="A project's goal, its linked skills and agents, and the generated flow" loading="lazy"><figcaption></figcaption></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <h2>Where it sits next to the others.</h2>
+    <p class="lede" style="margin-top:1.25rem">Skills Manager is a fine library; Anthropic's skill-creator is a fine grader; ccusage is a fine bill. Masterwork is the one that joins the three: what a skill is, whether it works, and what it did in your real sessions.</p>
+    <div class="compare">
+      <table>
+        <thead>
+          <tr><th scope="col">Capability</th><th scope="col">Masterwork</th><th scope="col">Skills Manager</th><th scope="col">skill-creator</th><th scope="col">ccusage</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Browse and edit skills across agent folders</td><td class="yes">Yes</td><td class="yes">Yes, 50+ agents</td><td class="no">No</td><td class="no">No</td></tr>
+          <tr><td>Shows which agents load each copy</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+          <tr><td>Install from skills.sh and GitHub</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+          <tr><td>Score a skill against a scenario with a checklist</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes, from the CLI</td><td class="no">No</td></tr>
+          <tr><td>Score history per skill, re-run after an edit</td><td class="yes">Yes</td><td class="no">No</td><td class="part">One-shot benchmark</td><td class="no">No</td></tr>
+          <tr><td>Generality audit for overfitted skills</td><td class="yes">Yes</td><td class="no">No</td><td class="part">Improve mode</td><td class="no">No</td></tr>
+          <tr><td>Session records with skills used, time and cost (Claude Code, Codex)</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="part">Cost only</td></tr>
+          <tr><td>Subagents alongside skills</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+          <tr><td>Desktop installer</td><td class="no">npx, not yet</td><td class="yes">Mac, Windows, Linux</td><td class="no">Plugin</td><td class="no">npx</td></tr>
+          <tr><td>Runs with your subscription, no API key</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="compare-note">As of September 2026, from each project's own documentation. Tell us on GitHub if a row is out of date.</p>
+  </div>
+</section>
+
+<section class="install" id="install">
+  <div class="wrap">
+    <div>
+      <h2>Install.</h2>
+      <p class="lede" style="margin-top:1.25rem">One command. It installs what it needs, migrates a local SQLite database, starts both servers and opens the browser. Ctrl-C stops everything.</p>
+      <pre class="block"><span class="c"># the whole thing</span>
+npx masterwork
+
+<span class="c"># from a clone, if you want to hack on it</span>
+git clone https://github.com/flieks/masterwork.git
+cd masterwork
+npm start</pre>
+    </div>
+    <div>
+      <h3>You need</h3>
+      <ul>
+        <li>macOS or Linux</li>
+        <li>Python 3.13 or newer, and <a href="https://docs.astral.sh/uv/">uv</a></li>
+        <li>Node 20 or newer</li>
+        <li>The <a href="https://claude.com/claude-code">Claude Code</a> CLI, signed in. Chat, simulations and audits run through it.</li>
+        <li>Codex is optional. Its skills folder is read and its sessions are recorded when it is installed.</li>
+      </ul>
+      <p class="muted" style="margin-top:1.25rem">Everything is stored in <code>~/.masterwork</code>: chat sessions and simulation history. Your skills stay where they are on disk. Postgres works too, if you set <code>DATABASE_URL</code>.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>Masterwork is free under the <a href="https://github.com/flieks/masterwork/blob/main/LICENSE">Elastic License 2.0</a>. Local only, no telemetry.</div>
+    <div><a href="https://github.com/flieks/masterwork">Source on GitHub</a> · <a href="https://github.com/flieks/masterwork/issues">Issues</a> · <a href="https://www.npmjs.com/package/masterwork">npm</a></div>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy);
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = 'Copy'), 1600);
+      } catch {
+        btn.textContent = 'Select and copy';
+      }
+    });
+  });
+
+  const rerun = document.getElementById('rerun');
+  rerun.addEventListener('click', () => {
+    const crit = document.getElementById('crit4');
+    crit.classList.remove('fail');
+    crit.classList.add('pass');
+    crit.querySelector('.mark').innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 8.5l3 3 7-7"/></svg>';
+    document.getElementById('why4').textContent = 'The new "Before authoring" step compares against staging and production and names a hotfix-only revision as a divergent head.';
+    document.getElementById('score').textContent = '100';
+    const stamp = document.getElementById('stamp');
+    stamp.classList.remove('pressed');
+    void stamp.offsetWidth;
+    stamp.classList.add('pressed');
+    document.getElementById('diff').hidden = false;
+    document.getElementById('foot-note').textContent = 'Second run. Every criterion passes, and the score is kept alongside the first.';
+    rerun.textContent = 'Fix held';
+    rerun.disabled = true;
+  });
+</script>
+</body>
+</html>

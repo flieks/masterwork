@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/masterwork?color=cb3837&logo=npm)](https://www.npmjs.com/package/masterwork)
 [![CI](https://github.com/flieks/masterwork/actions/workflows/ci.yml/badge.svg)](https://github.com/flieks/masterwork/actions/workflows/ci.yml)
 [![License: Elastic-2.0](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/website-masterwork--site.vercel.app-0f2a3d)](https://masterwork-site.vercel.app)
 
 A local workbench for the skills and subagents your AI coding agents use — browse
 them across Claude Code, Codex and the shared `~/.agents` folder, edit them,
@@ -14,7 +15,7 @@ against — that's the hard part. Masterwork is built for that second half.
 
 > Runs entirely on your machine. Your skills never leave it.
 
-![A simulation run scored 100, with its capability checklist](docs/images/simulation.png)
+![A simulation run scored 100, with its capability checklist](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/simulation.png)
 
 ## What it does
 
@@ -36,16 +37,16 @@ against — that's the hard part. Masterwork is built for that second half.
   concrete diff you accept or reject. It never writes files on its own.
 - **Projects** — group assets around a goal, with generated summaries and Mermaid
   diagrams of how they fit together.
-- **Sessions** — record the runs your coding agent actually does: which skills
-  and subagents each one used, where the time went, what it cost. One click to
-  switch on.
+- **Sessions** — record the runs your coding agents actually do, Claude Code
+  and Codex alike: which skills and subagents each one used, where the time
+  went, what it cost. One click per agent to switch on.
 - **Work** — your backlog next to the pull requests waiting on you, with each
   PR's review comments read in place and handed to a fresh coding session to
   answer.
 - **Global instructions** — edit your agent's root instructions file in the same
   place as everything else.
 
-![The same two skills in two folders — one Claude loads, one nothing loads yet](docs/images/agents.png)
+![The same two skills in two folders — one Claude loads, one nothing loads yet](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/agents.png)
 
 ## Requirements
 
@@ -53,7 +54,8 @@ against — that's the hard part. Masterwork is built for that second half.
 - Python 3.13+ and [uv](https://docs.astral.sh/uv/)
 - Node 20+
 - The [Claude Code](https://claude.com/claude-code) CLI, signed in
-- Codex is optional: its skills folder is read when it exists
+- Codex is optional: its skills folder is read when it exists, and its sessions
+  can be recorded once it has run on the machine (`~/.codex` exists)
 
 No database server needed — it uses SQLite at `~/.masterwork/masterwork.db` and
 stores only chat sessions and simulation history. Your skills stay on disk.
@@ -108,9 +110,12 @@ nothing links to yet. **Make generic** does the move: the folder goes to
 `~/.agents/skills`, the old location becomes a link to it, and every other agent
 gets a link too, so the skill is on disk once and every agent still finds it. An
 identical copy already in the shared folder is adopted instead of duplicated; a
-copy that differs stops and asks before anything is overwritten.
+copy that differs stops and asks before anything is overwritten. A skill can also
+be switched off without deleting it: it moves to `.disabled/` inside the same
+skills folder, one level deeper than any agent reads, and one switch brings it
+back.
 
-![The make-generic confirmation, naming both paths before anything moves](docs/images/make-generic.png)
+![The make-generic confirmation, naming both paths before anything moves](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/make-generic.png)
 
 ## Community catalog
 
@@ -119,8 +124,12 @@ merges the results, and shows you the `SKILL.md` before you install anything.
 Licensing is on the card: a GitHub repo with no license means all rights
 reserved, not unknown, so installing one takes a second click that names the
 risk. Uninstall only removes what masterwork installed, never a skill you wrote.
+An installed skill's page can check it against its source on demand: it tells
+you whether you edited it, whether the repo moved on, or both, shows the
+`SKILL.md` diff, and updates in place — asking first when that would overwrite
+your edits.
 
-![Catalog search results, each with its source and license](docs/images/catalog.png)
+![Catalog search results, each with its source and license](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/catalog.png)
 
 ## Projects
 
@@ -129,7 +138,7 @@ summary and a Mermaid flow of how they fit together, and simulates the whole set
 against the goal in one run — so "these twelve should take me from empty repo to
 deployed product" becomes a claim you can test rather than a hope.
 
-![A project's goal, its linked skills and agents, and the generated flow](docs/images/projects.png)
+![A project's goal, its linked skills and agents, and the generated flow](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/projects.png)
 
 ## Refine by chat
 
@@ -138,7 +147,7 @@ proposal — one diff per file, with Accept and Reject under it. Its tools are
 read-only, so nothing lands until you accept, and what you accept is committed as
 a git snapshot in the folder it edited.
 
-![Chat answering with a proposed edit to a skill, pending accept or reject](docs/images/chat.png)
+![Chat answering with a proposed edit to a skill, pending accept or reject](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/chat.png)
 
 ## Work
 
@@ -151,19 +160,21 @@ the comments quoted into the prompt and a rule that it may not push.
 
 ## Session recording
 
-The **Sessions** screen is empty until your coding agent tells masterwork that a
-run happened. Open it and click **Connect** — that is the whole setup. It:
+The **Sessions** screen is empty until a coding agent tells masterwork that a
+run happened. Open it and click **Connect** next to the agent — that is the
+whole setup. For Claude Code it:
 
 - copies a small forwarder script to `~/.masterwork/hooks/`,
 - adds eight hooks to `~/.claude/settings.json` that run it (backing the file up
   to `settings.json.masterwork.bak` first),
 - leaves every other hook in that file exactly as it was.
 
-From then on each session posts its start, prompts, tool calls, subagent spawns,
-the moments it goes blocked on you, and its exit to
-`http://localhost:8008/api/v1/hooks/events`. **Disconnect** in the same place
-removes those eight entries and nothing else; the runs already recorded are
-kept.
+Codex gets the same treatment with its own forwarder and nine hooks in
+`~/.codex/hooks.json`; `config.toml` is never written. From then on each session
+posts its start, prompts, tool calls, subagent spawns, the moments it goes
+blocked on you, and its exit to `http://localhost:8008/api/v1/hooks/events`, and
+every run is badged with the agent that ran it. **Disconnect** in the same place
+removes those entries and nothing else; the runs already recorded are kept.
 
 Nothing is installed without that click, and nothing is sent anywhere but your
 own machine. Prefer the terminal?
@@ -172,18 +183,18 @@ own machine. Prefer the terminal?
 cd backend && uv run python -m app.observability.cli connect
 ```
 
-![One recorded session: cost, tokens, how the context grew, and a waterfall of its turns](docs/images/session.png)
+![One recorded session: cost, tokens, how the context grew, and a waterfall of its turns](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/session.png)
 
 Across runs, the **Analytics** tab totals one population four ways — the gates
 that failed, the roles that ran, the models behind them, and every run over time.
 Which model actually gets its work accepted is a number here, not a hunch.
 
-![Analytics: acceptance, corrections and cost per model, and every run over time](docs/images/analytics.png)
+![Analytics: acceptance, corrections and cost per model, and every run over time](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/analytics.png)
 
-Claude Code is the only agent wired up today. `SKILL.md` is an open standard and
-so is this: an agent that can run a command on session events is an
-`Integration` implementation in `backend/app/observability/` and a line in its
-registry — the API, the screen and the button already handle the rest.
+Claude Code and Codex are the agents wired up today. `SKILL.md` is an open
+standard and so is this: an agent that can run a command on session events is
+an `Integration` implementation in `backend/app/observability/` and a line in
+its registry — the API, the screen and the button already handle the rest.
 
 ## How it works
 
@@ -220,11 +231,10 @@ No auth, no multi-user: this is a single-user tool bound to localhost.
 
 ## Roadmap
 
-- **More agents.** Codex's skills folder and the shared `~/.agents` one are read
-  today; session recording is still Claude Code only, and Cursor and Gemini CLI
-  are not read at all. Assets route through a provider abstraction and session
-  recording through an integration one, so adding an agent to either is the
-  natural first contribution.
+- **More agents.** Claude Code and Codex are read and recorded today; Cursor
+  and Gemini CLI are not read at all. Assets route through a provider
+  abstraction and session recording through an integration one, so adding an
+  agent to either is the natural first contribution.
 - **A faster first run.** `npx masterwork` currently runs the frontend through
   Vite's dev server, so the very first launch waits on a full install. Shipping a
   pre-built frontend would cut that to seconds.

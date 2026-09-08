@@ -145,3 +145,105 @@ def test_check_installable_refuses_anthropics_skills_document_skills() -> None:
 def test_check_installable_allows_other_repos_and_other_skills() -> None:
     skill_install.check_installable("anthropics", "skills", "some-other-skill")
     skill_install.check_installable("someone", "skills", "pdf")
+
+
+# --- drift ------------------------------------------------------------------
+
+
+def test_tree_hash_is_order_independent_and_content_sensitive() -> None:
+    a = skill_install.tree_hash({"SKILL.md": b"# A\n", "ref.md": b"x"})
+    b = skill_install.tree_hash({"ref.md": b"x", "SKILL.md": b"# A\n"})
+    assert a == b
+    assert a != skill_install.tree_hash({"SKILL.md": b"# A\n", "ref.md": b"y"})
+    assert a != skill_install.tree_hash({"SKILL.md": b"# A\n", "other.md": b"x"})  # path counts
+
+
+def test_tree_hash_matches_between_a_fetch_and_the_folder_it_wrote(tmp_path: Path) -> None:
+    """The install baseline is hashed from disk; the check hashes the fetch.
+    Both must agree or every fresh install would report upstream_changed."""
+    fetched = _fetched(files=[SkillFile(relative_path="docs/ref.md", content=b"details")])
+    skill_install.install_skill(fetched, slug="my-skill", skills_root=tmp_path)
+
+    on_disk = skill_install.read_installed_files("my-skill", skills_root=tmp_path)
+
+    assert on_disk == {"SKILL.md": b"# A skill\n", "docs/ref.md": b"details"}
+    assert skill_install.tree_hash(on_disk) == skill_install.tree_hash(
+        skill_install.fetched_files(fetched)
+    )
+
+
+def test_read_installed_files_is_none_for_a_missing_folder(tmp_path: Path) -> None:
+    assert skill_install.read_installed_files("nope", skills_root=tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    ("local", "upstream", "installed_sha", "upstream_sha", "expected"),
+    [
+        ("base", "base", "s1", "s1", skill_install.DriftStatus.current),
+        ("edit", "base", "s1", "s1", skill_install.DriftStatus.edited_locally),
+        ("base", "new", "s1", "s2", skill_install.DriftStatus.upstream_changed),
+        ("edit", "new", "s1", "s2", skill_install.DriftStatus.diverged),
+        # A commit touched the folder: the sha, not the content, is the signal.
+        ("base", "base", "s1", "s2", skill_install.DriftStatus.upstream_changed),
+        # No sha on one side: content stands in for it.
+        ("base", "new", None, "s2", skill_install.DriftStatus.upstream_changed),
+        ("base", "base", "s1", None, skill_install.DriftStatus.current),
+        ("edit", "new", None, None, skill_install.DriftStatus.diverged),
+    ],
+)
+def test_classify_drift_with_a_baseline(
+    local: str,
+    upstream: str,
+    installed_sha: str | None,
+    upstream_sha: str | None,
+    expected: skill_install.DriftStatus,
+) -> None:
+    status = skill_install.classify_drift(
+        local_hash=local,
+        upstream_hash=upstream,
+        installed_hash="base",
+        installed_sha=installed_sha,
+        upstream_sha=upstream_sha,
+    )
+    assert status is expected
+
+
+def test_classify_drift_without_a_baseline_only_knows_whether_the_copies_agree() -> None:
+    """A row older than the columns: a difference is reported as diverged, the
+    status that makes the update ask first, since nobody knows whose it is."""
+    agree = skill_install.classify_drift(
+        local_hash="x", upstream_hash="x", installed_hash=None, installed_sha=None, upstream_sha="s"
+    )
+    differ = skill_install.classify_drift(
+        local_hash="x", upstream_hash="y", installed_hash=None, installed_sha=None, upstream_sha="s"
+    )
+    assert agree is skill_install.DriftStatus.current
+    assert differ is skill_install.DriftStatus.diverged
+
+
+def test_skill_md_diff_is_unified_and_empty_when_equal() -> None:
+    assert skill_install.skill_md_diff(b"# A\n", b"# A\n") == ""
+
+    diff = skill_install.skill_md_diff(b"# A\nold line\n", b"# A\nnew line\n")
+
+    assert diff.startswith("--- SKILL.md (installed)\n+++ SKILL.md (upstream)\n")
+    assert "-old line\n" in diff
+    assert "+new line\n" in diff
+
+
+def test_skill_md_diff_treats_a_missing_local_file_as_empty() -> None:
+    diff = skill_install.skill_md_diff(None, b"# A\n")
+    assert "+# A\n" in diff
+
+
+def test_changed_paths_reports_added_removed_and_changed_but_not_skill_md() -> None:
+    local = {"SKILL.md": b"old", "gone.md": b"x", "same.md": b"s", "edited.md": b"1"}
+    upstream = {"SKILL.md": b"new", "new.md": b"y", "same.md": b"s", "edited.md": b"2"}
+
+    changes = skill_install.changed_paths(local, upstream)
+
+    assert [(c.path, c.change.value) for c in changes] == [
+        ("edited.md", "changed"),
+        ("gone.md", "removed"),
+        ("new.md", "added"),
+    ]

@@ -137,6 +137,7 @@ async def create_session(
     cwd: str,
     git_repo: str | None,
     model: str | None,
+    source: str,
     now: datetime,
 ) -> CodingSession:
     session = CodingSession(
@@ -144,6 +145,7 @@ async def create_session(
         cwd=cwd,
         git_repo=git_repo,
         model=model,
+        source=source,
         started_at=now,
         last_event_at=now,
     )

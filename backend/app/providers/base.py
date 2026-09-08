@@ -34,10 +34,51 @@ class ScannedAsset:
     # Coding agents that load this asset ("claude", "codex"). A generic skill
     # lists every agent whose skills dir links to it; a factory role lists none.
     agents: tuple[str, ...] = ()
+    # Parked under `<skills_root>/.disabled/`, where no coding agent looks.
+    disabled: bool = False
 
     @property
     def id(self) -> str:
         return f"{self.provider}:{self.kind}:{self.name}"
+
+
+# A skill moved here is invisible to every coding agent, which only read one
+# level deep — the reversible alternative to deleting it.
+DISABLED_DIR = ".disabled"
+
+
+def iter_skill_dirs(root: Path, *, skip_hidden: bool) -> Iterable[tuple[Path, bool]]:
+    """(skill dir, disabled?) for every `<root>/<name>/SKILL.md`, then every
+    `<root>/.disabled/<name>/SKILL.md`. The `.disabled` folder itself is never a
+    skill; `skip_hidden` also drops the other dot-dirs (Codex's `.system`)."""
+    if not root.is_dir():
+        return
+    for entry in sorted(root.iterdir()):
+        if entry.name == DISABLED_DIR or (skip_hidden and entry.name.startswith(".")):
+            continue
+        if entry.is_dir() and (entry / "SKILL.md").is_file():
+            yield entry, False
+    disabled_root = root / DISABLED_DIR
+    if not disabled_root.is_dir():
+        return
+    for entry in sorted(disabled_root.iterdir()):
+        if not entry.name.startswith(".") and entry.is_dir() and (entry / "SKILL.md").is_file():
+            yield entry, True
+
+
+def skill_dir_name(root: Path, skill_file: Path) -> tuple[str, bool] | None:
+    """(name, disabled?) when `skill_file` is `<root>/<name>/SKILL.md` or
+    `<root>/.disabled/<name>/SKILL.md`; None otherwise. Both already resolved."""
+    if skill_file.name != "SKILL.md":
+        return None
+    skill_dir = skill_file.parent
+    if skill_dir.name.startswith("."):
+        return None
+    if skill_dir.parent == root:
+        return skill_dir.name, False
+    if skill_dir.parent == root / DISABLED_DIR:
+        return skill_dir.name, True
+    return None
 
 
 def file_times(path: Path) -> tuple[datetime, datetime | None]:

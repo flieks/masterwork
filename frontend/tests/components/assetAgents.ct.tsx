@@ -33,6 +33,7 @@ function summary(over: Partial<AssetSummary>): AssetSummary {
     created_at: '2026-08-01T10:00:00Z',
     updated_at: '2026-08-02T10:00:00Z',
     read_only: false,
+    disabled: false,
     ...over,
   };
 }

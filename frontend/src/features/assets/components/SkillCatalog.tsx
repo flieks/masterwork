@@ -9,7 +9,7 @@ import { Input } from '~/components/ui/input';
 import { Skeleton } from '~/components/ui/skeleton';
 import { EmptyState } from '~/components/EmptyState';
 import { useDebouncedValue } from '~/lib/hooks';
-import { skillCatalogQueryAtom } from '../queries';
+import { installedSkillsQueryAtom, skillCatalogQueryAtom } from '../queries';
 import { LicenseBadge } from './LicenseBadge';
 import { SkillPreviewDialog } from './SkillPreviewDialog';
 
@@ -26,6 +26,13 @@ export function SkillCatalog() {
   const [preview, setPreview] = useState<CatalogSkill | null>(null);
 
   const [{ data, isPending, isError, error, refetch }] = useAtom(skillCatalogQueryAtom(query));
+  // One list for every card: the badge reads the cached status, never GitHub.
+  const [{ data: installed }] = useAtom(installedSkillsQueryAtom);
+  const updateAvailable = new Set(
+    (installed ?? [])
+      .filter((s) => s.drift_status === 'upstream_changed' || s.drift_status === 'diverged')
+      .map((s) => s.name),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,6 +92,9 @@ export function SkillCatalog() {
                   <Badge variant="muted">{REGISTRY_LABEL[skill.registry] ?? skill.registry}</Badge>
                   <LicenseBadge license={skill.license} resolved={skill.license_resolved} />
                   {skill.installed ? <Badge variant="outline">Installed</Badge> : null}
+                  {skill.installed && updateAvailable.has(skill.skill) ? (
+                    <Badge>Update available</Badge>
+                  ) : null}
                   {skill.registry === 'skills_sh' && skill.installs !== null ? (
                     <span className="text-xs text-muted-foreground">{skill.installs} installs</span>
                   ) : null}
@@ -105,7 +115,10 @@ export function SkillCatalog() {
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <AlertTriangle className="size-3.5 shrink-0" />
           {data.errors
-            .map((e) => `${REGISTRY_LABEL[e.registry] ?? e.registry} results unavailable: ${e.message}`)
+            .map(
+              (e) =>
+                `${REGISTRY_LABEL[e.registry] ?? e.registry} results unavailable: ${e.message}`,
+            )
             .join(' ')}
         </p>
       ) : null}

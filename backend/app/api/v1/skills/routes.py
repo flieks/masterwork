@@ -1,4 +1,5 @@
-"""Skill catalog endpoints: search, preview, install, and uninstall."""
+"""Skill catalog endpoints: search, preview, install, uninstall, and the
+upstream drift check + update for what was installed."""
 
 from __future__ import annotations
 
@@ -6,9 +7,10 @@ import httpx
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_skill_catalog_transport
+from app.api.deps import get_db, get_providers, get_skill_catalog_transport
 from app.api.v1.skills import schemas, service
 from app.config import settings
+from app.providers.base import Provider
 
 router = APIRouter(tags=["skills"])
 
@@ -61,6 +63,52 @@ async def install_skill(
         body.repo,
         body.skill,
         overwrite=body.overwrite,
+        skills_root=settings.claude_skills_root,
+        transport=transport,
+    )
+
+
+@router.get(
+    "/skills/installed",
+    response_model=list[schemas.InstalledSkill],
+    operation_id="listInstalledSkills",
+)
+async def list_installed_skills(db: AsyncSession = Depends(get_db)) -> list[schemas.InstalledSkill]:
+    return await service.list_installed(db)
+
+
+@router.post(
+    "/skills/installed/{name}/check",
+    response_model=schemas.UpstreamCheckResult,
+    operation_id="checkSkillUpstream",
+)
+async def check_skill_upstream(
+    name: str,
+    db: AsyncSession = Depends(get_db),
+    transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
+) -> schemas.UpstreamCheckResult:
+    return await service.check_upstream(
+        db, name, skills_root=settings.claude_skills_root, transport=transport
+    )
+
+
+@router.post(
+    "/skills/installed/{name}/update",
+    response_model=schemas.InstalledSkill,
+    operation_id="updateSkillFromUpstream",
+)
+async def update_skill_from_upstream(
+    name: str,
+    body: schemas.SkillUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
+    transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
+) -> schemas.InstalledSkill:
+    return await service.update_from_upstream(
+        db,
+        providers,
+        name,
+        force=body.force,
         skills_root=settings.claude_skills_root,
         transport=transport,
     )

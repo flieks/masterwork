@@ -1,7 +1,8 @@
 """Claude Code provider — scans globally installed skills and subagents.
 
 Roots:
-- skills: ``<skills_root>/<name>/SKILL.md``
+- skills: ``<skills_root>/<name>/SKILL.md``, plus the switched-off ones under
+  ``<skills_root>/.disabled/<name>/SKILL.md`` that Claude Code never reads
 - agents: ``<agents_root>/<name>.md``
 """
 
@@ -17,8 +18,10 @@ from app.providers.base import (
     ScannedAsset,
     SnapshotTree,
     file_times,
+    iter_skill_dirs,
     resolve_within_roots,
     resolves_under,
+    skill_dir_name,
 )
 
 _KIND_SKILL = "skill"
@@ -82,6 +85,7 @@ def build_asset(
     *,
     read_only: bool = False,
     agents: tuple[str, ...] = (),
+    disabled: bool = False,
 ) -> ScannedAsset | None:
     """Read one asset file into a ScannedAsset; None if the file is unreadable."""
     try:
@@ -103,6 +107,7 @@ def build_asset(
         model=_meta_model(meta),
         created_at=created_at,
         agents=agents,
+        disabled=disabled,
     )
 
 
@@ -127,15 +132,18 @@ class ClaudeProvider:
         yield from self._scan_agents()
 
     def _scan_skills(self) -> Iterable[ScannedAsset]:
-        if not self._skills_root.is_dir():
-            return
-        for entry in sorted(self._skills_root.iterdir()):
-            skill_file = entry / "SKILL.md"
-            if not entry.is_dir() or not skill_file.is_file():
-                continue
+        for entry, disabled in iter_skill_dirs(self._skills_root, skip_hidden=False):
             if resolves_under(entry, self._generic_root):
                 continue
-            asset = self._build(_KIND_SKILL, entry.name, skill_file)
+            # A disabled skill is loaded by nobody, so it claims no agent.
+            asset = build_asset(
+                self.name,
+                _KIND_SKILL,
+                entry.name,
+                entry / "SKILL.md",
+                agents=() if disabled else (AGENT_CLAUDE,),
+                disabled=disabled,
+            )
             if asset is not None:
                 yield asset
 
@@ -145,12 +153,9 @@ class ClaudeProvider:
         for entry in sorted(self._agents_root.iterdir()):
             if not entry.is_file() or entry.suffix != ".md":
                 continue
-            asset = self._build(_KIND_AGENT, entry.stem, entry)
+            asset = build_asset(self.name, _KIND_AGENT, entry.stem, entry, agents=(AGENT_CLAUDE,))
             if asset is not None:
                 yield asset
-
-    def _build(self, kind: str, name: str, path: Path) -> ScannedAsset | None:
-        return build_asset(self.name, kind, name, path, agents=(AGENT_CLAUDE,))
 
     def snapshot_tree(self, path: Path) -> SnapshotTree | None:
         """The whole ~/.claude tree, which is where the repo sits: it holds both
@@ -167,10 +172,10 @@ class ClaudeProvider:
             return None
         skills_root = _safe_resolve(self._skills_root)
         agents_root = _safe_resolve(self._agents_root)
-        if skills_root is not None and resolved.name == "SKILL.md":
-            parent = resolved.parent
-            if parent.parent == skills_root:
-                return f"{self.name}:{_KIND_SKILL}:{parent.name}"
+        if skills_root is not None:
+            skill = skill_dir_name(skills_root, resolved)
+            if skill is not None:
+                return f"{self.name}:{_KIND_SKILL}:{skill[0]}"
         if agents_root is not None and resolved.suffix == ".md" and resolved.parent == agents_root:
             return f"{self.name}:{_KIND_AGENT}:{resolved.stem}"
         return None

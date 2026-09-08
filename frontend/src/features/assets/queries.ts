@@ -11,6 +11,7 @@ import type {
   CodingAssetUsage,
   InstalledSkill,
   SkillInstallRequest,
+  UpstreamCheckResult,
 } from '~/api/generated';
 // The rollup owns the inspection scope; the drill-in follows it.
 import { includeInspectionAtom } from '~/features/sessions/queries';
@@ -65,6 +66,20 @@ export const assetDetailQueryAtom = atomFamily((assetId: string) =>
 export const updateAssetMutationAtom = atomWithMutation(() => ({
   mutationFn: (vars: { assetId: string; content: string }): Promise<AssetDetail> =>
     api.assets.updateAsset(vars.assetId, { content: vars.content }).then((r) => r.data),
+}));
+
+/** Park a skill under .disabled/ or bring it back; same id, new path. */
+export const setAssetEnabledMutationAtom = atomWithMutation<
+  AssetDetail,
+  { assetId: string; enabled: boolean }
+>((get) => ({
+  mutationFn: ({ assetId, enabled }): Promise<AssetDetail> =>
+    api.assets.setAssetEnabled(assetId, { enabled }).then((r) => r.data),
+  onSuccess: (asset) => {
+    const queryClient = get(queryClientAtom);
+    queryClient.setQueryData(['asset', asset.id], asset);
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+  },
 }));
 
 /** Move a Claude or Codex skill into ~/.agents/skills; it comes back under a new id. */
@@ -187,6 +202,7 @@ export const installSkillMutationAtom = atomWithMutation<InstalledSkill, SkillIn
     onSuccess: (_data, variables) => {
       const queryClient = get(queryClientAtom);
       queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['installedSkills'] });
       queryClient.invalidateQueries({
         queryKey: ['assets', 'skill', variables.owner, variables.repo, variables.skill],
       });
@@ -197,5 +213,40 @@ export const installSkillMutationAtom = atomWithMutation<InstalledSkill, SkillIn
 export const uninstallSkillMutationAtom = atomWithMutation<void, string>((get) => ({
   mutationFn: (name: string): Promise<void> =>
     api.skills.uninstallSkill(name).then(() => undefined),
-  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: ['assets'] }),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+    queryClient.invalidateQueries({ queryKey: ['installedSkills'] });
+  },
+}));
+
+// --- upstream drift -----------------------------------------------------
+
+/** Every catalog install with its cached drift status — one query, read by the
+ *  detail page's Upstream card and the catalog's per-card badge alike. */
+export const installedSkillsQueryAtom = atomWithQuery(() => ({
+  queryKey: ['installedSkills'],
+  queryFn: async (): Promise<InstalledSkill[]> => (await api.skills.listInstalledSkills()).data,
+}));
+
+/** User-initiated only: each check spends GitHub quota. */
+export const checkUpstreamMutationAtom = atomWithMutation<UpstreamCheckResult, string>((get) => ({
+  mutationFn: (name: string): Promise<UpstreamCheckResult> =>
+    api.skills.checkSkillUpstream(name).then((r) => r.data),
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: ['installedSkills'] }),
+}));
+
+export const updateFromUpstreamMutationAtom = atomWithMutation<
+  InstalledSkill,
+  { name: string; force: boolean }
+>((get) => ({
+  mutationFn: ({ name, force }): Promise<InstalledSkill> =>
+    api.skills.updateSkillFromUpstream(name, { force }).then((r) => r.data),
+  onSuccess: () => {
+    const queryClient = get(queryClientAtom);
+    queryClient.invalidateQueries({ queryKey: ['installedSkills'] });
+    // Prefix match: a generic skill's id differs from the install row's.
+    queryClient.invalidateQueries({ queryKey: ['asset'] });
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+  },
 }));

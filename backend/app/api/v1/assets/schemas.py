@@ -43,6 +43,11 @@ class AssetSummary(BaseModel):
     read_only: bool = Field(
         ..., description="True for plugin-provided assets; PUT is rejected with 403."
     )
+    disabled: bool = Field(
+        ...,
+        description="True when the skill is parked under its folder's `.disabled/`, where "
+        "no coding agent loads it. Still readable and editable; `agents` is empty.",
+    )
 
 
 class AssetDetail(AssetSummary):
@@ -51,6 +56,14 @@ class AssetDetail(AssetSummary):
 
 class AssetUpdateRequest(BaseModel):
     content: str = Field(..., description="Full new file content to write.")
+
+
+class AssetEnabledRequest(BaseModel):
+    enabled: bool = Field(
+        ...,
+        description="False parks the skill under `.disabled/` so no agent loads it; true "
+        "brings it back. Setting the state it already has is a no-op.",
+    )
 
 
 class AssetDiagram(BaseModel):

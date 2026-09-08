@@ -9,6 +9,8 @@ function agentLabel(agent: string): string {
 interface AgentsBadgeProps {
   provider: string;
   agents: string[];
+  /** Parked under .disabled/: the empty `agents` is by design, not a missing link. */
+  disabled?: boolean;
 }
 
 /**
@@ -16,7 +18,18 @@ interface AgentsBadgeProps {
  * ~/.agents/skills) names the agents whose folder links to it; anything in one
  * agent's own folder is that agent's alone.
  */
-export function AgentsBadge({ provider, agents }: AgentsBadgeProps) {
+export function AgentsBadge({ provider, agents, disabled = false }: AgentsBadgeProps) {
+  if (disabled) {
+    return (
+      <Badge
+        variant="outline"
+        className="text-muted-foreground"
+        title="Switched off: coding agents only read one level deep, and this skill sits under .disabled/"
+      >
+        Not loaded by any agent
+      </Badge>
+    );
+  }
   if (provider === 'generic') {
     const linked = agents.map(agentLabel);
     return (

@@ -195,6 +195,58 @@
                 }
             }
         },
+        "/api/v1/assets/{asset_id}/enabled": {
+            "put": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Set Asset Enabled",
+                "operationId": "setAssetEnabled",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AssetEnabledRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/assets/{asset_id}/migrate": {
             "post": {
                 "tags": [
@@ -3341,6 +3393,125 @@
                 }
             }
         },
+        "/api/v1/skills/installed": {
+            "get": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "List Installed Skills",
+                "operationId": "listInstalledSkills",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/InstalledSkill"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listinstalledskills"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/installed/{name}/check": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Check Skill Upstream",
+                "operationId": "checkSkillUpstream",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UpstreamCheckResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/installed/{name}/update": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Update Skill From Upstream",
+                "operationId": "updateSkillFromUpstream",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SkillUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstalledSkill"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/skills/installed/{name}": {
             "delete": {
                 "tags": [
@@ -4081,7 +4252,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief) | skill_read (a SKILL.md read, carries only the path) | subagent_stop (a finished subagent, carries nothing)."
+                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read \u2014 a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing)."
                     },
                     "input": {
                         "anyOf": [
@@ -4188,6 +4359,11 @@
                         "title": "Read Only",
                         "description": "True for plugin-provided assets; PUT is rejected with 403."
                     },
+                    "disabled": {
+                        "type": "boolean",
+                        "title": "Disabled",
+                        "description": "True when the skill is parked under its folder's `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty."
+                    },
                     "content": {
                         "type": "string",
                         "title": "Content",
@@ -4206,6 +4382,7 @@
                     "path",
                     "updated_at",
                     "read_only",
+                    "disabled",
                     "content"
                 ],
                 "title": "AssetDetail"
@@ -4240,6 +4417,20 @@
                     "stale"
                 ],
                 "title": "AssetDiagram"
+            },
+            "AssetEnabledRequest": {
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled",
+                        "description": "False parks the skill under `.disabled/` so no agent loads it; true brings it back. Setting the state it already has is a no-op."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "enabled"
+                ],
+                "title": "AssetEnabledRequest"
             },
             "AssetKind": {
                 "type": "string",
@@ -4492,6 +4683,11 @@
                         "type": "boolean",
                         "title": "Read Only",
                         "description": "True for plugin-provided assets; PUT is rejected with 403."
+                    },
+                    "disabled": {
+                        "type": "boolean",
+                        "title": "Disabled",
+                        "description": "True when the skill is parked under its folder's `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty."
                     }
                 },
                 "type": "object",
@@ -4505,7 +4701,8 @@
                     "description",
                     "path",
                     "updated_at",
-                    "read_only"
+                    "read_only",
+                    "disabled"
                 ],
                 "title": "AssetSummary"
             },
@@ -5503,7 +5700,7 @@
                     "id": {
                         "type": "string",
                         "title": "Id",
-                        "description": "Claude Code session id."
+                        "description": "The agent's own session id."
                     },
                     "cwd": {
                         "type": "string",
@@ -5536,7 +5733,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Event producer; always \"claude-code\" today."
+                        "description": "Which agent ran the session: \"claude-code\" | \"codex\"."
                     },
                     "launch_mode": {
                         "anyOf": [
@@ -5802,7 +5999,7 @@
                     "id": {
                         "type": "string",
                         "title": "Id",
-                        "description": "Claude Code session id."
+                        "description": "The agent's own session id."
                     },
                     "cwd": {
                         "type": "string",
@@ -5835,7 +6032,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Event producer; always \"claude-code\" today."
+                        "description": "Which agent ran the session: \"claude-code\" | \"codex\"."
                     },
                     "launch_mode": {
                         "anyOf": [
@@ -6486,6 +6683,18 @@
                 ],
                 "title": "DirectoryListing"
             },
+            "DriftStatus": {
+                "type": "string",
+                "enum": [
+                    "current",
+                    "edited_locally",
+                    "upstream_changed",
+                    "diverged",
+                    "unknown_origin"
+                ],
+                "title": "DriftStatus",
+                "description": "How the installed copy relates to what was installed and to upstream."
+            },
             "EnvelopeAttempt": {
                 "properties": {
                     "id": {
@@ -6983,6 +7192,15 @@
                 ],
                 "title": "FactoryRunResumeRequest"
             },
+            "FileChange": {
+                "type": "string",
+                "enum": [
+                    "added",
+                    "removed",
+                    "changed"
+                ],
+                "title": "FileChange"
+            },
             "GateCheckIn": {
                 "properties": {
                     "item": {
@@ -7373,13 +7591,23 @@
                         "type": "string",
                         "minLength": 1,
                         "title": "Session Id",
-                        "description": "Claude Code session id."
+                        "description": "The agent's own session id."
                     },
                     "event_type": {
                         "type": "string",
                         "minLength": 1,
                         "title": "Event Type",
                         "description": "Hook name, e.g. \"PreToolUse\"; any string is accepted."
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "claude-code",
+                            "codex"
+                        ],
+                        "title": "Source",
+                        "description": "Which agent's hooks sent this. Used on first sight only, and defaults to claude-code so a forwarder from before Codex was recorded still files its sessions where it always did.",
+                        "default": "claude-code"
                     },
                     "cwd": {
                         "anyOf": [
@@ -7614,6 +7842,71 @@
                         "type": "string",
                         "format": "date-time",
                         "title": "Installed At"
+                    },
+                    "source_url": {
+                        "type": "string",
+                        "title": "Source Url",
+                        "description": "Link to the skill's folder on GitHub."
+                    },
+                    "installed_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installed Sha",
+                        "description": "Upstream commit for the folder at install time; null when unknown."
+                    },
+                    "root_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Root Path",
+                        "description": "Folder inside the repo the skill came from; \"\" for the repo root."
+                    },
+                    "last_checked_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Checked At",
+                        "description": "When the upstream check last ran; null means never."
+                    },
+                    "upstream_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Sha",
+                        "description": "Upstream commit seen by the last check."
+                    },
+                    "drift_status": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/DriftStatus"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Cached result of the last check; null until one has run."
                     }
                 },
                 "type": "object",
@@ -7623,7 +7916,8 @@
                     "owner",
                     "repo",
                     "registry",
-                    "installed_at"
+                    "installed_at",
+                    "source_url"
                 ],
                 "title": "InstalledSkill"
             },
@@ -10059,6 +10353,18 @@
                 ],
                 "title": "SkillRegistry"
             },
+            "SkillUpdateRequest": {
+                "properties": {
+                    "force": {
+                        "type": "boolean",
+                        "title": "Force",
+                        "description": "Overwrite local edits: required when status is edited_locally/diverged.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "title": "SkillUpdateRequest"
+            },
             "SuggestedLink": {
                 "properties": {
                     "asset_id": {
@@ -10085,6 +10391,122 @@
                     "asset_id"
                 ],
                 "title": "SuggestedLink"
+            },
+            "UpstreamCheckResult": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/DriftStatus"
+                    },
+                    "checked_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Checked At"
+                    },
+                    "source_url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Source Url",
+                        "description": "Link to the skill's folder on GitHub; null with no install row."
+                    },
+                    "installed_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installed Sha"
+                    },
+                    "upstream_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Sha",
+                        "description": "Newest upstream commit for the folder."
+                    },
+                    "upstream_last_modified_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Last Modified At",
+                        "description": "Date of that commit; null if the lookup failed."
+                    },
+                    "upstream_last_change_summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Last Change Summary",
+                        "description": "Subject of that commit \u2014 third-party text, render as plain text."
+                    },
+                    "skill_md_diff": {
+                        "type": "string",
+                        "title": "Skill Md Diff",
+                        "description": "Unified diff, installed SKILL.md -> upstream; \"\" when identical."
+                    },
+                    "other_changes": {
+                        "items": {
+                            "$ref": "#/components/schemas/UpstreamFileChange"
+                        },
+                        "type": "array",
+                        "title": "Other Changes",
+                        "description": "Companion files that differ; SKILL.md is in the diff instead."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "status",
+                    "checked_at",
+                    "skill_md_diff",
+                    "other_changes"
+                ],
+                "title": "UpstreamCheckResult"
+            },
+            "UpstreamFileChange": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Relative to the skill folder."
+                    },
+                    "change": {
+                        "$ref": "#/components/schemas/FileChange"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "change"
+                ],
+                "title": "UpstreamFileChange"
             },
             "ValidationError": {
                 "properties": {

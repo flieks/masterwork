@@ -277,5 +277,5 @@ async def test_unavailable_when_the_agent_never_ran_here(
 
 
 async def test_unknown_integration_is_404(client: AsyncClient, wire: Path) -> None:
-    r = await client.post(f"{URL}/codex/connect")
+    r = await client.post(f"{URL}/cursor/connect")
     assert r.status_code == 404
