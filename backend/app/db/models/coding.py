@@ -40,7 +40,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 from app.db.types import JSONColumn, UTCDateTime
 
-DEFAULT_SOURCE = "claude-code"
+# Which agent's hooks wrote the session. The default is what every forwarder
+# from before Codex was recorded sends, by sending nothing.
+SOURCE_CLAUDE_CODE = "claude-code"
+SOURCE_CODEX = "codex"
+DEFAULT_SOURCE = SOURCE_CLAUDE_CODE
 
 # How the run was started, derived from the launcher chain the hook reports.
 # Null when no chain was recorded (every session from before that hook shipped).
@@ -67,14 +71,16 @@ STATUS_INTERRUPTED = "interrupted"
 STATUS_ABANDONED = "abandoned"
 STATUS_WAITING_INPUT = "waiting_input"
 
-# Claude Code fires this when it needs the person: a permission prompt, or an
-# input box that has sat idle. Both mean the same thing to a watcher.
-NOTIFICATION_EVENT = "Notification"
+# Fired when the agent needs the person. Claude Code's Notification covers a
+# permission prompt and an input box that has sat idle; Codex's PermissionRequest
+# is the permission prompt alone. Both mean the same thing to a watcher.
+AWAITING_INPUT_EVENTS = frozenset({"Notification", "PermissionRequest"})
 
 # After one of these, nothing is in flight, so a notification is just the person
 # not typing yet — not a run blocked mid-turn. Anything else means a turn was
-# open when the harness asked, which is the state worth reporting.
-TURN_CLOSED_EVENTS = frozenset({"Stop", "SessionEnd", "SessionStart"})
+# open when the harness asked, which is the state worth reporting. Interrupt is
+# Codex's: the person cut the turn short, so nothing is waiting on them.
+TURN_CLOSED_EVENTS = frozenset({"Stop", "Interrupt", "SessionEnd", "SessionStart"})
 
 # Live means recent. A run with no `ended_at` that has been silent this long is
 # reported as abandoned, and sorts below the ones that are genuinely working.
@@ -118,8 +124,9 @@ KIND_GIT = "git"
 # The lane a plain Claude Code session's own turns belong to.
 MAIN_AGENT = "main"
 
-# The subagent-spawn tool, under both names the harness has shipped it as. Its
-# `PreToolUse` is the only event that knows when a subagent started.
+# Claude Code's subagent-spawn tool, under both names the harness has shipped it
+# as. Its `PreToolUse` is the only event that knows when a subagent started —
+# Codex has no such tool and says so with a `SubagentStart` instead.
 SPAWN_TOOLS = frozenset({"Task", "Agent"})
 
 # What a run reached for. The names match masterwork's own asset ids, so a card

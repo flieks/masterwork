@@ -3367,3 +3367,76 @@ AssetMigrationResult {
 - **Snapshots as for any write.** The source tree (`~/.claude` or `~/.codex`) is
   committed before and after when the user made it a repo; `~/.agents` likewise.
   Neither is ever turned into a repo behind the user's back.
+
+# API Contract v1.43 — Codex sessions, recorded the way Claude Code's are
+
+Additive on top of v1.42. Session recording was Claude Code only: one
+`Integration`, one forwarder, one hook vocabulary. Codex has had hooks of its
+own since spring 2026 — `~/.codex/hooks.json`, the same `{"hooks": {"<Event>":
+[{"matcher", "hooks": [...]}]}}` shape, a near-identical event list — so it gets
+the same treatment: a second card on the Sessions screen, a second forwarder,
+and a session row that says which agent ran it.
+
+## No new endpoints
+
+`GET /api/v1/observability/integrations` now lists two entries, `claude-code`
+and `codex`; `connect`/`disconnect` take either id. `POST /api/v1/hooks/events`
+gains one optional field.
+
+## Changed schemas
+
+```
+HookEventRequest {
+  ...,
+  source: "claude-code" | "codex",   // NEW — default "claude-code"; used on first sight only
+}
+
+CodingSession / CodingSessionDetail {
+  ...,
+  source: string,   // was 'always "claude-code"'; now "claude-code" | "codex"
+}
+
+AssetCall.source   // spawn_call now also covers a Codex SubagentStart (carries agent_type,
+                   // agent_id); skill_read now also covers a Codex shell command that
+                   // prints a SKILL.md
+```
+
+## Behavior
+
+- **`source` is set once, by the forwarder that created the session.** Every
+  Codex event says `source: "codex"`; a Claude Code forwarder says nothing and
+  gets the default, so an install that never upgrades its hooks keeps filing
+  where it always did. The value is not an enum on the read side: a session
+  recorded by an agent this backend has not heard of still reads back. A value
+  the ingest does not know on the *write* side is dropped for the default, not
+  422'd — same posture as every other optional hook field.
+- **Codex's hook vocabulary maps onto the same turns and lanes.** `SessionStart`,
+  `UserPromptSubmit`, `PostToolUse`, `Stop`, `SessionEnd` mean what they mean
+  for Claude Code. `SubagentStart` opens a span on the subagent's own lane
+  (there is no spawn tool to watch), `SubagentStop` closes it. `Interrupt`
+  closes the main lane's turn as `abandoned` — the person cut it short, and it
+  will never get a `Stop`. `PermissionRequest` is Claude Code's permission
+  `Notification`: mid-turn it puts the run in `waiting_input`, after a
+  `Stop`/`Interrupt` it is nothing. `PreCompact`/`PostCompact` and anything
+  else Codex adds later are stored as events in no lane, never dropped.
+- **Skill attribution reads shell commands under every skills root.** Codex has
+  no Skill tool and no Read: it loads a skill by printing the file, so a
+  `PostToolUse` from one of its shell tools (`exec_command`, `exec`, `shell`,
+  …) whose command names `<root>/skills/<name>/SKILL.md` counts as a
+  `skill_read`, with the path as its input. The roots recognised are
+  `.claude/skills`, `.codex/skills` and `.agents/skills`, wherever they sit —
+  which also means a Claude Code `Read` of a shared `~/.agents/skills` skill
+  now counts, where before only `.claude/skills` did. Claude Code's `Bash` is
+  deliberately not read this way.
+- **Cost is null for a model without a known price.** The Codex forwarder reads
+  the thread's running token totals off the rollout file (`token_count`
+  lines, cumulative — the last one is the total) and prices them only for
+  models on its short list of published rates. `gpt-6-*` is not on it;
+  `tokens_*` and `cache_read_tokens` land regardless, `cost_usd` stays null.
+- **Launch mode knows `codex exec`.** A `launched_by` chain naming `codex exec`
+  classifies the run `automated`, as `claude -p` does.
+- **Connecting Codex writes `~/.codex/hooks.json` only.** `config.toml` is
+  read, never written, for one thing: `[features] hooks = false`, which makes
+  the integration `unavailable` with a detail saying so, rather than a
+  "connected" card recording nothing. Hooks are on by default in Codex, so no
+  flag is ever set.

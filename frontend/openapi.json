@@ -4081,7 +4081,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief) | skill_read (a SKILL.md read, carries only the path) | subagent_stop (a finished subagent, carries nothing)."
+                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read \u2014 a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing)."
                     },
                     "input": {
                         "anyOf": [
@@ -5503,7 +5503,7 @@
                     "id": {
                         "type": "string",
                         "title": "Id",
-                        "description": "Claude Code session id."
+                        "description": "The agent's own session id."
                     },
                     "cwd": {
                         "type": "string",
@@ -5536,7 +5536,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Event producer; always \"claude-code\" today."
+                        "description": "Which agent ran the session: \"claude-code\" | \"codex\"."
                     },
                     "launch_mode": {
                         "anyOf": [
@@ -5802,7 +5802,7 @@
                     "id": {
                         "type": "string",
                         "title": "Id",
-                        "description": "Claude Code session id."
+                        "description": "The agent's own session id."
                     },
                     "cwd": {
                         "type": "string",
@@ -5835,7 +5835,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Event producer; always \"claude-code\" today."
+                        "description": "Which agent ran the session: \"claude-code\" | \"codex\"."
                     },
                     "launch_mode": {
                         "anyOf": [
@@ -7373,13 +7373,23 @@
                         "type": "string",
                         "minLength": 1,
                         "title": "Session Id",
-                        "description": "Claude Code session id."
+                        "description": "The agent's own session id."
                     },
                     "event_type": {
                         "type": "string",
                         "minLength": 1,
                         "title": "Event Type",
                         "description": "Hook name, e.g. \"PreToolUse\"; any string is accepted."
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "claude-code",
+                            "codex"
+                        ],
+                        "title": "Source",
+                        "description": "Which agent's hooks sent this. Used on first sight only, and defaults to claude-code so a forwarder from before Codex was recorded still files its sessions where it always did.",
+                        "default": "claude-code"
                     },
                     "cwd": {
                         "anyOf": [

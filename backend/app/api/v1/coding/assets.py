@@ -7,6 +7,11 @@ one barely fires: across 2 237 recorded tool calls there were **two** explicit
 file (how a subagent really ends). So both are read, and the transcript's
 sidecar is opened to learn the agent's type.
 
+Codex has neither a Skill tool nor a Read: it loads a skill by shelling out to
+print the file (`sed -n '1,240p' ~/.agents/skills/<name>/SKILL.md`), and names
+its subagents on `SubagentStart`/`SubagentStop` directly. Both are the same two
+signals in different clothes, and are read as such.
+
 Reading that sidecar is the one filesystem touch outside a session's first
 event. It is legitimate — this is a single-user local tool that already reads
 `~/.claude` — but it is capped, and it can never fail an ingest: an unreadable
@@ -35,9 +40,18 @@ from app.db.models.coding import (
     USE_SUBAGENT_STOP,
 )
 
-# `~/.claude/skills/<name>/SKILL.md`, and the project-local `.claude/skills` too.
-# The captured group is the skill's directory name, which is also its asset id.
-SKILL_PATH = re.compile(r"(?:^|/)\.claude/skills/([^/]+)/SKILL\.md$")
+# `<root>/skills/<name>/SKILL.md` under any agent's skills folder — Claude Code's
+# `~/.claude/skills` (and the project-local `.claude/skills`), Codex's
+# `~/.codex/skills`, and the shared `~/.agents/skills` both reach through links.
+# Group 1 is the whole path, group 2 the skill's directory name, which is also
+# its asset id. The lookahead lets the same pattern read a path out of a shell
+# command, where it ends at a space or a quote rather than at the line's end.
+SKILL_ROOTS = ("claude", "codex", "agents")
+SKILL_PATH = re.compile(
+    r"((?:[^\s'\"]*/)?\.(?:"
+    + "|".join(SKILL_ROOTS)
+    + r")/skills/([^/\s'\"]+)/SKILL\.md)(?=$|[\s'\";|&)>])"
+)
 
 # Tool inputs that carry a path. Glob names its target in `pattern`, Read in
 # `file_path`; the rest are cheap to check and cost nothing when absent.
@@ -46,6 +60,14 @@ PATH_KEYS = ("file_path", "pattern", "path", "notebook_path")
 # Tools whose target path says which skill a run loaded. Edit/Write are left
 # out on purpose: authoring a skill is not using one.
 SKILL_PATH_TOOLS = frozenset({"Read", "Glob"})
+
+# Codex's shell tools, under every name it has shipped them as. A command naming
+# a SKILL.md is how a Codex run loads a skill. Claude Code's Bash is left out:
+# its skills load through Read, and a Bash that names one is usually a grep.
+SHELL_TOOLS = frozenset({"exec_command", "exec", "shell", "shell_command", "local_shell"})
+# Where a shell tool keeps its command: `cmd` (exec_command), `command` (shell,
+# as a string or an argv list), `input` (the `exec` custom tool's script).
+COMMAND_KEYS = ("cmd", "command", "input")
 
 # The agent-type sidecar is a handful of keys; anything larger is not one.
 MAX_SIDECAR_BYTES = 64 * 1024
@@ -94,6 +116,15 @@ def from_event(
     """Every asset this one event says the run used. Usually none."""
     if event_type == "SubagentStop":
         return [AssetUse(ASSET_AGENT, subagent_name(payload), lane, USE_SUBAGENT_STOP)]
+    if event_type == "SubagentStart":
+        # Codex's spawn: the type and id are all it says, and all the log can hold.
+        stated = {
+            key: value
+            for key in ("agent_type", "agent_id")
+            if (value := _text((payload or {}).get(key)))
+        }
+        name = subagent_name(payload)
+        return [AssetUse(ASSET_AGENT, name, lane, USE_SPAWN_CALL, stated or None)]
     # PreToolUse fires even when the call is denied, so only a completed call
     # counts — the same rule `tool_call_count` uses.
     if event_type != "PostToolUse" or not tool_name:
@@ -121,7 +152,26 @@ def from_event(
         path = next((p for key in PATH_KEYS if (p := _text(tool_input.get(key)))), None)
         args = {"path": path} if path else None
         return [AssetUse(ASSET_SKILL, skill, lane, USE_SKILL_READ, args)]
+    if tool_name in SHELL_TOOLS:
+        command = command_text(tool_input)
+        match = SKILL_PATH.search(command) if command else None
+        if match is None:
+            return []
+        skill, path = match.group(2), match.group(1)
+        return [AssetUse(ASSET_SKILL, skill, lane, USE_SKILL_READ, {"path": path})]
     return []
+
+
+def command_text(tool_input: dict[str, Any]) -> str | None:
+    """The shell command a tool call ran, whichever key its tool keeps it under
+    and whether it was sent as one string or an argv list."""
+    for key in COMMAND_KEYS:
+        value = tool_input.get(key)
+        if isinstance(value, list):
+            value = " ".join(str(part) for part in value)
+        if text := _text(value):
+            return text
+    return None
 
 
 def _inputs(tool_input: dict[str, Any], source: str) -> dict[str, str] | None:
@@ -142,7 +192,7 @@ def _skill_from_paths(tool_input: dict[str, Any]) -> str | None:
         value = _text(tool_input.get(key))
         match = SKILL_PATH.search(value) if value else None
         if match is not None:
-            return match.group(1)
+            return match.group(2)
     return None
 
 

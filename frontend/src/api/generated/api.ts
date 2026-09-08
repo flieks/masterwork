@@ -184,7 +184,7 @@ export interface AssetCall {
      */
     'lane': string | null;
     /**
-     * Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief) | skill_read (a SKILL.md read, carries only the path) | subagent_stop (a finished subagent, carries nothing).
+     * Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read — a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing).
      * @type {string}
      * @memberof AssetCall
      */
@@ -1366,7 +1366,7 @@ export interface CodingPhase {
  */
 export interface CodingSession {
     /**
-     * Claude Code session id.
+     * The agent\'s own session id.
      * @type {string}
      * @memberof CodingSession
      */
@@ -1390,7 +1390,7 @@ export interface CodingSession {
      */
     'model': string | null;
     /**
-     * Event producer; always \"claude-code\" today.
+     * Which agent ran the session: \"claude-code\" | \"codex\".
      * @type {string}
      * @memberof CodingSession
      */
@@ -1553,7 +1553,7 @@ export interface CodingSession {
  */
 export interface CodingSessionDetail {
     /**
-     * Claude Code session id.
+     * The agent\'s own session id.
      * @type {string}
      * @memberof CodingSessionDetail
      */
@@ -1577,7 +1577,7 @@ export interface CodingSessionDetail {
      */
     'model': string | null;
     /**
-     * Event producer; always \"claude-code\" today.
+     * Which agent ran the session: \"claude-code\" | \"codex\".
      * @type {string}
      * @memberof CodingSessionDetail
      */
@@ -2649,7 +2649,7 @@ export interface HTTPValidationError {
  */
 export interface HookEventRequest {
     /**
-     * Claude Code session id.
+     * The agent\'s own session id.
      * @type {string}
      * @memberof HookEventRequest
      */
@@ -2660,6 +2660,12 @@ export interface HookEventRequest {
      * @memberof HookEventRequest
      */
     'event_type': string;
+    /**
+     * Which agent\'s hooks sent this. Used on first sight only, and defaults to claude-code so a forwarder from before Codex was recorded still files its sessions where it always did.
+     * @type {string}
+     * @memberof HookEventRequest
+     */
+    'source'?: HookEventRequestSourceEnum;
     /**
      * 
      * @type {string}
@@ -2757,6 +2763,14 @@ export interface HookEventRequest {
      */
     'context_samples'?: Array<ContextSampleIn> | null;
 }
+
+export const HookEventRequestSourceEnum = {
+    ClaudeCode: 'claude-code',
+    Codex: 'codex'
+} as const;
+
+export type HookEventRequestSourceEnum = typeof HookEventRequestSourceEnum[keyof typeof HookEventRequestSourceEnum];
+
 /**
  * 
  * @export
