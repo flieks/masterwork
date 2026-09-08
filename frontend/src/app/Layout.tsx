@@ -53,7 +53,9 @@ export function Layout() {
 
         <div className="border-t px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
           Local developer tool. Reads skills &amp; agents from{' '}
-          <code className="font-mono">~/.claude</code>.
+          <code className="font-mono">~/.claude</code>,{' '}
+          <code className="font-mono">~/.codex</code> and{' '}
+          <code className="font-mono">~/.agents</code>.
         </div>
       </nav>
 
