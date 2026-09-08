@@ -7,8 +7,13 @@ const EVENT_STYLES: Record<string, string> = {
   SessionStart: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
   UserPromptSubmit: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
   PostToolUse: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  SubagentStart: 'bg-violet-500/15 text-violet-700 dark:text-violet-400',
   SubagentStop: 'bg-violet-500/15 text-violet-700 dark:text-violet-400',
+  // Both mean "waiting on the person": Claude Code's word and Codex's.
+  Notification: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+  PermissionRequest: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
   Stop: 'bg-sky-500/15 text-sky-700 dark:text-sky-400',
+  Interrupt: 'bg-sky-500/15 text-sky-700 dark:text-sky-400',
   SessionEnd: 'bg-rose-500/15 text-rose-700 dark:text-rose-400',
 };
 

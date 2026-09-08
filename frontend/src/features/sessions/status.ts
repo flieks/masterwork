@@ -86,7 +86,7 @@ const RUN_STATUSES: Record<string, Omit<StatusMeta, 'label'> & { label?: string 
   abandoned: {
     ...NEUTRAL,
     icon: MoonStar,
-    hint: "Went quiet without reporting an outcome. Claude Code's SessionEnd hook dies with the process, so most runs never close themselves — after two minutes of silence the run is treated as finished rather than left running forever.",
+    hint: "Went quiet without reporting an outcome. The agent's SessionEnd hook dies with the process, so most runs never close themselves — after two minutes of silence the run is treated as finished rather than left running forever.",
   },
 };
 

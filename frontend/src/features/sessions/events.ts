@@ -19,6 +19,7 @@ const SUMMARY_KEYS = [
   'file_path',
   'notebook_path',
   'command',
+  'cmd', // Codex's exec_command
   'pattern',
   'url',
   'query',

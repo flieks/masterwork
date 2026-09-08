@@ -22,6 +22,7 @@ import {
   runWorkflow,
   sessionDetailPath,
 } from '../queries';
+import { AgentBadge } from './AgentBadge';
 import { CostChip } from './CostChip';
 import { ProjectBadge } from './ProjectBadge';
 import { DurationChip } from './DurationChip';
@@ -67,6 +68,8 @@ export function SessionHeader({ session }: { session: CodingSession }) {
         <span title={session.id}>{runIdLabel(session)}</span>
         <span aria-hidden="true">·</span>
         <span>{runWorkflow(session)}</span>
+        <span aria-hidden="true">·</span>
+        <AgentBadge source={session.source} />
         {session.model ? (
           <>
             <span aria-hidden="true">·</span>

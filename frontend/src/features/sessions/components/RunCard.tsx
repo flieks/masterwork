@@ -16,6 +16,7 @@ import {
 } from '../queries';
 import { stageRunsLabel } from '../runs';
 import { phaseStatusMeta } from '../status';
+import { AgentBadge } from './AgentBadge';
 import { AssetChip } from './AssetChip';
 import { CostChip } from './CostChip';
 import { DurationChip } from './DurationChip';
@@ -69,6 +70,8 @@ export function RunCard({ session, now = Date.now() }: { session: CodingSession;
               <span title={session.id}>{runIdLabel(session)}</span>
               <span aria-hidden="true">·</span>
               <span className={WORKFLOW_TINT[workflow] ?? undefined}>{workflow}</span>
+              <span aria-hidden="true">·</span>
+              <AgentBadge source={session.source} />
               {title.hint ? (
                 <>
                   <span aria-hidden="true">·</span>
