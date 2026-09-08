@@ -40,11 +40,14 @@ async function mockCatalog(
     search?: CatalogSearchResponse;
     detail?: CatalogSkillDetail;
     installed?: InstalledSkill;
+    /** What GET /skills/installed answers — the cached drift statuses. */
+    installedList?: InstalledSkill[];
   } = {},
 ): Promise<CatalogRoutes> {
   const search = initial.search ?? catalogSearchResponse();
   const detail = initial.detail ?? catalogSkillDetail();
   const installed = initial.installed ?? installedSkill();
+  const installedList = initial.installedList ?? [];
   const calls: string[] = [];
 
   await page.route('**/api/v1/**', async (route) => {
@@ -62,6 +65,8 @@ async function mockCatalog(
       await json(route, detail);
     } else if (path === '/api/v1/skills/install') {
       await json(route, installed);
+    } else if (path === '/api/v1/skills/installed') {
+      await json(route, installedList);
     } else if (path === '/api/v1/assets') {
       await json(route, []);
     } else {
@@ -128,7 +133,10 @@ test('installing a licensed skill posts once', async ({ mount, page }) => {
   expect(routes.calls.filter((c) => c === 'POST /api/v1/skills/install')).toHaveLength(1);
 });
 
-test('installing an unlicensed skill needs a second, risk-naming click', async ({ mount, page }) => {
+test('installing an unlicensed skill needs a second, risk-naming click', async ({
+  mount,
+  page,
+}) => {
   const routes = await mockCatalog(page, { detail: unlicensedCatalogSkillDetail() });
   await mountCatalogTab(mount, page);
 
@@ -245,4 +253,31 @@ test('a skill with no history still previews', async ({ mount, page }) => {
 
   await expect(dialog).toContainText('Use React and Vite.');
   await expect(dialog).not.toContainText('Last changed');
+});
+
+test('an installed card badges a cached upstream change, from one list request', async ({
+  mount,
+  page,
+}) => {
+  const routes = await mockCatalog(page, {
+    search: catalogSearchResponse({
+      skills: [
+        catalogSkill({ installed: true }),
+        catalogSkill({ skill: 'tdd', name: 'TDD', repo: 'tdd', installed: true }),
+      ],
+    }),
+    installedList: [
+      installedSkill({ drift_status: 'upstream_changed' }),
+      installedSkill({ name: 'tdd', repo: 'tdd', drift_status: 'current' }),
+    ],
+  });
+  await mountCatalogTab(mount, page);
+
+  await expect(page.getByRole('button', { name: /Frontend Dev/ })).toContainText(
+    'Update available',
+  );
+  await expect(page.getByRole('button', { name: /TDD/ })).not.toContainText('Update available');
+  // The badge reads the cached status: one list, never a check per card.
+  expect(routes.calls.filter((c) => c === 'GET /api/v1/skills/installed')).toHaveLength(1);
+  expect(routes.calls.filter((c) => c.includes('/check'))).toHaveLength(0);
 });
