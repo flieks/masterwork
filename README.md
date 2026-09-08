@@ -109,7 +109,10 @@ nothing links to yet. **Make generic** does the move: the folder goes to
 `~/.agents/skills`, the old location becomes a link to it, and every other agent
 gets a link too, so the skill is on disk once and every agent still finds it. An
 identical copy already in the shared folder is adopted instead of duplicated; a
-copy that differs stops and asks before anything is overwritten.
+copy that differs stops and asks before anything is overwritten. A skill can also
+be switched off without deleting it: it moves to `.disabled/` inside the same
+skills folder, one level deeper than any agent reads, and one switch brings it
+back.
 
 ![The make-generic confirmation, naming both paths before anything moves](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/make-generic.png)
 

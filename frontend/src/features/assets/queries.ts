@@ -67,6 +67,20 @@ export const updateAssetMutationAtom = atomWithMutation(() => ({
     api.assets.updateAsset(vars.assetId, { content: vars.content }).then((r) => r.data),
 }));
 
+/** Park a skill under .disabled/ or bring it back; same id, new path. */
+export const setAssetEnabledMutationAtom = atomWithMutation<
+  AssetDetail,
+  { assetId: string; enabled: boolean }
+>((get) => ({
+  mutationFn: ({ assetId, enabled }): Promise<AssetDetail> =>
+    api.assets.setAssetEnabled(assetId, { enabled }).then((r) => r.data),
+  onSuccess: (asset) => {
+    const queryClient = get(queryClientAtom);
+    queryClient.setQueryData(['asset', asset.id], asset);
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+  },
+}));
+
 /** Move a Claude or Codex skill into ~/.agents/skills; it comes back under a new id. */
 export const migrateAssetMutationAtom = atomWithMutation<
   AssetMigrationResult,

@@ -275,6 +275,12 @@ export interface AssetDetail {
      */
     'read_only': boolean;
     /**
+     * True when the skill is parked under its folder\'s `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty.
+     * @type {boolean}
+     * @memberof AssetDetail
+     */
+    'disabled': boolean;
+    /**
      * Full markdown, including frontmatter.
      * @type {string}
      * @memberof AssetDetail
@@ -313,6 +319,19 @@ export interface AssetDiagram {
      * @memberof AssetDiagram
      */
     'stale': boolean;
+}
+/**
+ * 
+ * @export
+ * @interface AssetEnabledRequest
+ */
+export interface AssetEnabledRequest {
+    /**
+     * False parks the skill under `.disabled/` so no agent loads it; true brings it back. Setting the state it already has is a no-op.
+     * @type {boolean}
+     * @memberof AssetEnabledRequest
+     */
+    'enabled': boolean;
 }
 /**
  * 
@@ -547,6 +566,12 @@ export interface AssetSummary {
      * @memberof AssetSummary
      */
     'read_only': boolean;
+    /**
+     * True when the skill is parked under its folder\'s `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty.
+     * @type {boolean}
+     * @memberof AssetSummary
+     */
+    'disabled': boolean;
 }
 
 
@@ -5503,6 +5528,46 @@ export const AssetsApiAxiosParamCreator = function (configuration?: Configuratio
         },
         /**
          * 
+         * @summary Set Asset Enabled
+         * @param {string} assetId 
+         * @param {AssetEnabledRequest} assetEnabledRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setAssetEnabled: async (assetId: string, assetEnabledRequest: AssetEnabledRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'assetId' is not null or undefined
+            assertParamExists('setAssetEnabled', 'assetId', assetId)
+            // verify required parameter 'assetEnabledRequest' is not null or undefined
+            assertParamExists('setAssetEnabled', 'assetEnabledRequest', assetEnabledRequest)
+            const localVarPath = `/api/v1/assets/{asset_id}/enabled`
+                .replace(`{${"asset_id"}}`, encodeURIComponent(String(assetId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(assetEnabledRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Update Asset
          * @param {string} assetId 
          * @param {AssetUpdateRequest} assetUpdateRequest 
@@ -5620,6 +5685,20 @@ export const AssetsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Set Asset Enabled
+         * @param {string} assetId 
+         * @param {AssetEnabledRequest} assetEnabledRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async setAssetEnabled(assetId: string, assetEnabledRequest: AssetEnabledRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AssetDetail>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.setAssetEnabled(assetId, assetEnabledRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AssetsApi.setAssetEnabled']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Update Asset
          * @param {string} assetId 
          * @param {AssetUpdateRequest} assetUpdateRequest 
@@ -5693,6 +5772,17 @@ export const AssetsApiFactory = function (configuration?: Configuration, basePat
          */
         migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig): AxiosPromise<AssetMigrationResult> {
             return localVarFp.migrateAssetToGeneric(assetId, assetMigrateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Set Asset Enabled
+         * @param {string} assetId 
+         * @param {AssetEnabledRequest} assetEnabledRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setAssetEnabled(assetId: string, assetEnabledRequest: AssetEnabledRequest, options?: RawAxiosRequestConfig): AxiosPromise<AssetDetail> {
+            return localVarFp.setAssetEnabled(assetId, assetEnabledRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -5775,6 +5865,19 @@ export class AssetsApi extends BaseAPI {
      */
     public migrateAssetToGeneric(assetId: string, assetMigrateRequest?: AssetMigrateRequest, options?: RawAxiosRequestConfig) {
         return AssetsApiFp(this.configuration).migrateAssetToGeneric(assetId, assetMigrateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Set Asset Enabled
+     * @param {string} assetId 
+     * @param {AssetEnabledRequest} assetEnabledRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AssetsApi
+     */
+    public setAssetEnabled(assetId: string, assetEnabledRequest: AssetEnabledRequest, options?: RawAxiosRequestConfig) {
+        return AssetsApiFp(this.configuration).setAssetEnabled(assetId, assetEnabledRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

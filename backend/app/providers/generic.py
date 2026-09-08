@@ -13,7 +13,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from app.providers.base import ScannedAsset, SnapshotTree, resolve_within_roots
+from app.providers.base import (
+    ScannedAsset,
+    SnapshotTree,
+    iter_skill_dirs,
+    resolve_within_roots,
+    skill_dir_name,
+)
 from app.providers.claude import _KIND_SKILL, _safe_resolve, build_asset
 
 PROVIDER_GENERIC = "generic"
@@ -52,18 +58,15 @@ class GenericSkillProvider:
         )
 
     def scan(self) -> Iterable[ScannedAsset]:
-        if not self._skills_root.is_dir():
-            return
-        for entry in sorted(self._skills_root.iterdir()):
-            skill_file = entry / "SKILL.md"
-            if entry.name.startswith(".") or not entry.is_dir() or not skill_file.is_file():
-                continue
+        for entry, disabled in iter_skill_dirs(self._skills_root, skip_hidden=True):
+            # Disabled: the agents' links moved into their own .disabled/, so none loads it.
             asset = build_asset(
                 self.name,
                 _KIND_SKILL,
                 entry.name,
-                skill_file,
-                agents=self.linked_agents(entry.name),
+                entry / "SKILL.md",
+                agents=() if disabled else self.linked_agents(entry.name),
+                disabled=disabled,
             )
             if asset is not None:
                 yield asset
@@ -77,9 +80,7 @@ class GenericSkillProvider:
     def asset_id_for_path(self, path: Path) -> str | None:
         resolved = _safe_resolve(path)
         root = _safe_resolve(self._skills_root)
-        if resolved is None or root is None or resolved.name != "SKILL.md":
+        if resolved is None or root is None:
             return None
-        parent = resolved.parent
-        if parent.parent == root and not parent.name.startswith("."):
-            return f"{self.name}:{_KIND_SKILL}:{parent.name}"
-        return None
+        skill = skill_dir_name(root, resolved)
+        return None if skill is None else f"{self.name}:{_KIND_SKILL}:{skill[0]}"
