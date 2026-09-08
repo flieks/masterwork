@@ -24,6 +24,7 @@ from app.config import settings
 from app.db.base import Base
 from app.db.session import make_engine
 from app.main import app
+from app.services import factory_launcher
 
 TEST_DB_NAME = "masterwork_test"
 _IS_POSTGRES = settings.database_url.startswith("postgresql")
@@ -60,6 +61,14 @@ def _test_database() -> Iterator[None]:
         yield
     finally:
         _run(["dropdb", "--if-exists", TEST_DB_NAME])
+
+
+@pytest.fixture(autouse=True)
+def _agent_cli_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The launcher refuses to spawn without a `claude` on PATH, and a CI runner
+    has none. Tests spawn through fakes anyway; the one that wants the refusal
+    re-patches this to None."""
+    monkeypatch.setattr(factory_launcher, "find_agent_cli", lambda: "/usr/local/bin/claude")
 
 
 @pytest_asyncio.fixture
