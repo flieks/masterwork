@@ -10,17 +10,20 @@ from app.api.v1.assets.schemas import AssetDetail, AssetKind, AssetMigrationResu
 from app.core.exceptions import (
     AssetNotFoundError,
     AssetNotMigratableError,
+    AssetNotToggleableError,
     InvalidAssetIdError,
     ReadOnlyAssetError,
 )
-from app.providers.base import Provider, ScannedAsset, resolve_within_roots
+from app.providers.base import DISABLED_DIR, Provider, ScannedAsset, resolve_within_roots
 from app.providers.generic import GenericSkillProvider
 from app.repositories import projects as project_repo
-from app.services import skill_migrate
+from app.services import skill_migrate, skill_toggle
 from app.services.asset_history import prepare_snapshots, snapshot_writes
 
 # Providers whose skills sit in one agent's own dir and can move to the generic one.
 MIGRATABLE_PROVIDERS = frozenset({"claude", "codex"})
+# Providers whose skills folder masterwork may park a skill in.
+TOGGLEABLE_PROVIDERS = MIGRATABLE_PROVIDERS | {"generic"}
 
 
 def parse_asset_id(asset_id: str) -> tuple[str, str, str]:
@@ -46,6 +49,7 @@ def _to_summary(asset: ScannedAsset) -> AssetSummary:
         created_at=asset.created_at,
         updated_at=asset.updated_at,
         read_only=asset.read_only,
+        disabled=asset.disabled,
     )
 
 
@@ -115,6 +119,41 @@ async def update_asset(providers: list[Provider], asset_id: str, content: str) -
     await prepare_snapshots(providers, [resolved])
     resolved.write_text(content, encoding="utf-8")
     await snapshot_writes(providers, [resolved], f"masterwork: edit asset: {asset_id}")
+    return get_asset(providers, asset_id)
+
+
+async def set_asset_enabled(
+    providers: list[Provider], asset_id: str, *, enabled: bool
+) -> AssetDetail:
+    """Park a skill under its folder's `.disabled/` or bring it back. The id
+    survives the move; only the path changes."""
+    asset = find_asset(providers, asset_id)
+    if asset.kind != AssetKind.skill.value:
+        raise AssetNotToggleableError("only skills can be switched off; agents stay as they are")
+    if asset.provider not in TOGGLEABLE_PROVIDERS or asset.read_only:
+        raise AssetNotToggleableError(
+            f"{asset_id} is not in a folder masterwork may write to and cannot be switched off"
+        )
+    if asset.disabled == (not enabled):
+        return _to_detail(asset)  # already in the requested state
+
+    # A disabled skill sits one level deeper: <root>/.disabled/<name>/SKILL.md.
+    skills_root = asset.path.parents[2] if asset.disabled else asset.path.parents[1]
+    agent_roots = _generic_provider(providers).agent_roots if asset.provider == "generic" else {}
+
+    # Both ends of every rename: whichever does not exist at snapshot time still
+    # resolves lexically into its tree, so each tree is committed before and after.
+    touched = [
+        path
+        for root in [skills_root, *agent_roots.values()]
+        for path in (root / asset.name / "SKILL.md", root / DISABLED_DIR / asset.name / "SKILL.md")
+    ]
+    await prepare_snapshots(providers, touched)
+    skill_toggle.set_skill_enabled(
+        asset.name, enabled=enabled, skills_root=skills_root, agent_roots=agent_roots
+    )
+    verb = "enable" if enabled else "disable"
+    await snapshot_writes(providers, touched, f"masterwork: {verb} skill: {asset.name}")
     return get_asset(providers, asset_id)
 
 

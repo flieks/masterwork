@@ -195,6 +195,58 @@
                 }
             }
         },
+        "/api/v1/assets/{asset_id}/enabled": {
+            "put": {
+                "tags": [
+                    "assets"
+                ],
+                "summary": "Set Asset Enabled",
+                "operationId": "setAssetEnabled",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Asset Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AssetEnabledRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AssetDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/assets/{asset_id}/migrate": {
             "post": {
                 "tags": [
@@ -4188,6 +4240,11 @@
                         "title": "Read Only",
                         "description": "True for plugin-provided assets; PUT is rejected with 403."
                     },
+                    "disabled": {
+                        "type": "boolean",
+                        "title": "Disabled",
+                        "description": "True when the skill is parked under its folder's `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty."
+                    },
                     "content": {
                         "type": "string",
                         "title": "Content",
@@ -4206,6 +4263,7 @@
                     "path",
                     "updated_at",
                     "read_only",
+                    "disabled",
                     "content"
                 ],
                 "title": "AssetDetail"
@@ -4240,6 +4298,20 @@
                     "stale"
                 ],
                 "title": "AssetDiagram"
+            },
+            "AssetEnabledRequest": {
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled",
+                        "description": "False parks the skill under `.disabled/` so no agent loads it; true brings it back. Setting the state it already has is a no-op."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "enabled"
+                ],
+                "title": "AssetEnabledRequest"
             },
             "AssetKind": {
                 "type": "string",
@@ -4492,6 +4564,11 @@
                         "type": "boolean",
                         "title": "Read Only",
                         "description": "True for plugin-provided assets; PUT is rejected with 403."
+                    },
+                    "disabled": {
+                        "type": "boolean",
+                        "title": "Disabled",
+                        "description": "True when the skill is parked under its folder's `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty."
                     }
                 },
                 "type": "object",
@@ -4505,7 +4582,8 @@
                     "description",
                     "path",
                     "updated_at",
-                    "read_only"
+                    "read_only",
+                    "disabled"
                 ],
                 "title": "AssetSummary"
             },

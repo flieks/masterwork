@@ -309,3 +309,16 @@ class GenericSkillExistsError(DomainError):
     """The generic folder already holds a skill with this name."""
 
     status_code = 409
+
+
+class AssetNotToggleableError(DomainError):
+    """Only a skill in a writable folder can be switched off: an agent file has
+    no `.disabled` convention yet, and a plugin asset belongs to its marketplace."""
+
+    status_code = 409
+
+
+class SkillToggleConflictError(DomainError):
+    """The folder the skill would move to already holds something of that name."""
+
+    status_code = 409
