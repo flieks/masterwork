@@ -28,6 +28,7 @@ function skill(name: string, title: string): AssetSummary {
     updated_at: '2026-08-01T09:00:00.000Z',
     agents: ['claude'],
     read_only: false,
+    disabled: false,
   };
 }
 

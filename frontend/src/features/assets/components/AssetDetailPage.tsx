@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Lock, Pencil, Save, X, AlertTriangle, Share2 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Skeleton } from '~/components/ui/skeleton';
+import { Switch } from '~/components/ui/switch';
 import { EmptyState } from '~/components/EmptyState';
 import { MarkdownView } from '~/components/MarkdownView';
 import { CodeEditor } from '~/components/CodeEditor';
@@ -16,6 +17,7 @@ import { splitFrontmatter } from '~/lib/frontmatter';
 import { AssetChatPanel } from '~/features/chat';
 import { ProviderBadge } from './ProviderBadge';
 import { AgentsBadge } from './AgentsBadge';
+import { DisabledBadge } from './DisabledBadge';
 import { MakeGenericDialog } from './MakeGenericDialog';
 import { ModelBadge } from './ModelBadge';
 import { AssetDatesInline } from './AssetDates';
@@ -28,9 +30,13 @@ import {
   assetListPath,
   buildAssetId,
   migrateAssetMutationAtom,
+  setAssetEnabledMutationAtom,
   updateAssetMutationAtom,
   type AssetKind,
 } from '../queries';
+
+// Skills in a folder masterwork may write to; a plugin's folder is its marketplace's.
+const TOGGLEABLE_PROVIDERS = new Set(['claude', 'codex', 'generic']);
 
 export function AssetDetailPage({ kind }: { kind: AssetKind }) {
   const { name = '' } = useParams();
@@ -41,6 +47,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
   const [{ data, isPending, isError, error }] = useAtom(assetDetailQueryAtom(assetId));
   const [{ mutateAsync, isPending: isSaving }] = useAtom(updateAssetMutationAtom);
   const [{ mutateAsync: migrate, isPending: isMigrating }] = useAtom(migrateAssetMutationAtom);
+  const [{ mutateAsync: setEnabled, isPending: isToggling }] = useAtom(setAssetEnabledMutationAtom);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [confirmGeneric, setConfirmGeneric] = useState(false);
@@ -83,6 +90,21 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
       setDraft('');
     } catch (err) {
       toast.error('Save failed', { description: apiErrorMessage(err) });
+    }
+  }
+
+  async function toggleEnabled(enabled: boolean) {
+    try {
+      const updated = await setEnabled({ assetId, enabled });
+      toast.success(enabled ? 'Enabled' : 'Disabled', {
+        description: enabled
+          ? `${updated.title} is back in its skills folder and loads again.`
+          : `${updated.title} moved to .disabled/; no agent loads it until you switch it back on.`,
+      });
+    } catch (err) {
+      toast.error(enabled ? "Couldn't enable it" : "Couldn't disable it", {
+        description: apiErrorMessage(err),
+      });
     }
   }
 
@@ -151,6 +173,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
     kind === 'skill' &&
     !data.read_only &&
     (data.provider === 'claude' || data.provider === 'codex');
+  const canToggle = kind === 'skill' && !data.read_only && TOGGLEABLE_PROVIDERS.has(data.provider);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5 p-6">
@@ -179,6 +202,20 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
               </span>
             ) : mode === 'view' ? (
               <>
+                {canToggle ? (
+                  <label
+                    className="mr-2 inline-flex items-center gap-2 text-sm"
+                    title="Off parks the skill under .disabled/ in its folder, where no coding agent looks; nothing is deleted"
+                  >
+                    <Switch
+                      checked={!data.disabled}
+                      onCheckedChange={toggleEnabled}
+                      disabled={isToggling}
+                      aria-label="Enabled"
+                    />
+                    Enabled
+                  </label>
+                ) : null}
                 {canMakeGeneric ? (
                   <Button
                     size="sm"
@@ -206,8 +243,9 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-          <AgentsBadge provider={data.provider} agents={data.agents} />
+          <AgentsBadge provider={data.provider} agents={data.agents} disabled={data.disabled} />
           <ProviderBadge provider={data.provider} />
+          {data.disabled ? <DisabledBadge /> : null}
           <ModelBadge model={data.model} showInherit={kind === 'agent'} />
           <code className="font-mono">{shortenPath(data.path)}</code>
           <AssetDatesInline created={data.created_at} updated={data.updated_at} />

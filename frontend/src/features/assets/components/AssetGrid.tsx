@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { Activity } from 'lucide-react';
 import type { AssetSummary, CodingAssetUsage } from '~/api/generated';
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
+import { cn } from '~/lib/utils';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../queries';
 import { usageLabel } from '../usage';
 import { AssetDatesStacked } from './AssetDates';
 import { ModelBadge } from './ModelBadge';
 import { AgentsBadge } from './AgentsBadge';
+import { DisabledBadge } from './DisabledBadge';
 
 interface AssetGridProps {
   kind: AssetKind;
@@ -26,11 +28,19 @@ export function AssetGrid({ kind, assets }: AssetGridProps) {
           to={assetDetailPath(kind, asset.name, asset.provider)}
           className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Card className="relative h-full transition-colors hover:border-ring hover:bg-accent/40">
+          <Card
+            className={cn(
+              'relative h-full transition-colors hover:border-ring hover:bg-accent/40',
+              asset.disabled && 'opacity-60',
+            )}
+          >
             <CardHeader>
-              <CardTitle className="truncate" title={asset.title}>
-                {asset.title}
-              </CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="truncate" title={asset.title}>
+                  {asset.title}
+                </CardTitle>
+                {asset.disabled ? <DisabledBadge /> : null}
+              </div>
             </CardHeader>
             <CardContent className="flex h-full flex-col gap-3 pb-20">
               <p className="line-clamp-3 text-sm text-muted-foreground">
@@ -42,7 +52,11 @@ export function AssetGrid({ kind, assets }: AssetGridProps) {
               <div className="flex items-end justify-between gap-2">
                 <AssetDatesStacked created={asset.created_at} updated={asset.updated_at} />
                 <div className="flex flex-wrap justify-end gap-1.5">
-                  <AgentsBadge provider={asset.provider} agents={asset.agents} />
+                  <AgentsBadge
+                    provider={asset.provider}
+                    agents={asset.agents}
+                    disabled={asset.disabled}
+                  />
                   <ModelBadge model={asset.model} showInherit={kind === 'agent'} compact />
                 </div>
               </div>

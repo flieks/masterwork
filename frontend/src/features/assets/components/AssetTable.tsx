@@ -1,11 +1,13 @@
 import { useAtom } from 'jotai';
 import { useNavigate } from 'react-router-dom';
 import type { AssetSummary } from '~/api/generated';
+import { cn } from '~/lib/utils';
 import { absoluteDate, absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { assetAge } from '../dates';
 import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../queries';
 import { NeverEdited, UnknownCreated } from './AssetDates';
 import { AgentsBadge } from './AgentsBadge';
+import { DisabledBadge } from './DisabledBadge';
 
 interface AssetTableProps {
   kind: AssetKind;
@@ -45,17 +47,27 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
                   if (e.key === 'Enter')
                     navigate(assetDetailPath(kind, asset.name, asset.provider));
                 }}
-                className="cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none"
+                className={cn(
+                  'cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none',
+                  asset.disabled && 'opacity-60',
+                )}
               >
-                <td className="max-w-[16rem] truncate px-4 py-2.5 font-medium" title={asset.title}>
-                  {asset.title}
+                <td className="max-w-[16rem] px-4 py-2.5 font-medium" title={asset.title}>
+                  <span className="flex items-center gap-2">
+                    <span className="truncate">{asset.title}</span>
+                    {asset.disabled ? <DisabledBadge /> : null}
+                  </span>
                 </td>
                 {/* Truncated at any width, so it yields room to the date columns. */}
                 <td className="max-w-[15rem] truncate px-4 py-2.5 text-muted-foreground">
                   {asset.description || '—'}
                 </td>
                 <td className="px-4 py-2.5">
-                  <AgentsBadge provider={asset.provider} agents={asset.agents} />
+                  <AgentsBadge
+                    provider={asset.provider}
+                    agents={asset.agents}
+                    disabled={asset.disabled}
+                  />
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
                   {used ? used.uses : <span className="text-muted-foreground">—</span>}
