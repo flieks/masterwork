@@ -25,6 +25,7 @@ from app.core.exceptions import (
     SkillFetchError,
     SkillLicenseRefusedError,
 )
+from app.providers.base import DISABLED_DIR
 from app.services.skill_catalog import MAX_SKILL_BYTES, FetchedSkill
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -55,10 +56,22 @@ def installed_slugs(skills_root: Path) -> set[str]:
     return {entry.name for entry in skills_root.iterdir() if entry.is_dir()}
 
 
+def installed_dir(slug: str, *, skills_root: Path) -> Path | None:
+    """Where the installed copy lives: the skills root, or parked under
+    `.disabled/` when the user switched it off. None when it is in neither."""
+    for candidate in (skills_root / slug, skills_root / DISABLED_DIR / slug):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def read_installed_skill_md(slug: str, *, skills_root: Path) -> str | None:
     """The installed SKILL.md, or None when it is absent or unreadable — used to
     tell whether the copy on disk still matches the registry."""
-    path = skills_root / slug / "SKILL.md"
+    folder = installed_dir(slug, skills_root=skills_root)
+    if folder is None:
+        return None
+    path = folder / "SKILL.md"
     try:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -66,7 +79,7 @@ def read_installed_skill_md(slug: str, *, skills_root: Path) -> str | None:
 
 
 def is_installed(slug: str, *, skills_root: Path) -> bool:
-    return (skills_root / slug).is_dir()
+    return installed_dir(slug, skills_root=skills_root) is not None
 
 
 def _write_within(root: Path, relative_path: str, content: bytes) -> None:
@@ -91,7 +104,10 @@ def install_skill(
         raise SkillFetchError(f"skill exceeds {MAX_SKILL_BYTES} bytes")
 
     skills_root.mkdir(parents=True, exist_ok=True)
-    target = skills_root / slug
+    # An update of a switched-off skill lands in its parked folder, not beside it.
+    target = (
+        installed_dir(slug, skills_root=skills_root) if overwrite else None
+    ) or skills_root / slug
     staging = skills_root / f".masterwork-install-{slug}"
     old_aside = skills_root / f".masterwork-old-{slug}"
 
@@ -130,11 +146,13 @@ def uninstall_skill(slug: str, *, skills_root: Path) -> None:
     if not SLUG_RE.match(slug):
         raise InvalidSkillNameError(f"not a valid skill slug: {slug!r}")
 
-    target = (skills_root / slug).resolve()
+    folder = installed_dir(slug, skills_root=skills_root)
+    if folder is None:
+        return
+    target = folder.resolve()
     if not target.is_relative_to(skills_root.resolve()):
         raise InvalidSkillNameError(f"refusing to remove a path outside the skills root: {slug!r}")
-    if target.is_dir():
-        shutil.rmtree(target)
+    shutil.rmtree(target)
 
 
 # --- drift ----------------------------------------------------------------
@@ -185,8 +203,8 @@ def read_installed_files(slug: str, *, skills_root: Path) -> dict[str, bytes] | 
     """Every regular file under the skill folder keyed by relative path, or
     None when the folder is missing. Symlinked files are read, not followed as
     trees — a generic skill reaches here through a folder link."""
-    root = skills_root / slug
-    if not root.is_dir():
+    root = installed_dir(slug, skills_root=skills_root)
+    if root is None:
         return None
     files: dict[str, bytes] = {}
     for dirpath, dirnames, filenames in os.walk(root):

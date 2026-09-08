@@ -330,7 +330,8 @@ async def update_from_upstream(
             " those edits. Pass force to replace them with the upstream copy."
         )
 
-    touched = [skills_root / name / "SKILL.md"]
+    folder = skill_install.installed_dir(name, skills_root=skills_root) or skills_root / name
+    touched = [folder / "SKILL.md"]
     await prepare_snapshots(providers, touched)
     skill_install.install_skill(cmp.fetched, slug=name, skills_root=skills_root, overwrite=True)
     await snapshot_writes(providers, touched, f"masterwork: update skill from upstream: {name}")
