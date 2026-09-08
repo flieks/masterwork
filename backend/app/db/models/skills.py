@@ -27,5 +27,15 @@ class InstalledSkill(Base):
     # Attribute renamed off "registry": DeclarativeBase already owns that name.
     source_registry: Mapped[str] = mapped_column("registry", String(50))
     installed_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+    # Baseline for the drift check: upstream commit and content hash at install
+    # time. Null on rows older than the columns, and sha stays null when the
+    # commits lookup failed — the check then falls back to comparing content.
+    installed_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    installed_tree_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    root_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Cache of the last check, so lists can badge without a GitHub round trip.
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    upstream_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    drift_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     __table_args__ = (UniqueConstraint("name", name="uq_installed_skills_name"),)

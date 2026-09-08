@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.services.skill_install import DriftStatus, FileChange
+
 
 class SkillRegistry(StrEnum):
     skills_sh = "skills_sh"
@@ -105,3 +107,51 @@ class InstalledSkill(BaseModel):
     license: str | None = None
     registry: SkillRegistry
     installed_at: datetime
+    source_url: str = Field(..., description="Link to the skill's folder on GitHub.")
+    installed_sha: str | None = Field(
+        None, description="Upstream commit for the folder at install time; null when unknown."
+    )
+    root_path: str | None = Field(
+        None, description='Folder inside the repo the skill came from; "" for the repo root.'
+    )
+    last_checked_at: datetime | None = Field(
+        None, description="When the upstream check last ran; null means never."
+    )
+    upstream_sha: str | None = Field(None, description="Upstream commit seen by the last check.")
+    drift_status: DriftStatus | None = Field(
+        None, description="Cached result of the last check; null until one has run."
+    )
+
+
+class UpstreamFileChange(BaseModel):
+    path: str = Field(..., description="Relative to the skill folder.")
+    change: FileChange
+
+
+class UpstreamCheckResult(BaseModel):
+    name: str
+    status: DriftStatus
+    checked_at: datetime
+    source_url: str | None = Field(
+        None, description="Link to the skill's folder on GitHub; null with no install row."
+    )
+    installed_sha: str | None = None
+    upstream_sha: str | None = Field(None, description="Newest upstream commit for the folder.")
+    upstream_last_modified_at: datetime | None = Field(
+        None, description="Date of that commit; null if the lookup failed."
+    )
+    upstream_last_change_summary: str | None = Field(
+        None, description="Subject of that commit — third-party text, render as plain text."
+    )
+    skill_md_diff: str = Field(
+        ..., description='Unified diff, installed SKILL.md -> upstream; "" when identical.'
+    )
+    other_changes: list[UpstreamFileChange] = Field(
+        ..., description="Companion files that differ; SKILL.md is in the diff instead."
+    )
+
+
+class SkillUpdateRequest(BaseModel):
+    force: bool = Field(
+        False, description="Overwrite local edits: required when status is edited_locally/diverged."
+    )
