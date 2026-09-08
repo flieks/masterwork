@@ -257,7 +257,7 @@
       <div class="folder">
         <code>~/.codex/skills</code>
         <div class="who">Codex</div>
-        <p>Read by Codex alone. Optional: scanned when the folder exists.</p>
+        <p>Read by Codex alone. Scanned when the folder exists. A skill can also be switched off here without deleting it.</p>
         <span class="badge">Codex only</span>
       </div>
       <div class="folder">
@@ -281,7 +281,7 @@
       </div>
       <div class="feature">
         <h3>Sessions your agent actually ran</h3>
-        <p>Switch on recording and every Claude Code session is kept: which skills and subagents it used, where the time went, what it cost. A skill's score and its real usage sit in the same place.</p>
+        <p>Switch on recording and every Claude Code and Codex session is kept: which skills and subagents it used, where the time went, what it cost. A skill's score and its real usage sit in the same place.</p>
         <figure class="plate"><img src="/assets/session.jpg" width="1800" height="1125" alt="A recorded coding session with its timeline of tool calls, skills used and cost" loading="lazy"><figcaption></figcaption></figure>
       </div>
       <div class="feature">
@@ -314,7 +314,7 @@
           <tr><td>Score a skill against a scenario with a checklist</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes, from the CLI</td><td class="no">No</td></tr>
           <tr><td>Score history per skill, re-run after an edit</td><td class="yes">Yes</td><td class="no">No</td><td class="part">One-shot benchmark</td><td class="no">No</td></tr>
           <tr><td>Generality audit for overfitted skills</td><td class="yes">Yes</td><td class="no">No</td><td class="part">Improve mode</td><td class="no">No</td></tr>
-          <tr><td>Session records with skills used, time and cost</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="part">Cost only</td></tr>
+          <tr><td>Session records with skills used, time and cost (Claude Code, Codex)</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="part">Cost only</td></tr>
           <tr><td>Subagents alongside skills</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
           <tr><td>Desktop installer</td><td class="no">npx, not yet</td><td class="yes">Mac, Windows, Linux</td><td class="no">Plugin</td><td class="no">npx</td></tr>
           <tr><td>Runs with your subscription, no API key</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
@@ -345,7 +345,7 @@ npm start</pre>
         <li>Python 3.13 or newer, and <a href="https://docs.astral.sh/uv/">uv</a></li>
         <li>Node 20 or newer</li>
         <li>The <a href="https://claude.com/claude-code">Claude Code</a> CLI, signed in. Chat, simulations and audits run through it.</li>
-        <li>Codex is optional. Its skills folder is read when it exists.</li>
+        <li>Codex is optional. Its skills folder is read and its sessions are recorded when it is installed.</li>
       </ul>
       <p class="muted" style="margin-top:1.25rem">Everything is stored in <code>~/.masterwork</code>: chat sessions and simulation history. Your skills stay where they are on disk. Postgres works too, if you set <code>DATABASE_URL</code>.</p>
     </div>
