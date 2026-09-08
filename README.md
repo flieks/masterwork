@@ -36,9 +36,9 @@ against — that's the hard part. Masterwork is built for that second half.
   concrete diff you accept or reject. It never writes files on its own.
 - **Projects** — group assets around a goal, with generated summaries and Mermaid
   diagrams of how they fit together.
-- **Sessions** — record the runs your coding agent actually does: which skills
-  and subagents each one used, where the time went, what it cost. One click to
-  switch on.
+- **Sessions** — record the runs your coding agents actually do, Claude Code
+  and Codex alike: which skills and subagents each one used, where the time
+  went, what it cost. One click per agent to switch on.
 - **Work** — your backlog next to the pull requests waiting on you, with each
   PR's review comments read in place and handed to a fresh coding session to
   answer.
@@ -53,7 +53,8 @@ against — that's the hard part. Masterwork is built for that second half.
 - Python 3.13+ and [uv](https://docs.astral.sh/uv/)
 - Node 20+
 - The [Claude Code](https://claude.com/claude-code) CLI, signed in
-- Codex is optional: its skills folder is read when it exists
+- Codex is optional: its skills folder is read when it exists, and its sessions
+  can be recorded once it has run on the machine (`~/.codex` exists)
 
 No database server needed — it uses SQLite at `~/.masterwork/masterwork.db` and
 stores only chat sessions and simulation history. Your skills stay on disk.
@@ -151,19 +152,21 @@ the comments quoted into the prompt and a rule that it may not push.
 
 ## Session recording
 
-The **Sessions** screen is empty until your coding agent tells masterwork that a
-run happened. Open it and click **Connect** — that is the whole setup. It:
+The **Sessions** screen is empty until a coding agent tells masterwork that a
+run happened. Open it and click **Connect** next to the agent — that is the
+whole setup. For Claude Code it:
 
 - copies a small forwarder script to `~/.masterwork/hooks/`,
 - adds eight hooks to `~/.claude/settings.json` that run it (backing the file up
   to `settings.json.masterwork.bak` first),
 - leaves every other hook in that file exactly as it was.
 
-From then on each session posts its start, prompts, tool calls, subagent spawns,
-the moments it goes blocked on you, and its exit to
-`http://localhost:8008/api/v1/hooks/events`. **Disconnect** in the same place
-removes those eight entries and nothing else; the runs already recorded are
-kept.
+Codex gets the same treatment with its own forwarder and nine hooks in
+`~/.codex/hooks.json`; `config.toml` is never written. From then on each session
+posts its start, prompts, tool calls, subagent spawns, the moments it goes
+blocked on you, and its exit to `http://localhost:8008/api/v1/hooks/events`, and
+every run is badged with the agent that ran it. **Disconnect** in the same place
+removes those entries and nothing else; the runs already recorded are kept.
 
 Nothing is installed without that click, and nothing is sent anywhere but your
 own machine. Prefer the terminal?
@@ -180,10 +183,10 @@ Which model actually gets its work accepted is a number here, not a hunch.
 
 ![Analytics: acceptance, corrections and cost per model, and every run over time](docs/images/analytics.png)
 
-Claude Code is the only agent wired up today. `SKILL.md` is an open standard and
-so is this: an agent that can run a command on session events is an
-`Integration` implementation in `backend/app/observability/` and a line in its
-registry — the API, the screen and the button already handle the rest.
+Claude Code and Codex are the agents wired up today. `SKILL.md` is an open
+standard and so is this: an agent that can run a command on session events is
+an `Integration` implementation in `backend/app/observability/` and a line in
+its registry — the API, the screen and the button already handle the rest.
 
 ## How it works
 
@@ -220,11 +223,10 @@ No auth, no multi-user: this is a single-user tool bound to localhost.
 
 ## Roadmap
 
-- **More agents.** Codex's skills folder and the shared `~/.agents` one are read
-  today; session recording is still Claude Code only, and Cursor and Gemini CLI
-  are not read at all. Assets route through a provider abstraction and session
-  recording through an integration one, so adding an agent to either is the
-  natural first contribution.
+- **More agents.** Claude Code and Codex are read and recorded today; Cursor
+  and Gemini CLI are not read at all. Assets route through a provider
+  abstraction and session recording through an integration one, so adding an
+  agent to either is the natural first contribution.
 - **A faster first run.** `npx masterwork` currently runs the frontend through
   Vite's dev server, so the very first launch waits on a full install. Shipping a
   pre-built frontend would cut that to seconds.
