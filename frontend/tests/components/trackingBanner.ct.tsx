@@ -2,7 +2,13 @@ import { test, expect, type Page } from '@playwright/experimental-ct-react';
 import type { ObservabilityIntegration } from '~/api/generated';
 import { TrackingBanner } from '~/features/observability';
 import { TestProviders } from './harness/TestProviders';
-import { disconnected, integration, outdated, unavailable } from './harness/integrationFixtures';
+import {
+  codexIntegration,
+  disconnected,
+  integration,
+  outdated,
+  unavailable,
+} from './harness/integrationFixtures';
 
 /** One-click setup for session recording, and the one click that undoes it. */
 
@@ -135,4 +141,83 @@ test('a connected agent stays out of the way until Manage is opened', async ({ m
 
   await expect(page.getByText('Record your coding sessions')).toBeVisible();
   expect(posted[0]).toContain('/observability/integrations/claude-code/disconnect');
+});
+
+/** Serves several integrations at once; a POST flips the one it names. */
+async function mockManyIntegrations(
+  page: Page,
+  integrations: ObservabilityIntegration[],
+  after: Record<string, ObservabilityIntegration>,
+): Promise<{ posted: string[] }> {
+  const posted: string[] = [];
+  let current = integrations;
+  await page.route('**/api/v1/observability/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: CORS, body: '' });
+      return;
+    }
+    if (request.method() === 'POST') {
+      posted.push(request.url());
+      const id = request.url().split('/integrations/')[1].split('/')[0];
+      current = current.map((i) => (i.id === id ? (after[id] ?? i) : i));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: JSON.stringify(current.find((i) => i.id === id)),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS,
+      body: JSON.stringify(current),
+    });
+  });
+  return { posted };
+}
+
+test('two agents get two cards, each with its own connect button', async ({ mount, page }) => {
+  const { posted } = await mockManyIntegrations(page, [disconnected(), codexIntegration()], {
+    codex: codexIntegration({ state: 'connected', detail: 'Recording every Codex session.' }),
+  });
+
+  await mount(
+    <TestProviders>
+      <TrackingBanner />
+    </TestProviders>,
+  );
+
+  await expect(page.getByText('Record your coding sessions')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Connect Claude Code' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Connect Codex' })).toBeEnabled();
+  await expect(page.getByText(/adds 9 hooks to \/home\/dev\/.codex\/hooks.json/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Connect Codex' }).click();
+
+  // Only Codex was posted, and only Codex is recording; Claude Code still offers to connect.
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toContain('/observability/integrations/codex/connect');
+  await expect(page.getByText('Recording Codex')).toBeVisible();
+  await page.getByRole('button', { name: 'Manage' }).click();
+  await expect(page.getByRole('button', { name: 'Connect Claude Code' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Disconnect' })).toHaveCount(1);
+});
+
+test('two recording agents are named together', async ({ mount, page }) => {
+  await mockManyIntegrations(
+    page,
+    [integration(), codexIntegration({ state: 'connected', detail: 'Recording.' })],
+    {},
+  );
+
+  await mount(
+    <TestProviders>
+      <TrackingBanner />
+    </TestProviders>,
+  );
+
+  await expect(page.getByText('Recording Claude Code, Codex')).toBeVisible();
 });

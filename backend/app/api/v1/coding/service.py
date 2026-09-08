@@ -27,13 +27,13 @@ from app.api.v1.coding import assets, derive, evidence, schemas, serializers
 from app.config import settings
 from app.core.exceptions import CodingMediaNotFoundError, CodingSessionNotFoundError
 from app.db.models.coding import (
+    AWAITING_INPUT_EVENTS,
     EVIDENCE_RECOVERED,
     EVIDENCE_REPORTED,
     KIND_AGENT,
     LAUNCH_AUTOMATED,
     LAUNCH_INTERACTIVE,
     MAIN_AGENT,
-    NOTIFICATION_EVENT,
     PHASE_ABANDONED,
     PHASE_PASSED,
     PHASE_RUNNING,
@@ -161,13 +161,16 @@ def _capped(value: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"_truncated": True, "_chars": len(encoded), "_preview": encoded[:PREVIEW_CHARS]}
 
 
-# `claude -p` is a one-shot with no one at the keyboard: a wrapper script, a hook,
-# a scheduler. An interactive run never carries the flag, so its presence anywhere
-# in the launcher chain is what separates a person's session from a machine's.
-# `[/\s]`, not `/`: the hook writes chain entries as "<pid> claude -p …", so the
-# command is bare and space-prefixed. Anchoring on a slash alone matched only the
-# absolute-path form and left every headless child classified interactive.
-_HEADLESS_LAUNCH = re.compile(r"(?:^|[/\s])claude\b.*?\s(?:-p|--print)(?:\s|$)")
+# `claude -p` and `codex exec` are one-shots with no one at the keyboard: a
+# wrapper script, a hook, a scheduler. An interactive run never carries the flag,
+# so its presence anywhere in the launcher chain is what separates a person's
+# session from a machine's. `[/\s]`, not `/`: the hook writes chain entries as
+# "<pid> claude -p …", so the command is bare and space-prefixed. Anchoring on a
+# slash alone matched only the absolute-path form and left every headless child
+# classified interactive.
+_HEADLESS_LAUNCH = re.compile(
+    r"(?:^|[/\s])claude\b.*?\s(?:-p|--print)(?:\s|$)|(?:^|[/\s])codex\b.*?\sexec(?:\s|$)"
+)
 
 
 def _launch_mode_for(chain: list[str]) -> str:
@@ -559,7 +562,7 @@ async def _resolve_phase(
         if phase is None:
             no_start = derived.lane is not None and derived.lane != MAIN_AGENT
             return await _mark_end(db, session, derived, now) if no_start else None
-        phase.status = PHASE_PASSED
+        phase.status = derived.close_status
         _close_phase(phase, now)
         return phase
 
@@ -652,7 +655,7 @@ async def _apply_awaiting_input(
     `SessionEnd` is the exception: a run that died with the question still on
     screen is exactly the thing worth being able to see afterwards.
     """
-    if event.event_type == NOTIFICATION_EVENT:
+    if event.event_type in AWAITING_INPUT_EVENTS:
         previous = await coding_repo.previous_event_type(db, session.id, before_id=event.id)
         if previous is not None and previous not in TURN_CLOSED_EVENTS:
             session.awaiting_input_since = now
@@ -800,6 +803,7 @@ async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
             cwd=cwd,
             git_repo=_clip(_git_repo_for(cwd), MAX_SESSION_ID),
             model=_clip(body.model, MAX_MODEL),
+            source=body.source,
             now=now,
         )
     else:

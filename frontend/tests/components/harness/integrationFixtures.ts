@@ -28,6 +28,38 @@ export function integration(
   };
 }
 
+const CODEX_EVENTS = [
+  'SessionStart',
+  'UserPromptSubmit',
+  'PostToolUse',
+  'PermissionRequest',
+  'SubagentStart',
+  'SubagentStop',
+  'Stop',
+  'Interrupt',
+  'SessionEnd',
+];
+
+/** The Codex integration, disconnected unless overridden. */
+export function codexIntegration(
+  overrides: Partial<ObservabilityIntegration> = {},
+): ObservabilityIntegration {
+  return {
+    id: 'codex',
+    label: 'Codex',
+    state: 'disconnected',
+    detail:
+      "Codex isn't reporting its sessions yet. Connecting adds 9 hooks to " +
+      '/home/dev/.codex/hooks.json — nothing else on your machine changes.',
+    ingest_url: 'http://localhost:8008/api/v1/hooks/events',
+    events: CODEX_EVENTS,
+    config_path: '/home/dev/.codex/hooks.json',
+    script_path: '/home/dev/.masterwork/hooks/codex.py',
+    backup_path: null,
+    ...overrides,
+  };
+}
+
 export const disconnected = () =>
   integration({
     state: 'disconnected',

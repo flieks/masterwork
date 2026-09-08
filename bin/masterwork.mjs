@@ -152,7 +152,7 @@ async function trackingHint() {
     if (integrations.some((i) => i.state === 'connected')) return null;
     const repairable = integrations.some((i) => i.state === 'outdated');
     return repairable
-      ? `${c.yellow('!')} Session recording needs repairing — open Sessions and click Reconnect.`
+      ? `${c.yellow('!')} Session recording needs repairing — open Sessions and click Repair.`
       : `${c.dim('·')} ${c.dim('Session recording is off. Open Sessions and click Connect to record your coding sessions.')}`;
   } catch {
     return null;

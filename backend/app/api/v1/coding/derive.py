@@ -3,8 +3,11 @@
 Three producers write to the ingest and only one of them can be told what to
 send: a caller that fills in the v1.13 `phase`/`agent` blocks explicitly, the
 factory runner, which names its stage and lane inside `payload` and predates
-those blocks, and Claude Code's own hooks, which name nothing at all. All three
-are read here, in that order of precedence.
+those blocks, and an agent's own hooks, which name nothing at all. All three are
+read here, in that order of precedence. Claude Code and Codex share the hook
+vocabulary where they can (a prompt opens a turn, a Stop closes it); where Codex
+has its own word for something — `SubagentStart`, `Interrupt` — it is mapped
+onto the same shape, and an event neither has a word for is stored as it came.
 
 Nothing in this module touches the database — which is what lets the backfill
 replay stored events through exactly the code path a live hook takes.
@@ -22,6 +25,7 @@ from app.db.models.coding import (
     KIND_AGENT,
     KIND_CODE,
     MAIN_AGENT,
+    PHASE_ABANDONED,
     PHASE_FAILED,
     PHASE_PASSED,
     PHASE_RUNNING,
@@ -53,7 +57,7 @@ TURN_DETAIL_CHARS = 200
 RUN_PHASE = "run"
 
 # Events that mean a lane just finished a turn, whoever sent them.
-TURN_EVENTS = frozenset({"agent_turn", "Stop", "SubagentStop"})
+TURN_EVENTS = frozenset({"agent_turn", "Stop", "Interrupt", "SubagentStop"})
 
 
 @dataclass(slots=True)
@@ -123,6 +127,8 @@ class Derived:
     # spawn→SubagentStop the same, on the subagent's lane rather than on `main`.
     opens_turn: bool = False
     closes_turn: bool = False
+    # How the closed turn ended. A Stop passed; an Interrupt never finished.
+    close_status: str = PHASE_PASSED
     # What to call the span being opened; `None` numbers it as a turn.
     turn_label: str | None = None
     # Why the span opened — the prompt that started it, in one readable line.
@@ -332,16 +338,28 @@ def _from_hook(event_type: str, tool_name: str | None, payload: dict[str, Any] |
         derived.closes_turn = True
         return derived
 
+    if event_type == "SubagentStart":
+        # Codex has no spawn tool to watch; it says so itself, and names the
+        # agent on the event, so the span opens here on the agent's own lane.
+        lane = assets.subagent_name(payload)
+        return Derived(
+            lane=lane,
+            agents=[AgentWrite(name=lane)],
+            opens_turn=True,
+            turn_label=lane[:SPAN_LABEL_CHARS],
+        )
+
     if event_type == "PreToolUse":
         # Installed with a Task|Agent matcher, so a plain tool call never gets
         # here; anything that does still has its PostToolUse to be counted by.
         return _from_spawn(tool_name, payload)
 
-    if event_type not in ("UserPromptSubmit", "Stop") and not tool_name:
-        # SessionStart, Notification, a hook nobody has written yet: nothing has
-        # happened in a lane, and a lane is not worth inventing for it. What a
-        # notification does say is about the run, not a lane, and needs the row
-        # before it to be read — so the service decides that one, not this.
+    if event_type not in ("UserPromptSubmit", "Stop", "Interrupt") and not tool_name:
+        # SessionStart, Notification, PreCompact, a hook nobody has written yet:
+        # nothing has happened in a lane, and a lane is not worth inventing for
+        # it. What a notification does say is about the run, not a lane, and
+        # needs the row before it to be read — so the service decides that one,
+        # not this. The event itself is still stored, whatever its name.
         return derived
 
     derived.lane = MAIN_AGENT
@@ -355,6 +373,11 @@ def _from_hook(event_type: str, tool_name: str | None, payload: dict[str, Any] |
         derived.turn_detail = turn_detail(prompt)
     elif event_type == "Stop":
         derived.closes_turn = True
+    elif event_type == "Interrupt":
+        # The person cut the turn short. It has no Stop and never will, which is
+        # exactly what the abandoned status says of a stage.
+        derived.closes_turn = True
+        derived.close_status = PHASE_ABANDONED
     elif title := marker_title(payload):
         # A shell command carrying the marker — the agent naming its own run.
         derived.title, derived.title_source = title, TITLE_SUMMARY
@@ -415,7 +438,7 @@ TITLE_MARKER = re.compile(r"masterwork:title=\s*([^\"'\n]+)")
 
 def marker_title(payload: dict[str, Any] | None) -> str | None:
     """The title a tool call announced, if it announced one."""
-    command = _text(_sub(payload, "tool_input").get("command"))
+    command = assets.command_text(_sub(payload, "tool_input"))
     if not command:
         return None
     match = TITLE_MARKER.search(command)

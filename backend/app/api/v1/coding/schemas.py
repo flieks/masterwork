@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 
@@ -132,9 +132,17 @@ class HookEventRequest(BaseModel):
     rather than answered with a 422 — a hook never fails a Claude Code run,
     including when the backend has moved on and it has not."""
 
-    session_id: str = Field(..., min_length=1, description="Claude Code session id.")
+    session_id: str = Field(..., min_length=1, description="The agent's own session id.")
     event_type: str = Field(
         ..., min_length=1, description='Hook name, e.g. "PreToolUse"; any string is accepted.'
+    )
+    source: Literal["claude-code", "codex"] = Field(
+        "claude-code",
+        description=(
+            "Which agent's hooks sent this. Used on first sight only, and defaults to "
+            "claude-code so a forwarder from before Codex was recorded still files its "
+            "sessions where it always did."
+        ),
     )
     cwd: str | None = Field(None, description="Working directory; used on first sight only.")
     model: str | None = Field(None, description="Model id; the latest value wins.")
@@ -279,9 +287,10 @@ class AssetCall(BaseModel):
         ...,
         description=(
             "Which signal named it: skill_call (an explicit Skill call, carries args) | "
-            "spawn_call (a Task/Agent call, carries the brief) | skill_read (a SKILL.md "
-            "read, carries only the path) | subagent_stop (a finished subagent, carries "
-            "nothing)."
+            "spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, "
+            "carries the agent type and id) | skill_read (a SKILL.md read — a Read, a "
+            "Glob, or a Codex shell command that prints it; carries only the path) | "
+            "subagent_stop (a finished subagent, carries nothing)."
         ),
     )
     input: dict[str, str] | None = Field(
@@ -318,11 +327,11 @@ class AssetSessionUse(BaseModel):
 
 
 class CodingSession(BaseModel):
-    id: str = Field(..., description="Claude Code session id.")
+    id: str = Field(..., description="The agent's own session id.")
     cwd: str = Field(..., description='Working directory, "" if no event carried one.')
     git_repo: str | None = Field(..., description="Repo folder name derived from cwd.")
     model: str | None
-    source: str = Field(..., description='Event producer; always "claude-code" today.')
+    source: str = Field(..., description='Which agent ran the session: "claude-code" | "codex".')
     launch_mode: str | None = Field(
         ...,
         description=(

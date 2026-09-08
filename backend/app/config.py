@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     codex_skills_root: Path = Path.home() / ".codex" / "skills"
     # Claude Code's own settings file — where the observability hooks are written.
     claude_settings_file: Path = Path.home() / ".claude" / "settings.json"
+    # Codex's observability wiring: hooks.json is written, config.toml only read
+    # (for the `[features] hooks` switch).
+    codex_hooks_file: Path = Path.home() / ".codex" / "hooks.json"
+    codex_config_file: Path = Path.home() / ".codex" / "config.toml"
     # Everything masterwork installs on disk (database, forwarder scripts).
     masterwork_home: Path = MASTERWORK_HOME
     # Vendor-neutral role store the factory pipeline reads its stage prompts from
