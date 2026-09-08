@@ -3367,3 +3367,61 @@ AssetMigrationResult {
 - **Snapshots as for any write.** The source tree (`~/.claude` or `~/.codex`) is
   committed before and after when the user made it a repo; `~/.agents` likewise.
   Neither is ever turned into a repo behind the user's back.
+
+# API Contract v1.43 — switching a skill off without deleting it
+
+Additive on top of v1.42. Until now the only way to stop a coding agent loading
+a skill was to delete the folder or move it by hand, and both lose the skill's
+history in the UI. Coding agents read `<skills_root>/<name>/SKILL.md` one level
+deep and nothing else, so a folder parked under `<skills_root>/.disabled/` is
+invisible to every one of them while staying readable, editable and one rename
+away from coming back. This exposes that state on every asset and adds the one
+write that flips it.
+
+## New endpoint
+
+```
+PUT /api/v1/assets/{asset_id}/enabled   setAssetEnabled(AssetEnabledRequest) -> AssetDetail
+```
+
+## Changed and new schemas
+
+```
+AssetSummary {
+  ...,
+  disabled: boolean,             // NEW — parked under .disabled/; no agent loads it
+}
+
+AssetEnabledRequest { enabled: boolean }
+```
+
+## Behavior
+
+- **The id survives; the path moves.** `claude:skill:<name>` is
+  `~/.claude/skills/<name>/SKILL.md` while enabled and
+  `~/.claude/skills/.disabled/<name>/SKILL.md` while disabled; Codex likewise
+  under `~/.codex/skills`. Every read, edit, chat, diagram and snapshot keeps
+  working on the parked path, and project links need no re-pointing.
+- **A disabled skill claims no agent.** Its `agents` is `[]` whatever its
+  provider, because nothing loads it — the UI must not read that as a generic
+  skill nobody linked yet; `disabled` is the flag that tells the two apart.
+- **A generic skill moves with its links.** The real folder goes to
+  `~/.agents/skills/.disabled/<name>`, and every agent link that resolved to it
+  moves to that agent's own `.disabled/<name>`, re-pointed at the new home.
+  Enabling reverses it and recreates exactly the links found parked: an agent
+  that never linked the skill does not gain a link on the way back. The parked
+  links are not listed as skills of their own.
+- **Search still finds it.** Disabled skills are listed and searched like any
+  other; a `.disabled/` folder itself is never an asset.
+- **Idempotent.** Setting the state the skill already has is a 200 with the
+  asset unchanged and nothing touched on disk.
+- **Never overwrites, never half-moves.** A destination that already exists —
+  the parked folder, or an agent's parked link — is a 409 before anything moves.
+  Renames are atomic, and a failure partway through a generic toggle is rolled
+  back so the tree is either fully toggled or as it was.
+- **What cannot be toggled is a 409.** An agent file (no `.disabled` convention
+  for agents yet) and a plugin asset (its marketplace owns the folder) both
+  answer 409 with a message saying so. An unknown id stays 404.
+- **Snapshots as for any write.** Every tree the toggle touches (`~/.claude`,
+  `~/.codex`, `~/.agents`) is committed before and after where the user made
+  it a repo; none is ever turned into one behind their back.
