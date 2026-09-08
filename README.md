@@ -122,6 +122,33 @@ risk. Uninstall only removes what masterwork installed, never a skill you wrote.
 
 ![Catalog search results, each with its source and license](docs/images/catalog.png)
 
+## Projects
+
+A project is a goal plus the skills and agents that serve it. Masterwork writes a
+summary and a Mermaid flow of how they fit together, and simulates the whole set
+against the goal in one run — so "these twelve should take me from empty repo to
+deployed product" becomes a claim you can test rather than a hope.
+
+![A project's goal, its linked skills and agents, and the generated flow](docs/images/projects.png)
+
+## Refine by chat
+
+Describe the change you want; the assistant reads the file and answers with a
+proposal — one diff per file, with Accept and Reject under it. Its tools are
+read-only, so nothing lands until you accept, and what you accept is committed as
+a git snapshot in the folder it edited.
+
+![Chat answering with a proposed edit to a skill, pending accept or reject](docs/images/chat.png)
+
+## Work
+
+The **Work** screen puts your Azure DevOps backlog next to the pull requests
+waiting on you, read-only — masterwork never writes back. A PR's unresolved review
+comments can be handed to a fresh coding session in the repo they belong to, with
+the comments quoted into the prompt and a rule that it may not push.
+
+*No screenshot for this one: the only real data on that screen is client work.*
+
 ## Session recording
 
 The **Sessions** screen is empty until your coding agent tells masterwork that a
@@ -144,6 +171,14 @@ own machine. Prefer the terminal?
 ```bash
 cd backend && uv run python -m app.observability.cli connect
 ```
+
+![One recorded session: cost, tokens, how the context grew, and a waterfall of its turns](docs/images/session.png)
+
+Across runs, the **Analytics** tab totals one population four ways — the gates
+that failed, the roles that ran, the models behind them, and every run over time.
+Which model actually gets its work accepted is a number here, not a hunch.
+
+![Analytics: acceptance, corrections and cost per model, and every run over time](docs/images/analytics.png)
 
 Claude Code is the only agent wired up today. `SKILL.md` is an open standard and
 so is this: an agent that can run a command on session events is an
