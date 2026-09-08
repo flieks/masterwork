@@ -2056,6 +2056,23 @@ export interface DirectoryListing {
     'home': string;
 }
 /**
+ * How the installed copy relates to what was installed and to upstream.
+ * @export
+ * @enum {string}
+ */
+
+export const DriftStatus = {
+    Current: 'current',
+    EditedLocally: 'edited_locally',
+    UpstreamChanged: 'upstream_changed',
+    Diverged: 'diverged',
+    UnknownOrigin: 'unknown_origin'
+} as const;
+
+export type DriftStatus = typeof DriftStatus[keyof typeof DriftStatus];
+
+
+/**
  * One envelope an agent returned, and whether the runner could read it.
  * @export
  * @interface EnvelopeAttempt
@@ -2402,6 +2419,21 @@ export interface FactoryRunResumeRequest {
      */
     'run_id': string;
 }
+/**
+ * 
+ * @export
+ * @enum {string}
+ */
+
+export const FileChange = {
+    Added: 'added',
+    Removed: 'removed',
+    Changed: 'changed'
+} as const;
+
+export type FileChange = typeof FileChange[keyof typeof FileChange];
+
+
 /**
  * One item a gate checked. Any field it leaves out is taken from the gate block around it, so a gate with a single verdict needs no entry at all.
  * @export
@@ -2830,6 +2862,42 @@ export interface InstalledSkill {
      * @memberof InstalledSkill
      */
     'installed_at': string;
+    /**
+     * Link to the skill\'s folder on GitHub.
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'source_url': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'installed_sha'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'root_path'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'last_checked_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstalledSkill
+     */
+    'upstream_sha'?: string | null;
+    /**
+     * 
+     * @type {DriftStatus}
+     * @memberof InstalledSkill
+     */
+    'drift_status'?: DriftStatus | null;
 }
 
 
@@ -4741,6 +4809,19 @@ export type SkillRegistry = typeof SkillRegistry[keyof typeof SkillRegistry];
 /**
  * 
  * @export
+ * @interface SkillUpdateRequest
+ */
+export interface SkillUpdateRequest {
+    /**
+     * Overwrite local edits: required when status is edited_locally/diverged.
+     * @type {boolean}
+     * @memberof SkillUpdateRequest
+     */
+    'force'?: boolean;
+}
+/**
+ * 
+ * @export
  * @interface SuggestedLink
  */
 export interface SuggestedLink {
@@ -4763,6 +4844,96 @@ export interface SuggestedLink {
      */
     'confidence'?: number;
 }
+/**
+ * 
+ * @export
+ * @interface UpstreamCheckResult
+ */
+export interface UpstreamCheckResult {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'name': string;
+    /**
+     * 
+     * @type {DriftStatus}
+     * @memberof UpstreamCheckResult
+     */
+    'status': DriftStatus;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'checked_at': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'source_url'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'installed_sha'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'upstream_sha'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'upstream_last_modified_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'upstream_last_change_summary'?: string | null;
+    /**
+     * Unified diff, installed SKILL.md -> upstream; \"\" when identical.
+     * @type {string}
+     * @memberof UpstreamCheckResult
+     */
+    'skill_md_diff': string;
+    /**
+     * Companion files that differ; SKILL.md is in the diff instead.
+     * @type {Array<UpstreamFileChange>}
+     * @memberof UpstreamCheckResult
+     */
+    'other_changes': Array<UpstreamFileChange>;
+}
+
+
+/**
+ * 
+ * @export
+ * @interface UpstreamFileChange
+ */
+export interface UpstreamFileChange {
+    /**
+     * Relative to the skill folder.
+     * @type {string}
+     * @memberof UpstreamFileChange
+     */
+    'path': string;
+    /**
+     * 
+     * @type {FileChange}
+     * @memberof UpstreamFileChange
+     */
+    'change': FileChange;
+}
+
+
 /**
  * 
  * @export
@@ -10732,6 +10903,40 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
     return {
         /**
          * 
+         * @summary Check Skill Upstream
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        checkSkillUpstream: async (name: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'name' is not null or undefined
+            assertParamExists('checkSkillUpstream', 'name', name)
+            const localVarPath = `/api/v1/skills/installed/{name}/check`
+                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Get Catalog Skill
          * @param {string} owner 
          * @param {string} repo 
@@ -10802,6 +11007,36 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(skillInstallRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List Installed Skills
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listInstalledSkills: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/skills/installed`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -10884,6 +11119,46 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary Update Skill From Upstream
+         * @param {string} name 
+         * @param {SkillUpdateRequest} skillUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSkillFromUpstream: async (name: string, skillUpdateRequest: SkillUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'name' is not null or undefined
+            assertParamExists('updateSkillFromUpstream', 'name', name)
+            // verify required parameter 'skillUpdateRequest' is not null or undefined
+            assertParamExists('updateSkillFromUpstream', 'skillUpdateRequest', skillUpdateRequest)
+            const localVarPath = `/api/v1/skills/installed/{name}/update`
+                .replace(`{${"name"}}`, encodeURIComponent(String(name)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(skillUpdateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -10894,6 +11169,19 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
 export const SkillsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = SkillsApiAxiosParamCreator(configuration)
     return {
+        /**
+         * 
+         * @summary Check Skill Upstream
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async checkSkillUpstream(name: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UpstreamCheckResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.checkSkillUpstream(name, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.checkSkillUpstream']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
         /**
          * 
          * @summary Get Catalog Skill
@@ -10924,6 +11212,18 @@ export const SkillsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary List Installed Skills
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listInstalledSkills(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<InstalledSkill>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listInstalledSkills(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.listInstalledSkills']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Search Skill Catalog
          * @param {string} q Search text.
          * @param {number} [limit] 
@@ -10949,6 +11249,20 @@ export const SkillsApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['SkillsApi.uninstallSkill']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * 
+         * @summary Update Skill From Upstream
+         * @param {string} name 
+         * @param {SkillUpdateRequest} skillUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateSkillFromUpstream(name: string, skillUpdateRequest: SkillUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstalledSkill>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateSkillFromUpstream(name, skillUpdateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SkillsApi.updateSkillFromUpstream']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -10959,6 +11273,16 @@ export const SkillsApiFp = function(configuration?: Configuration) {
 export const SkillsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
     const localVarFp = SkillsApiFp(configuration)
     return {
+        /**
+         * 
+         * @summary Check Skill Upstream
+         * @param {string} name 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        checkSkillUpstream(name: string, options?: RawAxiosRequestConfig): AxiosPromise<UpstreamCheckResult> {
+            return localVarFp.checkSkillUpstream(name, options).then((request) => request(axios, basePath));
+        },
         /**
          * 
          * @summary Get Catalog Skill
@@ -10983,6 +11307,15 @@ export const SkillsApiFactory = function (configuration?: Configuration, basePat
         },
         /**
          * 
+         * @summary List Installed Skills
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listInstalledSkills(options?: RawAxiosRequestConfig): AxiosPromise<Array<InstalledSkill>> {
+            return localVarFp.listInstalledSkills(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Search Skill Catalog
          * @param {string} q Search text.
          * @param {number} [limit] 
@@ -11002,6 +11335,17 @@ export const SkillsApiFactory = function (configuration?: Configuration, basePat
         uninstallSkill(name: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
             return localVarFp.uninstallSkill(name, options).then((request) => request(axios, basePath));
         },
+        /**
+         * 
+         * @summary Update Skill From Upstream
+         * @param {string} name 
+         * @param {SkillUpdateRequest} skillUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSkillFromUpstream(name: string, skillUpdateRequest: SkillUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<InstalledSkill> {
+            return localVarFp.updateSkillFromUpstream(name, skillUpdateRequest, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -11012,6 +11356,18 @@ export const SkillsApiFactory = function (configuration?: Configuration, basePat
  * @extends {BaseAPI}
  */
 export class SkillsApi extends BaseAPI {
+    /**
+     * 
+     * @summary Check Skill Upstream
+     * @param {string} name 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public checkSkillUpstream(name: string, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).checkSkillUpstream(name, options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      * 
      * @summary Get Catalog Skill
@@ -11040,6 +11396,17 @@ export class SkillsApi extends BaseAPI {
 
     /**
      * 
+     * @summary List Installed Skills
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public listInstalledSkills(options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).listInstalledSkills(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary Search Skill Catalog
      * @param {string} q Search text.
      * @param {number} [limit] 
@@ -11061,6 +11428,19 @@ export class SkillsApi extends BaseAPI {
      */
     public uninstallSkill(name: string, options?: RawAxiosRequestConfig) {
         return SkillsApiFp(this.configuration).uninstallSkill(name, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Update Skill From Upstream
+     * @param {string} name 
+     * @param {SkillUpdateRequest} skillUpdateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof SkillsApi
+     */
+    public updateSkillFromUpstream(name: string, skillUpdateRequest: SkillUpdateRequest, options?: RawAxiosRequestConfig) {
+        return SkillsApiFp(this.configuration).updateSkillFromUpstream(name, skillUpdateRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

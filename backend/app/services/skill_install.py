@@ -9,9 +9,14 @@ first, then swapped in with `os.replace`.
 
 from __future__ import annotations
 
+import difflib
+import hashlib
 import os
 import re
 import shutil
+from collections.abc import Mapping
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 from app.core.exceptions import (
@@ -130,3 +135,133 @@ def uninstall_skill(slug: str, *, skills_root: Path) -> None:
         raise InvalidSkillNameError(f"refusing to remove a path outside the skills root: {slug!r}")
     if target.is_dir():
         shutil.rmtree(target)
+
+
+# --- drift ----------------------------------------------------------------
+
+
+class DriftStatus(StrEnum):
+    """How the installed copy relates to what was installed and to upstream."""
+
+    current = "current"
+    edited_locally = "edited_locally"
+    upstream_changed = "upstream_changed"
+    diverged = "diverged"
+    unknown_origin = "unknown_origin"
+
+
+class FileChange(StrEnum):
+    added = "added"
+    removed = "removed"
+    changed = "changed"
+
+
+@dataclass(frozen=True)
+class ChangedPath:
+    path: str
+    change: FileChange
+
+
+def tree_hash(files: Mapping[str, bytes]) -> str:
+    """sha256 over (sorted relative path, content) pairs — the same digest for
+    a fetched skill and the folder it was written to, so a local edit shows
+    without the network."""
+    digest = hashlib.sha256()
+    for relative_path in sorted(files):
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(files[relative_path])
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def fetched_files(fetched: FetchedSkill) -> dict[str, bytes]:
+    files = {f.relative_path: f.content for f in fetched.files}
+    files["SKILL.md"] = fetched.skill_md.encode("utf-8")
+    return files
+
+
+def read_installed_files(slug: str, *, skills_root: Path) -> dict[str, bytes] | None:
+    """Every regular file under the skill folder keyed by relative path, or
+    None when the folder is missing. Symlinked files are read, not followed as
+    trees — a generic skill reaches here through a folder link."""
+    root = skills_root / slug
+    if not root.is_dir():
+        return None
+    files: dict[str, bytes] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not (Path(dirpath) / d).is_symlink()]
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            if not path.is_file():
+                continue
+            try:
+                files[path.relative_to(root).as_posix()] = path.read_bytes()
+            except OSError:
+                continue
+    return files
+
+
+def classify_drift(
+    *,
+    local_hash: str,
+    upstream_hash: str,
+    installed_hash: str | None,
+    installed_sha: str | None,
+    upstream_sha: str | None,
+) -> DriftStatus:
+    """Which side moved since the install.
+
+    The install-time hash is the baseline for local edits; the install-time sha
+    is the baseline for upstream, with a content comparison standing in when
+    either sha is unknown. With no hash at all (a row older than the columns)
+    only "the two copies agree" is knowable, so a difference is reported as
+    diverged — the status that guards the update — since nothing can say whose
+    change it is.
+    """
+    if installed_hash is None:
+        return DriftStatus.current if local_hash == upstream_hash else DriftStatus.diverged
+    local_edited = local_hash != installed_hash
+    if installed_sha is not None and upstream_sha is not None:
+        upstream_changed = upstream_sha != installed_sha
+    else:
+        upstream_changed = upstream_hash != installed_hash
+    if local_edited and upstream_changed:
+        return DriftStatus.diverged
+    if local_edited:
+        return DriftStatus.edited_locally
+    if upstream_changed:
+        return DriftStatus.upstream_changed
+    return DriftStatus.current
+
+
+def skill_md_diff(local: bytes | None, upstream: bytes) -> str:
+    """Unified diff of the installed SKILL.md against upstream; "" when equal."""
+    local_text = local.decode("utf-8", errors="replace") if local is not None else ""
+    upstream_text = upstream.decode("utf-8", errors="replace")
+    if local_text == upstream_text:
+        return ""
+    return "".join(
+        difflib.unified_diff(
+            local_text.splitlines(keepends=True),
+            upstream_text.splitlines(keepends=True),
+            fromfile="SKILL.md (installed)",
+            tofile="SKILL.md (upstream)",
+        )
+    )
+
+
+def changed_paths(local: Mapping[str, bytes], upstream: Mapping[str, bytes]) -> list[ChangedPath]:
+    """Companion files that differ between the two trees, SKILL.md excluded
+    (it gets a real diff instead), sorted by path."""
+    changes: list[ChangedPath] = []
+    for path in sorted(set(local) | set(upstream)):
+        if path == "SKILL.md":
+            continue
+        if path not in local:
+            changes.append(ChangedPath(path, FileChange.added))
+        elif path not in upstream:
+            changes.append(ChangedPath(path, FileChange.removed))
+        elif local[path] != upstream[path]:
+            changes.append(ChangedPath(path, FileChange.changed))
+    return changes

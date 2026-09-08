@@ -84,6 +84,8 @@ class SkillHistory:
     last_modified_at: datetime | None
     # First line of the most recent commit touching the folder — third-party text.
     last_change_summary: str | None
+    # Sha of that commit: the baseline an install records for the drift check.
+    last_commit_sha: str | None = None
 
 
 @dataclass(frozen=True)
@@ -356,6 +358,45 @@ def _commit_date(commit: Any) -> datetime | None:
         return None
 
 
+async def _newest_commit(
+    client: httpx.AsyncClient, owner: str, repo: str, path: str
+) -> tuple[dict[str, Any], httpx.Headers] | None:
+    """The most recent commit touching `path`, with its response headers (the
+    Link header names the last page). None on any failure — callers degrade."""
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits"
+    params = {"path": path, "per_page": "1"} if path else {"per_page": "1"}
+    try:
+        newest = await _request_with_retry(
+            client, "GET", url, params=params, headers=_github_headers()
+        )
+    except (httpx.HTTPError, _RetryableStatus, GitHubRateLimitError):
+        return None
+    if newest.status_code >= 300:
+        return None
+    try:
+        body = newest.json()
+    except ValueError:
+        return None
+    if not isinstance(body, list) or not body or not isinstance(body[0], dict):
+        return None
+    return body[0], newest.headers
+
+
+def _commit_sha(commit: dict[str, Any]) -> str | None:
+    sha = commit.get("sha")
+    return sha if isinstance(sha, str) and sha else None
+
+
+async def fetch_head_sha(
+    owner: str, repo: str, path: str, *, transport: httpx.AsyncBaseTransport | None = None
+) -> str | None:
+    """Sha of the newest commit touching the skill folder — one request, and
+    None on any failure, so an install never fails for want of a baseline."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT, transport=transport) as client:
+        newest = await _newest_commit(client, owner, repo, path)
+    return _commit_sha(newest[0]) if newest else None
+
+
 async def fetch_history(
     owner: str, repo: str, path: str, *, transport: httpx.AsyncBaseTransport | None = None
 ) -> SkillHistory:
@@ -366,30 +407,19 @@ async def fetch_history(
     failure here degrades to empty rather than failing the whole preview.
     """
     empty = SkillHistory(created_at=None, last_modified_at=None, last_change_summary=None)
-    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits"
-    params = {"path": path, "per_page": "1"} if path else {"per_page": "1"}
     async with httpx.AsyncClient(timeout=_TIMEOUT, transport=transport) as client:
-        try:
-            newest = await _request_with_retry(
-                client, "GET", url, params=params, headers=_github_headers()
-            )
-        except (httpx.HTTPError, _RetryableStatus, GitHubRateLimitError):
+        newest = await _newest_commit(client, owner, repo, path)
+        if newest is None:
             return empty
-        if newest.status_code >= 300:
-            return empty
-        try:
-            newest_body = newest.json()
-        except ValueError:
-            return empty
-        if not isinstance(newest_body, list) or not newest_body:
-            return empty
+        commit, headers = newest
 
-        last_modified_at = _commit_date(newest_body[0])
-        message = ((newest_body[0].get("commit") or {}).get("message") or "").strip()
+        last_modified_at = _commit_date(commit)
+        sha = _commit_sha(commit)
+        message = ((commit.get("commit") or {}).get("message") or "").strip()
         summary = message.splitlines()[0][:200] if message else None
 
         # No Link header means a single page, so the newest commit is also the oldest.
-        match = _LAST_PAGE_RE.search(newest.headers.get("link", ""))
+        match = _LAST_PAGE_RE.search(headers.get("link", ""))
         created_at = last_modified_at
         if match:
             try:
@@ -397,7 +427,7 @@ async def fetch_history(
                     client, "GET", match.group(1), headers=_github_headers()
                 )
             except (httpx.HTTPError, _RetryableStatus, GitHubRateLimitError):
-                return SkillHistory(None, last_modified_at, summary)
+                return SkillHistory(None, last_modified_at, summary, sha)
             if oldest.status_code < 300:
                 try:
                     oldest_body = oldest.json()
@@ -412,7 +442,10 @@ async def fetch_history(
                 created_at = None
 
     return SkillHistory(
-        created_at=created_at, last_modified_at=last_modified_at, last_change_summary=summary
+        created_at=created_at,
+        last_modified_at=last_modified_at,
+        last_change_summary=summary,
+        last_commit_sha=sha,
     )
 
 

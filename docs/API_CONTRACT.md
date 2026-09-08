@@ -3425,3 +3425,89 @@ AssetEnabledRequest { enabled: boolean }
 - **Snapshots as for any write.** Every tree the toggle touches (`~/.claude`,
   `~/.codex`, `~/.agents`) is committed before and after where the user made
   it a repo; none is ever turned into one behind their back.
+
+# API Contract v1.44 — is my installed skill still what I installed, and is upstream ahead of it?
+
+Additive on top of v1.43. A skill installed from the catalog can drift two ways:
+the user edits it, or the repo it came from moves on. Until now nothing said
+which, and the only remedy was a blind reinstall. This records a baseline at
+install time, adds an on-demand check that classifies the drift, and an update
+that reinstalls from upstream without ever overwriting local edits by accident.
+
+## New endpoints
+
+```
+GET  /api/v1/skills/installed                 listInstalledSkills() -> InstalledSkill[]
+POST /api/v1/skills/installed/{name}/check    checkSkillUpstream() -> UpstreamCheckResult
+POST /api/v1/skills/installed/{name}/update   updateSkillFromUpstream(SkillUpdateRequest) -> InstalledSkill
+```
+
+## Changed and new schemas
+
+```
+InstalledSkill {
+  ...,
+  source_url: string,                  // NEW — the skill's folder on GitHub
+  installed_sha: string | null,        // NEW — upstream commit for the folder at install time
+  root_path: string | null,            // NEW — folder inside the repo; "" for the repo root
+  last_checked_at: datetime | null,    // NEW — cache of the last check, null until one has run
+  upstream_sha: string | null,         // NEW
+  drift_status: DriftStatus | null,    // NEW
+}
+
+DriftStatus = "current" | "edited_locally" | "upstream_changed" | "diverged" | "unknown_origin"
+
+UpstreamCheckResult {
+  name, status: DriftStatus, checked_at,
+  source_url: string | null,
+  installed_sha: string | null,
+  upstream_sha: string | null,                   // newest upstream commit touching the folder
+  upstream_last_modified_at: datetime | null,
+  upstream_last_change_summary: string | null,   // commit subject — third-party text, plain only
+  skill_md_diff: string,                         // unified diff, installed -> upstream; "" when identical
+  other_changes: UpstreamFileChange[],           // companion files: {path, change: "added"|"removed"|"changed"}
+}
+
+SkillUpdateRequest { force: boolean }   // default false
+```
+
+## Behavior
+
+- **An install records where it came from and what it wrote.** `installed_sha`
+  is the newest commit touching the skill folder, read from the commits API the
+  same way the preview's dates are; `installed_tree_hash` (server-side only) is
+  a sha256 over the installed files' sorted paths and bytes, computed from what
+  landed on disk; `root_path` is the folder the tree read resolved, so a later
+  check re-fetches exactly that folder rather than re-guessing the layout. The
+  sha lookup is allowed to fail — it leaves null and the install goes ahead.
+- **The check is user-initiated, and the list never costs GitHub.** A check
+  re-fetches the folder (the same two API requests as a preview, plus the
+  commits lookup) and writes its result onto the row. `GET /skills/installed`
+  returns that cache, so a list can badge every installed skill from one request
+  and a page load never spends quota. The UI must not check on mount.
+- **Two baselines, one status.** The tree hash says whether the local copy
+  changed; the sha says whether upstream did. `current` is neither,
+  `edited_locally` and `upstream_changed` are one each, `diverged` is both. When
+  either sha is unknown, content stands in: upstream counts as changed when its
+  files no longer hash to what was installed. A row from before v1.43 has no
+  baseline at all, so the check can only compare the two copies directly: equal
+  is `current`, and anything else is `diverged` — the status that makes the
+  update ask first — because nothing can say whose change it is.
+- **`unknown_origin` is an answer, not an error.** A name with no install row
+  (a hand-written skill) and a folder upstream no longer has both return 200
+  with that status; the latter is cached on the row so the list can show it.
+- **The diff is SKILL.md only; other files are listed.** `skill_md_diff` is a
+  unified diff of the installed SKILL.md against upstream, rendered as plain
+  text by the client. Companion files are reported by path and kind of change
+  rather than diffed — they may be binary.
+- **Update is a reinstall, guarded by the status.** It reruns the comparison
+  and refuses with 409 when the status is `edited_locally` or `diverged` unless
+  `force` is true; the UI must re-arm into a confirmation naming the loss before
+  sending it. The new tree goes through the same staging-then-`os.replace`
+  swap as an install, so a failed fetch or a failed write leaves the old copy
+  in place and the row untouched. A successful update resets the baseline and
+  caches `current`. A skill masterwork did not install answers 404; a folder
+  upstream no longer has answers 404 too, since there is nothing to update to.
+- **Snapshots as for any write.** The skills tree is committed before and after
+  the update when the user made it a repo, so the overwritten copy stays
+  diffable and revertible there.

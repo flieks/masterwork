@@ -297,6 +297,13 @@ class InstalledSkillNotFoundError(DomainError):
     status_code = 404
 
 
+class SkillLocallyEditedError(DomainError):
+    """The installed copy differs from what was installed; an update would
+    overwrite the user's edits, so it needs an explicit force."""
+
+    status_code = 409
+
+
 class AssetNotMigratableError(DomainError):
     """Only a skill in one agent's own dir can be made generic: an agent file
     has no cross-agent format, a plugin asset belongs to its marketplace, and a

@@ -24,6 +24,7 @@ import { AssetDatesInline } from './AssetDates';
 import { AssetDiagramSection } from './AssetDiagramSection';
 import { AgentSkillsUsed } from './AgentSkillsUsed';
 import { AssetUsageLog } from './AssetUsageLog';
+import { UpstreamCard } from './UpstreamCard';
 import {
   assetDetailPath,
   assetDetailQueryAtom,
@@ -174,6 +175,10 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
     !data.read_only &&
     (data.provider === 'claude' || data.provider === 'codex');
   const canToggle = kind === 'skill' && !data.read_only && TOGGLEABLE_PROVIDERS.has(data.provider);
+  // Catalog installs land in ~/.claude/skills; a made-generic one still reaches
+  // that folder through its link, so both providers can carry an install row.
+  const mayHaveUpstream =
+    kind === 'skill' && (data.provider === 'claude' || data.provider === 'generic');
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5 p-6">
@@ -257,6 +262,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
 
       {mode === 'view' ? (
         <div className="space-y-4">
+          {mayHaveUpstream ? <UpstreamCard name={data.name} /> : null}
           <AssetUsageLog assetId={assetId} />
           <AssetDiagramSection assetId={assetId} kind={kind} />
           {frontmatter ? (

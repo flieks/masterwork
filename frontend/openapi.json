@@ -3393,6 +3393,125 @@
                 }
             }
         },
+        "/api/v1/skills/installed": {
+            "get": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "List Installed Skills",
+                "operationId": "listInstalledSkills",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/InstalledSkill"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Listinstalledskills"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/installed/{name}/check": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Check Skill Upstream",
+                "operationId": "checkSkillUpstream",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UpstreamCheckResult"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills/installed/{name}/update": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Update Skill From Upstream",
+                "operationId": "updateSkillFromUpstream",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SkillUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstalledSkill"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/skills/installed/{name}": {
             "delete": {
                 "tags": [
@@ -6564,6 +6683,18 @@
                 ],
                 "title": "DirectoryListing"
             },
+            "DriftStatus": {
+                "type": "string",
+                "enum": [
+                    "current",
+                    "edited_locally",
+                    "upstream_changed",
+                    "diverged",
+                    "unknown_origin"
+                ],
+                "title": "DriftStatus",
+                "description": "How the installed copy relates to what was installed and to upstream."
+            },
             "EnvelopeAttempt": {
                 "properties": {
                     "id": {
@@ -7060,6 +7191,15 @@
                     "run_id"
                 ],
                 "title": "FactoryRunResumeRequest"
+            },
+            "FileChange": {
+                "type": "string",
+                "enum": [
+                    "added",
+                    "removed",
+                    "changed"
+                ],
+                "title": "FileChange"
             },
             "GateCheckIn": {
                 "properties": {
@@ -7692,6 +7832,71 @@
                         "type": "string",
                         "format": "date-time",
                         "title": "Installed At"
+                    },
+                    "source_url": {
+                        "type": "string",
+                        "title": "Source Url",
+                        "description": "Link to the skill's folder on GitHub."
+                    },
+                    "installed_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installed Sha",
+                        "description": "Upstream commit for the folder at install time; null when unknown."
+                    },
+                    "root_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Root Path",
+                        "description": "Folder inside the repo the skill came from; \"\" for the repo root."
+                    },
+                    "last_checked_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Checked At",
+                        "description": "When the upstream check last ran; null means never."
+                    },
+                    "upstream_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Sha",
+                        "description": "Upstream commit seen by the last check."
+                    },
+                    "drift_status": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/DriftStatus"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Cached result of the last check; null until one has run."
                     }
                 },
                 "type": "object",
@@ -7701,7 +7906,8 @@
                     "owner",
                     "repo",
                     "registry",
-                    "installed_at"
+                    "installed_at",
+                    "source_url"
                 ],
                 "title": "InstalledSkill"
             },
@@ -10137,6 +10343,18 @@
                 ],
                 "title": "SkillRegistry"
             },
+            "SkillUpdateRequest": {
+                "properties": {
+                    "force": {
+                        "type": "boolean",
+                        "title": "Force",
+                        "description": "Overwrite local edits: required when status is edited_locally/diverged.",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "title": "SkillUpdateRequest"
+            },
             "SuggestedLink": {
                 "properties": {
                     "asset_id": {
@@ -10163,6 +10381,122 @@
                     "asset_id"
                 ],
                 "title": "SuggestedLink"
+            },
+            "UpstreamCheckResult": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/DriftStatus"
+                    },
+                    "checked_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Checked At"
+                    },
+                    "source_url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Source Url",
+                        "description": "Link to the skill's folder on GitHub; null with no install row."
+                    },
+                    "installed_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Installed Sha"
+                    },
+                    "upstream_sha": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Sha",
+                        "description": "Newest upstream commit for the folder."
+                    },
+                    "upstream_last_modified_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Last Modified At",
+                        "description": "Date of that commit; null if the lookup failed."
+                    },
+                    "upstream_last_change_summary": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Upstream Last Change Summary",
+                        "description": "Subject of that commit \u2014 third-party text, render as plain text."
+                    },
+                    "skill_md_diff": {
+                        "type": "string",
+                        "title": "Skill Md Diff",
+                        "description": "Unified diff, installed SKILL.md -> upstream; \"\" when identical."
+                    },
+                    "other_changes": {
+                        "items": {
+                            "$ref": "#/components/schemas/UpstreamFileChange"
+                        },
+                        "type": "array",
+                        "title": "Other Changes",
+                        "description": "Companion files that differ; SKILL.md is in the diff instead."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "status",
+                    "checked_at",
+                    "skill_md_diff",
+                    "other_changes"
+                ],
+                "title": "UpstreamCheckResult"
+            },
+            "UpstreamFileChange": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path",
+                        "description": "Relative to the skill folder."
+                    },
+                    "change": {
+                        "$ref": "#/components/schemas/FileChange"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "change"
+                ],
+                "title": "UpstreamFileChange"
             },
             "ValidationError": {
                 "properties": {
