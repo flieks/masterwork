@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/masterwork?color=cb3837&logo=npm)](https://www.npmjs.com/package/masterwork)
 [![CI](https://github.com/flieks/masterwork/actions/workflows/ci.yml/badge.svg)](https://github.com/flieks/masterwork/actions/workflows/ci.yml)
 [![License: Elastic-2.0](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/website-masterwork--site.vercel.app-0f2a3d)](https://masterwork-site.vercel.app)
 
 A local workbench for the skills and subagents your AI coding agents use — browse
 them across Claude Code, Codex and the shared `~/.agents` folder, edit them,
@@ -14,7 +15,7 @@ against — that's the hard part. Masterwork is built for that second half.
 
 > Runs entirely on your machine. Your skills never leave it.
 
-![A simulation run scored 100, with its capability checklist](docs/images/simulation.png)
+![A simulation run scored 100, with its capability checklist](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/simulation.png)
 
 ## What it does
 
@@ -45,7 +46,7 @@ against — that's the hard part. Masterwork is built for that second half.
 - **Global instructions** — edit your agent's root instructions file in the same
   place as everything else.
 
-![The same two skills in two folders — one Claude loads, one nothing loads yet](docs/images/agents.png)
+![The same two skills in two folders — one Claude loads, one nothing loads yet](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/agents.png)
 
 ## Requirements
 
@@ -110,7 +111,7 @@ gets a link too, so the skill is on disk once and every agent still finds it. An
 identical copy already in the shared folder is adopted instead of duplicated; a
 copy that differs stops and asks before anything is overwritten.
 
-![The make-generic confirmation, naming both paths before anything moves](docs/images/make-generic.png)
+![The make-generic confirmation, naming both paths before anything moves](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/make-generic.png)
 
 ## Community catalog
 
@@ -120,7 +121,7 @@ Licensing is on the card: a GitHub repo with no license means all rights
 reserved, not unknown, so installing one takes a second click that names the
 risk. Uninstall only removes what masterwork installed, never a skill you wrote.
 
-![Catalog search results, each with its source and license](docs/images/catalog.png)
+![Catalog search results, each with its source and license](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/catalog.png)
 
 ## Projects
 
@@ -129,7 +130,7 @@ summary and a Mermaid flow of how they fit together, and simulates the whole set
 against the goal in one run — so "these twelve should take me from empty repo to
 deployed product" becomes a claim you can test rather than a hope.
 
-![A project's goal, its linked skills and agents, and the generated flow](docs/images/projects.png)
+![A project's goal, its linked skills and agents, and the generated flow](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/projects.png)
 
 ## Refine by chat
 
@@ -138,7 +139,7 @@ proposal — one diff per file, with Accept and Reject under it. Its tools are
 read-only, so nothing lands until you accept, and what you accept is committed as
 a git snapshot in the folder it edited.
 
-![Chat answering with a proposed edit to a skill, pending accept or reject](docs/images/chat.png)
+![Chat answering with a proposed edit to a skill, pending accept or reject](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/chat.png)
 
 ## Work
 
@@ -172,13 +173,13 @@ own machine. Prefer the terminal?
 cd backend && uv run python -m app.observability.cli connect
 ```
 
-![One recorded session: cost, tokens, how the context grew, and a waterfall of its turns](docs/images/session.png)
+![One recorded session: cost, tokens, how the context grew, and a waterfall of its turns](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/session.png)
 
 Across runs, the **Analytics** tab totals one population four ways — the gates
 that failed, the roles that ran, the models behind them, and every run over time.
 Which model actually gets its work accepted is a number here, not a hunch.
 
-![Analytics: acceptance, corrections and cost per model, and every run over time](docs/images/analytics.png)
+![Analytics: acceptance, corrections and cost per model, and every run over time](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/analytics.png)
 
 Claude Code is the only agent wired up today. `SKILL.md` is an open standard and
 so is this: an agent that can run a command on session events is an
