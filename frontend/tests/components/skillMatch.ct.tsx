@@ -101,7 +101,7 @@ test('clicking Find posts exactly once and renders the matched cards with their 
 
   await component.getByRole('button', { name: 'Find by description' }).click();
   await component.getByLabel('Describe what you need').fill('I need to build a React feature');
-  await component.getByRole('button', { name: 'Find' }).click();
+  await component.getByRole('button', { name: 'Find', exact: true }).click();
 
   await expect(component.getByText('Matches React frontend work.')).toBeVisible();
   await expect(component.getByText('Frontend Dev')).toBeVisible();
@@ -119,7 +119,7 @@ test('Clear restores the full installed list', async ({ mount, page }) => {
 
   await component.getByRole('button', { name: 'Find by description' }).click();
   await component.getByLabel('Describe what you need').fill('React work');
-  await component.getByRole('button', { name: 'Find' }).click();
+  await component.getByRole('button', { name: 'Find', exact: true }).click();
   await expect(component.getByText('Backend Dev')).toHaveCount(0);
 
   await component.getByRole('button', { name: 'Clear' }).click();
