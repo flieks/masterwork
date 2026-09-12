@@ -789,7 +789,7 @@ export const CatalogSearchResponseSearchTypeEnum = {
 export type CatalogSearchResponseSearchTypeEnum = typeof CatalogSearchResponseSearchTypeEnum[keyof typeof CatalogSearchResponseSearchTypeEnum];
 
 /**
- *
+ * 
  * @export
  * @interface CatalogSkill
  */
@@ -4822,13 +4822,13 @@ export interface SkillInstallRequest {
     'overwrite'?: boolean;
 }
 /**
- *
+ * 
  * @export
  * @interface SkillMatch
  */
 export interface SkillMatch {
     /**
-     *
+     * 
      * @type {string}
      * @memberof SkillMatch
      */
@@ -4841,7 +4841,7 @@ export interface SkillMatch {
     'reason': string;
 }
 /**
- *
+ * 
  * @export
  * @interface SkillMatchRequest
  */
@@ -4854,7 +4854,7 @@ export interface SkillMatchRequest {
     'query': string;
 }
 /**
- *
+ * 
  * @export
  * @interface SkillMatchResponse
  */
@@ -4867,7 +4867,7 @@ export interface SkillMatchResponse {
     'matches': Array<SkillMatch>;
 }
 /**
- *
+ * 
  * @export
  * @enum {string}
  */
@@ -11118,9 +11118,9 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
-         *
+         * 
          * @summary Match Installed Skills
-         * @param {SkillMatchRequest} skillMatchRequest
+         * @param {SkillMatchRequest} skillMatchRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -11140,7 +11140,7 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
             const localVarQueryParameter = {} as any;
 
 
-
+    
             localVarHeaderParameter['Content-Type'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -11154,10 +11154,10 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
-         *
+         * 
          * @summary Search Skill Catalog
          * @param {string} q Search text.
-         * @param {number} [limit]
+         * @param {number} [limit] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -11333,9 +11333,9 @@ export const SkillsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary Match Installed Skills
-         * @param {SkillMatchRequest} skillMatchRequest
+         * @param {SkillMatchRequest} skillMatchRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -11346,10 +11346,10 @@ export const SkillsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         *
+         * 
          * @summary Search Skill Catalog
          * @param {string} q Search text.
-         * @param {number} [limit]
+         * @param {number} [limit] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -11438,9 +11438,9 @@ export const SkillsApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.listInstalledSkills(options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary Match Installed Skills
-         * @param {SkillMatchRequest} skillMatchRequest
+         * @param {SkillMatchRequest} skillMatchRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -11448,10 +11448,10 @@ export const SkillsApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.matchInstalledSkills(skillMatchRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         *
+         * 
          * @summary Search Skill Catalog
          * @param {string} q Search text.
-         * @param {number} [limit]
+         * @param {number} [limit] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -11539,9 +11539,9 @@ export class SkillsApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary Match Installed Skills
-     * @param {SkillMatchRequest} skillMatchRequest
+     * @param {SkillMatchRequest} skillMatchRequest 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof SkillsApi
@@ -11551,10 +11551,10 @@ export class SkillsApi extends BaseAPI {
     }
 
     /**
-     *
+     * 
      * @summary Search Skill Catalog
      * @param {string} q Search text.
-     * @param {number} [limit]
+     * @param {number} [limit] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof SkillsApi
