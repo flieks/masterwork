@@ -329,3 +329,9 @@ class SkillToggleConflictError(DomainError):
     """The folder the skill would move to already holds something of that name."""
 
     status_code = 409
+
+
+class SkillMatchError(DomainError):
+    """The claude CLI failed or returned no usable describe-to-find matches."""
+
+    status_code = 502

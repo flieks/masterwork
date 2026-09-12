@@ -4,6 +4,7 @@ import type {
   CatalogSkillDetail,
   CatalogSourceError,
   InstalledSkill,
+  SkillMatchResponse,
   UpstreamCheckResult,
 } from '~/api/generated';
 
@@ -58,6 +59,16 @@ export function catalogSearchResponse(
   return {
     skills: [catalogSkill(), unlicensedCatalogSkill()],
     errors: [],
+    search_type: 'semantic',
+    ...overrides,
+  };
+}
+
+export function skillMatchResponse(
+  overrides: Partial<SkillMatchResponse> = {},
+): SkillMatchResponse {
+  return {
+    matches: [{ name: 'frontend-dev', reason: 'Matches React frontend work.' }],
     ...overrides,
   };
 }

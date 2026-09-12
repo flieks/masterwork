@@ -12,9 +12,11 @@ import { DisabledBadge } from './DisabledBadge';
 interface AssetTableProps {
   kind: AssetKind;
   assets: AssetSummary[];
+  /** Keyed by asset name — a describe-to-find reason, shown under the name. */
+  captions?: Map<string, string>;
 }
 
-export function AssetTable({ kind, assets }: AssetTableProps) {
+export function AssetTable({ kind, assets, captions }: AssetTableProps) {
   const navigate = useNavigate();
   const [{ data: usage }] = useAtom(assetUsageByNameAtom(kind));
 
@@ -57,6 +59,11 @@ export function AssetTable({ kind, assets }: AssetTableProps) {
                     <span className="truncate">{asset.title}</span>
                     {asset.disabled ? <DisabledBadge /> : null}
                   </span>
+                  {captions?.get(asset.name) ? (
+                    <p className="truncate text-xs font-normal text-muted-foreground">
+                      {captions.get(asset.name)}
+                    </p>
+                  ) : null}
                 </td>
                 {/* Truncated at any width, so it yields room to the date columns. */}
                 <td className="max-w-[15rem] truncate px-4 py-2.5 text-muted-foreground">

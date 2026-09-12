@@ -7,10 +7,11 @@ import httpx
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_providers, get_skill_catalog_transport
-from app.api.v1.skills import schemas, service
+from app.api.deps import get_db, get_light_runner, get_providers, get_skill_catalog_transport
+from app.api.v1.skills import match_service, schemas, service
 from app.config import settings
 from app.providers.base import Provider
+from app.services.claude_runner import ClaudeRunner
 
 router = APIRouter(tags=["skills"])
 
@@ -75,6 +76,19 @@ async def install_skill(
 )
 async def list_installed_skills(db: AsyncSession = Depends(get_db)) -> list[schemas.InstalledSkill]:
     return await service.list_installed(db)
+
+
+@router.post(
+    "/skills/installed/match",
+    response_model=schemas.SkillMatchResponse,
+    operation_id="matchInstalledSkills",
+)
+async def match_installed_skills(
+    body: schemas.SkillMatchRequest,
+    providers: list[Provider] = Depends(get_providers),
+    runner: ClaudeRunner = Depends(get_light_runner),
+) -> schemas.SkillMatchResponse:
+    return await match_service.match_installed(providers, runner, body.query)
 
 
 @router.post(

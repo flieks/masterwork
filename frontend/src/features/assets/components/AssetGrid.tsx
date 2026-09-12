@@ -15,9 +15,11 @@ import { DisabledBadge } from './DisabledBadge';
 interface AssetGridProps {
   kind: AssetKind;
   assets: AssetSummary[];
+  /** Keyed by asset name — a describe-to-find reason, shown above the description. */
+  captions?: Map<string, string>;
 }
 
-export function AssetGrid({ kind, assets }: AssetGridProps) {
+export function AssetGrid({ kind, assets, captions }: AssetGridProps) {
   const [{ data: usage, isPending }] = useAtom(assetUsageByNameAtom(kind));
 
   return (
@@ -43,6 +45,9 @@ export function AssetGrid({ kind, assets }: AssetGridProps) {
               </div>
             </CardHeader>
             <CardContent className="flex h-full flex-col gap-3 pb-20">
+              {captions?.get(asset.name) ? (
+                <p className="text-sm text-muted-foreground">{captions.get(asset.name)}</p>
+              ) : null}
               <p className="line-clamp-3 text-sm text-muted-foreground">
                 {asset.description || <span className="italic">No description</span>}
               </p>

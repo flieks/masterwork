@@ -3418,6 +3418,47 @@
                 }
             }
         },
+        "/api/v1/skills/installed/match": {
+            "post": {
+                "tags": [
+                    "skills"
+                ],
+                "summary": "Match Installed Skills",
+                "operationId": "matchInstalledSkills",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SkillMatchRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SkillMatchResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/skills/installed/{name}/check": {
             "post": {
                 "tags": [
@@ -4906,12 +4947,23 @@
                         "type": "array",
                         "title": "Errors",
                         "description": "Per-source failures; a partial result still returns 200."
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "enum": [
+                            "semantic",
+                            "fuzzy",
+                            "unknown"
+                        ],
+                        "title": "Search Type",
+                        "description": "skills.sh's own ranking signal; results are ordered by it when known."
                     }
                 },
                 "type": "object",
                 "required": [
                     "skills",
-                    "errors"
+                    "errors",
+                    "search_type"
                 ],
                 "title": "CatalogSearchResponse"
             },
@@ -10344,6 +10396,57 @@
                     "skill"
                 ],
                 "title": "SkillInstallRequest"
+            },
+            "SkillMatch": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "title": "Reason",
+                        "description": "One line: why this skill fits the query."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "reason"
+                ],
+                "title": "SkillMatch"
+            },
+            "SkillMatchRequest": {
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Query",
+                        "description": "What the user is trying to do."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "query"
+                ],
+                "title": "SkillMatchRequest"
+            },
+            "SkillMatchResponse": {
+                "properties": {
+                    "matches": {
+                        "items": {
+                            "$ref": "#/components/schemas/SkillMatch"
+                        },
+                        "type": "array",
+                        "title": "Matches",
+                        "description": "Best first, capped at 8."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "matches"
+                ],
+                "title": "SkillMatchResponse"
             },
             "SkillRegistry": {
                 "type": "string",

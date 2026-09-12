@@ -11,6 +11,7 @@ import type {
   CodingAssetUsage,
   InstalledSkill,
   SkillInstallRequest,
+  SkillMatchResponse,
   UpstreamCheckResult,
 } from '~/api/generated';
 // The rollup owns the inspection scope; the drill-in follows it.
@@ -219,6 +220,17 @@ export const uninstallSkillMutationAtom = atomWithMutation<void, string>((get) =
     queryClient.invalidateQueries({ queryKey: ['installedSkills'] });
   },
 }));
+
+// --- describe-to-find over installed skills ------------------------------
+
+/** Click-triggered only — never fired from a keystroke, since it spends a
+ *  real model call. */
+export const matchInstalledSkillsMutationAtom = atomWithMutation<SkillMatchResponse, string>(
+  () => ({
+    mutationFn: (query: string): Promise<SkillMatchResponse> =>
+      api.skills.matchInstalledSkills({ query }).then((r) => r.data),
+  }),
+);
 
 // --- upstream drift -----------------------------------------------------
 

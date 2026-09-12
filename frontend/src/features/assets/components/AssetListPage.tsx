@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { useSearchParams } from 'react-router-dom';
-import { Search, PackageOpen, AlertTriangle } from 'lucide-react';
+import { Search, PackageOpen, AlertTriangle, X } from 'lucide-react';
+import type { SkillMatch } from '~/api/generated';
 import { Input } from '~/components/ui/input';
 import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
@@ -16,6 +17,7 @@ import { AssetGrid } from './AssetGrid';
 import { AssetTable } from './AssetTable';
 import { AssetListSkeleton } from './AssetListSkeleton';
 import { SkillCatalog } from './SkillCatalog';
+import { SkillMatchPanel } from './SkillMatchPanel';
 
 const COPY: Record<AssetKind, { title: string; noun: string; placeholder: string }> = {
   skill: {
@@ -54,6 +56,27 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
     assetsQueryAtom(assetsListKey(kind, debouncedQuery.trim())),
   );
 
+  // The describe-to-find match source: the unfiltered list, so a leftover
+  // search term never hides a skill the model matched.
+  const [{ data: unfilteredData }] = useAtom(assetsQueryAtom(assetsListKey(kind, '')));
+  const [showMatchPanel, setShowMatchPanel] = useState(false);
+  const [matches, setMatches] = useState<SkillMatch[] | null>(null);
+  const showingMatches = kind === 'skill' && matches !== null;
+
+  const matchedAssets = useMemo(() => {
+    if (!matches || !unfilteredData) return null;
+    const byName = new Map(unfilteredData.map((a) => [a.name, a]));
+    return matches.flatMap((m) => {
+      const asset = byName.get(m.name);
+      return asset ? [asset] : [];
+    });
+  }, [matches, unfilteredData]);
+
+  const captions = useMemo(
+    () => (matches ? new Map(matches.map((m) => [m.name, m.reason])) : undefined),
+    [matches],
+  );
+
   const installedList = (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -68,10 +91,48 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
             className="pl-9"
           />
         </div>
+        {kind === 'skill' ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowMatchPanel((open) => !open)}
+            aria-pressed={showMatchPanel}
+          >
+            Find by description
+          </Button>
+        ) : null}
         <ViewToggle />
       </div>
 
-      {isPending ? (
+      {showMatchPanel ? <SkillMatchPanel onMatches={setMatches} /> : null}
+
+      {showingMatches ? (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {matchedAssets?.length ?? 0} matching {copy.noun}
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => setMatches(null)}>
+            <X className="size-3.5" />
+            Clear
+          </Button>
+        </div>
+      ) : null}
+
+      {showingMatches ? (
+        matchedAssets === null ? (
+          <AssetListSkeleton view={view} />
+        ) : matchedAssets.length === 0 ? (
+          <EmptyState
+            icon={<PackageOpen className="size-8" />}
+            title="No matching skills"
+            description="Try describing what you need differently."
+          />
+        ) : view === 'grid' ? (
+          <AssetGrid kind={kind} assets={matchedAssets} captions={captions} />
+        ) : (
+          <AssetTable kind={kind} assets={matchedAssets} captions={captions} />
+        )
+      ) : isPending ? (
         <AssetListSkeleton view={view} />
       ) : isError ? (
         <EmptyState

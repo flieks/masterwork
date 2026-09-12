@@ -149,6 +149,7 @@ async def test_search_catalog_merges_both_sources(client: AsyncClient, skills_ro
     body = r.json()
     assert body["errors"] == []
     assert {s["skill"] for s in body["skills"]} == {_SKILL, "beta-tools"}
+    assert body["search_type"] == "unknown"  # the fixture's skills.sh body carries no searchType
 
 
 async def test_search_catalog_degrades_when_github_fails(

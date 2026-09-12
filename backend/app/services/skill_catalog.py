@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import html
+import json
 import re
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -43,6 +45,12 @@ _RETRIES = 1  # one retry on a transport error, a 5xx, or a 429
 MAX_SKILL_BYTES = 5 * 1024 * 1024
 MAX_SKILL_ENTRIES = 200
 MAX_SKILL_DEPTH = 5
+
+SKILLS_SH_PAGE_BASE = "https://www.skills.sh"
+_DESCRIPTION_TIMEOUT = 3.0
+_MAX_DESCRIPTION_FETCHES = 10
+
+SearchType = Literal["semantic", "fuzzy", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -70,6 +78,13 @@ class SourceError:
 class CatalogResult:
     skills: list[CatalogSkill]
     errors: list[SourceError]
+    search_type: SearchType
+
+
+@dataclass(frozen=True)
+class _SkillsShHits:
+    skills: list[CatalogSkill]
+    search_type: SearchType
 
 
 @dataclass(frozen=True)
@@ -151,28 +166,49 @@ async def _request_with_retry(
 # --- search -----------------------------------------------------------
 
 
+def _word_count(query: str) -> int:
+    return len(query.split())
+
+
 async def search_catalog(
     query: str, limit: int, *, transport: httpx.AsyncBaseTransport | None = None
 ) -> CatalogResult:
+    # A descriptive (>3-word) query only yields noise from GitHub's repo search.
+    skip_github = _word_count(query) > 3
     async with httpx.AsyncClient(timeout=_TIMEOUT, transport=transport) as client:
-        skills_sh_result, github_result = await asyncio.gather(
-            _search_skills_sh(client, query),
-            _search_github(client, query),
-            return_exceptions=True,
-        )
+        coros: list[Any] = [_search_skills_sh(client, query)]
+        if not skip_github:
+            coros.append(_search_github(client, query))
+        results = await asyncio.gather(*coros, return_exceptions=True)
 
-    skills_sh_skills, skills_sh_errors = _collect(skills_sh_result, "skills_sh")
-    github_skills, github_errors = _collect(github_result, "github")
-    errors = skills_sh_errors + github_errors
+        skills_sh_skills, skills_sh_errors, search_type = _collect_skills_sh(results[0])
+        if skip_github:
+            github_skills, github_errors = [], []
+        else:
+            github_skills, github_errors = _collect(results[1], "github")
+        errors = skills_sh_errors + github_errors
 
-    if len(errors) == 2:  # both sources failed — nothing usable to return
-        raise SkillCatalogError(
-            "skill catalog search failed: " + "; ".join(e.message for e in errors)
-        )
+        attempted = 1 if skip_github else 2
+        if len(errors) == attempted:  # every attempted source failed
+            raise SkillCatalogError(
+                "skill catalog search failed: " + "; ".join(e.message for e in errors)
+            )
 
-    merged = _merge(skills_sh_skills, github_skills)
-    ordered = sorted(merged, key=lambda s: (-(s.installs or 0), s.name.casefold()))
-    return CatalogResult(skills=ordered[:limit], errors=errors)
+        skills_sh_ordered, github_only = _merge(skills_sh_skills, github_skills)
+        if search_type == "semantic":
+            # skills.sh already ranked these by relevance — keep its order verbatim.
+            ordered = skills_sh_ordered + sorted(
+                github_only, key=lambda s: (-(s.installs or 0), s.name.casefold())
+            )
+        else:
+            ordered = sorted(
+                skills_sh_ordered + github_only,
+                key=lambda s: (-(s.installs or 0), s.name.casefold()),
+            )
+        limited = ordered[:limit]
+        enriched = await _enrich_descriptions(client, limited)
+
+    return CatalogResult(skills=enriched, errors=errors, search_type=search_type)
 
 
 def _collect(
@@ -183,26 +219,57 @@ def _collect(
     return result, []
 
 
+def _collect_skills_sh(
+    result: _SkillsShHits | BaseException,
+) -> tuple[list[CatalogSkill], list[SourceError], SearchType]:
+    if isinstance(result, BaseException):
+        return [], [SourceError(registry="skills_sh", message=str(result))], "unknown"
+    return result.skills, [], result.search_type
+
+
 def _dedupe_key(skill: CatalogSkill) -> tuple[str, str, str]:
     return (skill.owner.casefold(), skill.repo.casefold(), skill.skill.casefold())
 
 
-def _merge(skills_sh: list[CatalogSkill], github: list[CatalogSkill]) -> list[CatalogSkill]:
+def _merge(
+    skills_sh: list[CatalogSkill], github: list[CatalogSkill]
+) -> tuple[list[CatalogSkill], list[CatalogSkill]]:
     """Dedupe on (owner, repo, skill); skills.sh wins on conflict (it carries
-    install counts), but a license GitHub resolved is carried over onto it."""
-    by_key: dict[tuple[str, str, str], CatalogSkill] = {}
-    for skill in github:
-        by_key[_dedupe_key(skill)] = skill
+    install counts), but a license GitHub resolved is carried over onto it.
+    Returns (skills.sh hits in skills.sh's own order, GitHub records that did
+    not collide with one) so a semantic search can keep skills.sh's ranking."""
+    github_by_key = {_dedupe_key(s): s for s in github}
+    used_keys: set[tuple[str, str, str]] = set()
+
+    skills_sh_ordered: list[CatalogSkill] = []
+    seen_keys: set[tuple[str, str, str]] = set()
     for skill in skills_sh:
         key = _dedupe_key(skill)
-        existing = by_key.get(key)
-        if existing is not None and existing.license is not None and skill.license is None:
-            skill = replace(skill, license=existing.license, license_resolved=True)
-        by_key[key] = skill
-    return list(by_key.values())
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        existing = github_by_key.get(key)
+        if existing is not None:
+            used_keys.add(key)
+            if existing.license is not None and skill.license is None:
+                skill = replace(skill, license=existing.license, license_resolved=True)
+        skills_sh_ordered.append(skill)
+
+    github_only = [s for s in github if _dedupe_key(s) not in used_keys]
+    return skills_sh_ordered, github_only
 
 
-async def _search_skills_sh(client: httpx.AsyncClient, query: str) -> list[CatalogSkill]:
+def _search_type_of(data: Any) -> SearchType:
+    """skills.sh's own top-level ranking signal; anything but the two known
+    values (absent, misspelt, non-string, or a bare-list body) is unknown."""
+    if isinstance(data, dict):
+        value = data.get("searchType")
+        if value in ("semantic", "fuzzy"):
+            return value
+    return "unknown"
+
+
+async def _search_skills_sh(client: httpx.AsyncClient, query: str) -> _SkillsShHits:
     response = await _request_with_retry(client, "GET", SKILLS_SH_SEARCH_URL, params={"q": query})
     if response.status_code >= 300:
         raise SkillFetchError(f"skills.sh search {response.status_code}: {response.text[:300]}")
@@ -216,7 +283,7 @@ async def _search_skills_sh(client: httpx.AsyncClient, query: str) -> list[Catal
         skill = _parse_skills_sh_record(record)
         if skill is not None:
             skills.append(skill)
-    return skills
+    return _SkillsShHits(skills=skills, search_type=_search_type_of(data))
 
 
 def _skills_sh_records(data: Any) -> list[dict[str, Any]]:
@@ -311,6 +378,76 @@ def _parse_github_record(item: Any) -> CatalogSkill | None:
         license_resolved="license" in item,  # GitHub told us something, incl. an explicit null
         url=str(item.get("html_url") or f"https://github.com/{owner}/{repo}"),
     )
+
+
+# --- description enrichment ----------------------------------------------
+
+_LD_JSON_RE = re.compile(
+    r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+async def _enrich_descriptions(
+    client: httpx.AsyncClient, skills: list[CatalogSkill]
+) -> list[CatalogSkill]:
+    """skills.sh search records carry no description; fill the top hits' from
+    their detail page. One request each, concurrent, no retry — a page that is
+    slow, missing, or unparseable just leaves that one card blank."""
+    needs_description = (
+        i for i, s in enumerate(skills) if s.registry == "skills_sh" and not s.description
+    )
+    targets = list(needs_description)[:_MAX_DESCRIPTION_FETCHES]
+    if not targets:
+        return skills
+
+    descriptions = await asyncio.gather(*(_fetch_description(client, skills[i]) for i in targets))
+    enriched = list(skills)
+    for i, description in zip(targets, descriptions, strict=True):
+        if description:
+            enriched[i] = replace(enriched[i], description=description)
+    return enriched
+
+
+async def _fetch_description(client: httpx.AsyncClient, skill: CatalogSkill) -> str:
+    url = f"{SKILLS_SH_PAGE_BASE}/{skill.owner}/{skill.repo}/{skill.skill}"
+    try:
+        response = await client.get(url, timeout=_DESCRIPTION_TIMEOUT)
+    except httpx.HTTPError:
+        return ""
+    if response.status_code >= 300:
+        return ""
+    return _description_from_page(response.text)
+
+
+def _description_from_page(page_html: str) -> str:
+    """The `description` of the first ld+json SoftwareApplication block, or ""."""
+    for match in _LD_JSON_RE.finditer(page_html):
+        try:
+            data = json.loads(match.group(1))
+        except (json.JSONDecodeError, ValueError):
+            continue
+        for entry in _flatten_ld_json(data):
+            if not isinstance(entry, dict) or not _is_software_application(entry.get("@type")):
+                continue
+            description = entry.get("description")
+            if isinstance(description, str) and description.strip():
+                return html.unescape(description).strip()
+    return ""
+
+
+def _flatten_ld_json(data: Any) -> list[Any]:
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        graph = data.get("@graph")
+        return graph if isinstance(graph, list) else [data]
+    return []
+
+
+def _is_software_application(type_value: Any) -> bool:
+    values = type_value if isinstance(type_value, list) else [type_value]
+    return any(isinstance(v, str) and v.casefold() == "softwareapplication" for v in values)
 
 
 # --- license ------------------------------------------------------------

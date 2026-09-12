@@ -23,14 +23,19 @@ Handler = Callable[[httpx.Request], httpx.Response]
 
 def _route(
     skills_sh: Handler | None = None,
+    skills_sh_page: Handler | None = None,
     github: Handler | None = None,
     raw: Handler | None = None,
 ) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "www.skills.sh":
-            if skills_sh is None:
-                raise AssertionError("unexpected skills.sh request")
-            return skills_sh(request)
+            if request.url.path == "/api/search":
+                if skills_sh is None:
+                    raise AssertionError("unexpected skills.sh search request")
+                return skills_sh(request)
+            if skills_sh_page is None:
+                raise AssertionError("unexpected skills.sh detail-page request")
+            return skills_sh_page(request)
         if request.url.host == "api.github.com":
             if github is None:
                 raise AssertionError("unexpected GitHub request")
@@ -62,6 +67,7 @@ async def test_merges_disjoint_results_from_both_sources() -> None:
                     "name": "Alpha",
                     "source": "acme/widgets",
                     "installs": 5,
+                    "description": "Alpha widgets.",
                 }
             ]
         ),
@@ -93,6 +99,7 @@ async def test_dedupes_on_owner_repo_skill_skills_sh_wins_and_carries_license() 
                     "name": "Frontend Dev",
                     "source": "Acme/frontend-dev",
                     "installs": 42,
+                    "description": "React frontend guidelines.",
                 }
             ]
         ),
@@ -127,6 +134,7 @@ async def test_a_failing_source_degrades_to_a_partial_result() -> None:
                     "name": "Alpha",
                     "source": "acme/widgets",
                     "installs": 5,
+                    "description": "Alpha widgets.",
                 }
             ]
         ),
@@ -168,7 +176,16 @@ async def test_one_retry_on_a_failed_attempt() -> None:
         if calls["skills_sh"] == 1:
             return httpx.Response(500, text="boom")
         return httpx.Response(
-            200, json=[{"id": 1, "skillId": "alpha", "name": "Alpha", "source": "acme/widgets"}]
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "skillId": "alpha",
+                    "name": "Alpha",
+                    "source": "acme/widgets",
+                    "description": "Alpha widgets.",
+                }
+            ],
         )
 
     transport = _route(skills_sh=flaky, github=_github_search_ok([]))
@@ -177,6 +194,256 @@ async def test_one_retry_on_a_failed_attempt() -> None:
 
     assert calls["skills_sh"] == 2
     assert len(result.skills) == 1
+
+
+def _skills_sh_search(body: dict[str, object] | list[object]) -> Handler:
+    return lambda request: httpx.Response(200, json=body)
+
+
+_DESCRIPTIVE_QUERY = "how do I write good tests"  # 6 words — over the GitHub-skip threshold
+
+
+async def test_semantic_search_keeps_skills_sh_order_and_appends_github_after() -> None:
+    """skills.sh already ranked these — a later hit with more installs must not
+    jump ahead, and a GitHub-only extra lands after every skills.sh hit."""
+    transport = _route(
+        skills_sh=_skills_sh_search(
+            {
+                "searchType": "semantic",
+                "results": [
+                    {
+                        "id": 1,
+                        "skillId": "low-installs",
+                        "name": "Low",
+                        "source": "acme/low",
+                        "installs": 1,
+                        "description": "Low installs.",
+                    },
+                    {
+                        "id": 2,
+                        "skillId": "high-installs",
+                        "name": "High",
+                        "source": "acme/high",
+                        "installs": 999,
+                        "description": "High installs.",
+                    },
+                ],
+            }
+        ),
+        github=_github_search_ok(
+            [
+                {
+                    "full_name": "other/extra",
+                    "description": "Extra",
+                    "html_url": "https://github.com/other/extra",
+                }
+            ]
+        ),
+    )
+
+    result = await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    assert result.search_type == "semantic"
+    assert [s.skill for s in result.skills] == ["low-installs", "high-installs", "extra"]
+
+
+async def test_fuzzy_search_type_keeps_installs_desc_order() -> None:
+    transport = _route(
+        skills_sh=_skills_sh_search(
+            {
+                "searchType": "fuzzy",
+                "results": [
+                    {
+                        "id": 1,
+                        "skillId": "low-installs",
+                        "name": "Low",
+                        "source": "acme/low",
+                        "installs": 1,
+                        "description": "Low installs.",
+                    },
+                    {
+                        "id": 2,
+                        "skillId": "high-installs",
+                        "name": "High",
+                        "source": "acme/high",
+                        "installs": 999,
+                        "description": "High installs.",
+                    },
+                ],
+            }
+        ),
+        github=_github_search_ok([]),
+    )
+
+    result = await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    assert result.search_type == "fuzzy"
+    assert [s.skill for s in result.skills] == ["high-installs", "low-installs"]
+
+
+async def test_missing_search_type_reports_unknown_and_sorts_by_installs() -> None:
+    transport = _route(
+        skills_sh=_skills_sh_search(
+            {
+                "results": [
+                    {
+                        "id": 1,
+                        "skillId": "alpha",
+                        "name": "Alpha",
+                        "source": "acme/alpha",
+                        "installs": 1,
+                        "description": "Alpha.",
+                    }
+                ]
+            }
+        ),
+        github=_github_search_ok([]),
+    )
+
+    result = await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    assert result.search_type == "unknown"
+
+
+async def test_bare_list_body_reports_unknown_search_type() -> None:
+    transport = _route(
+        skills_sh=_skills_sh_search(
+            [
+                {
+                    "id": 1,
+                    "skillId": "alpha",
+                    "name": "Alpha",
+                    "source": "acme/alpha",
+                    "description": "Alpha.",
+                }
+            ]
+        ),
+        github=_github_search_ok([]),
+    )
+
+    result = await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    assert result.search_type == "unknown"
+
+
+async def test_a_descriptive_query_never_reaches_github() -> None:
+    """More than three words is a descriptive query — GitHub's repo search
+    would only add noise, so it is never called, and the skip is not an error."""
+    transport = _route(
+        skills_sh=_skills_sh_search(
+            {"searchType": "semantic", "results": []}
+        )
+        # no `github` handler — a request to it raises AssertionError.
+    )
+
+    result = await skill_catalog.search_catalog(_DESCRIPTIVE_QUERY, 25, transport=transport)
+
+    assert result.errors == []
+
+
+async def test_a_three_word_query_still_queries_github() -> None:
+    transport = _route(
+        skills_sh=_skills_sh_search({"searchType": "semantic", "results": []}),
+        github=_github_search_ok([]),
+    )
+
+    # A missing `github` handler would raise AssertionError on this word count.
+    result = await skill_catalog.search_catalog("write good tests", 25, transport=transport)
+
+    assert result.errors == []
+
+
+async def test_a_descriptive_query_whose_skills_sh_leg_fails_still_raises() -> None:
+    """The GitHub leg is skipped, not attempted — so skills.sh failing alone
+    must still raise, rather than a lone success being read as "no failures"."""
+    transport = _route(skills_sh=lambda request: httpx.Response(500, text="boom"))
+
+    with pytest.raises(SkillCatalogError):
+        await skill_catalog.search_catalog(_DESCRIPTIVE_QUERY, 25, transport=transport)
+
+
+async def test_description_enrichment_fills_from_ld_json_detail_page() -> None:
+    page = (
+        "<html><head>"
+        '<script type="application/ld+json">'
+        '{"@type": "SoftwareApplication", "description": "A tidy skill &amp; more."}'
+        "</script>"
+        "</head></html>"
+    )
+    transport = _route(
+        skills_sh=_skills_sh_ok(
+            [{"id": 1, "skillId": "alpha", "name": "Alpha", "source": "acme/widgets"}]
+        ),
+        skills_sh_page=lambda request: httpx.Response(200, text=page),
+        github=_github_search_ok([]),
+    )
+
+    result = await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    assert result.skills[0].description == "A tidy skill & more."
+
+
+async def test_at_most_ten_description_pages_are_fetched_for_more_hits() -> None:
+    records = [
+        {"id": i, "skillId": f"skill-{i}", "name": f"Skill {i}", "source": f"acme/repo-{i}"}
+        for i in range(12)
+    ]
+    fetched: list[str] = []
+
+    def page(request: httpx.Request) -> httpx.Response:
+        fetched.append(request.url.path)
+        return httpx.Response(200, text="<html></html>")
+
+    transport = _route(
+        skills_sh=_skills_sh_ok(records), skills_sh_page=page, github=_github_search_ok([])
+    )
+
+    await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    assert len(fetched) == 10
+
+
+async def test_description_fetch_failures_degrade_to_empty_without_failing_the_search() -> None:
+    def page(request: httpx.Request) -> httpx.Response:
+        skill = request.url.path.rsplit("/", 1)[-1]
+        if skill == "boom-500":
+            return httpx.Response(500, text="boom")
+        if skill == "timeout":
+            raise httpx.TimeoutException("slow", request=request)
+        if skill == "no-ld-json":
+            return httpx.Response(200, text="<html></html>")
+        if skill == "malformed-ld-json":
+            return httpx.Response(
+                200, text='<script type="application/ld+json">{not json</script>'
+            )
+        return httpx.Response(
+            200,
+            text=(
+                '<script type="application/ld+json">'
+                '{"@type": "SoftwareApplication", "description": "Good."}'
+                "</script>"
+            ),
+        )
+
+    records = [
+        {"id": 1, "skillId": "boom-500", "name": "A", "source": "acme/a"},
+        {"id": 2, "skillId": "timeout", "name": "B", "source": "acme/b"},
+        {"id": 3, "skillId": "no-ld-json", "name": "C", "source": "acme/c"},
+        {"id": 4, "skillId": "malformed-ld-json", "name": "D", "source": "acme/d"},
+        {"id": 5, "skillId": "healthy", "name": "E", "source": "acme/e"},
+    ]
+    transport = _route(
+        skills_sh=_skills_sh_ok(records), skills_sh_page=page, github=_github_search_ok([])
+    )
+
+    result = await skill_catalog.search_catalog("x", 25, transport=transport)
+
+    by_skill = {s.skill: s.description for s in result.skills}
+    assert by_skill["boom-500"] == ""
+    assert by_skill["timeout"] == ""
+    assert by_skill["no-ld-json"] == ""
+    assert by_skill["malformed-ld-json"] == ""
+    assert by_skill["healthy"] == "Good."
 
 
 def _skill_md_content_response() -> httpx.Response:

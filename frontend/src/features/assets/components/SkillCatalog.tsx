@@ -41,7 +41,7 @@ export function SkillCatalog() {
         <Input
           type="search"
           aria-label="Search the skill catalog"
-          placeholder="Search community skills by name…"
+          placeholder="Describe what you need, or type a skill name…"
           value={rawQuery}
           onChange={(e) => setRawQuery(e.target.value)}
           className="pl-9"
@@ -78,37 +78,46 @@ export function SkillCatalog() {
           description="Try a different search term."
         />
       ) : (
-        <ul className="flex flex-col gap-2">
-          {data.skills.map((skill) => (
-            <li key={`${skill.owner}/${skill.repo}/${skill.skill}`}>
-              <button
-                type="button"
-                onClick={() => setPreview(skill)}
-                className="flex w-full flex-col gap-1 rounded-lg border bg-card p-3 text-left hover:bg-accent"
-              >
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {/* Every registry-supplied string renders as plain text — never HTML/markdown. */}
-                  <span className="font-medium">{skill.name}</span>
-                  <Badge variant="muted">{REGISTRY_LABEL[skill.registry] ?? skill.registry}</Badge>
-                  <LicenseBadge license={skill.license} resolved={skill.license_resolved} />
-                  {skill.installed ? <Badge variant="outline">Installed</Badge> : null}
-                  {skill.installed && updateAvailable.has(skill.skill) ? (
-                    <Badge>Update available</Badge>
+        <>
+          <p className="text-xs text-muted-foreground">
+            {data.search_type === 'semantic' ? 'Ranked by meaning' : 'Ranked by installs'}
+          </p>
+          <ul className="flex flex-col gap-2">
+            {data.skills.map((skill) => (
+              <li key={`${skill.owner}/${skill.repo}/${skill.skill}`}>
+                <button
+                  type="button"
+                  onClick={() => setPreview(skill)}
+                  className="flex w-full flex-col gap-1 rounded-lg border bg-card p-3 text-left hover:bg-accent"
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Every registry-supplied string renders as plain text — never HTML/markdown. */}
+                    <span className="font-medium">{skill.name}</span>
+                    <Badge variant="muted">
+                      {REGISTRY_LABEL[skill.registry] ?? skill.registry}
+                    </Badge>
+                    <LicenseBadge license={skill.license} resolved={skill.license_resolved} />
+                    {skill.installed ? <Badge variant="outline">Installed</Badge> : null}
+                    {skill.installed && updateAvailable.has(skill.skill) ? (
+                      <Badge>Update available</Badge>
+                    ) : null}
+                    {skill.registry === 'skills_sh' && skill.installs !== null ? (
+                      <span className="text-xs text-muted-foreground">
+                        {skill.installs} installs
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {skill.owner}/{skill.repo}
+                  </p>
+                  {skill.description ? (
+                    <p className="truncate text-sm text-muted-foreground">{skill.description}</p>
                   ) : null}
-                  {skill.registry === 'skills_sh' && skill.installs !== null ? (
-                    <span className="text-xs text-muted-foreground">{skill.installs} installs</span>
-                  ) : null}
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {skill.owner}/{skill.repo}
-                </p>
-                {skill.description ? (
-                  <p className="truncate text-sm text-muted-foreground">{skill.description}</p>
-                ) : null}
-              </button>
-            </li>
-          ))}
-        </ul>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {data && data.errors.length > 0 ? (

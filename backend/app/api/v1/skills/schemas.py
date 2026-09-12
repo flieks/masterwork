@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -45,6 +46,9 @@ class CatalogSearchResponse(BaseModel):
     skills: list[CatalogSkill]
     errors: list[CatalogSourceError] = Field(
         ..., description="Per-source failures; a partial result still returns 200."
+    )
+    search_type: Literal["semantic", "fuzzy", "unknown"] = Field(
+        ..., description="skills.sh's own ranking signal; results are ordered by it when known."
     )
 
 
@@ -155,3 +159,16 @@ class SkillUpdateRequest(BaseModel):
     force: bool = Field(
         False, description="Overwrite local edits: required when status is edited_locally/diverged."
     )
+
+
+class SkillMatchRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="What the user is trying to do.")
+
+
+class SkillMatch(BaseModel):
+    name: str
+    reason: str = Field(..., description="One line: why this skill fits the query.")
+
+
+class SkillMatchResponse(BaseModel):
+    matches: list[SkillMatch] = Field(..., description="Best first, capped at 8.")

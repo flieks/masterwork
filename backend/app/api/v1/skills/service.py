@@ -128,6 +128,7 @@ async def search_catalog(
     return CatalogSearchResponse(
         skills=[_to_catalog_skill(s, installed=s.skill in on_disk) for s in result.skills],
         errors=[_to_source_error(e) for e in result.errors],
+        search_type=result.search_type,
     )
 
 

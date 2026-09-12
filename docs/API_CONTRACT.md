@@ -3584,3 +3584,64 @@ AssetCall.source   // spawn_call now also covers a Codex SubagentStart (carries 
   the integration `unavailable` with a detail saying so, rather than a
   "connected" card recording nothing. Hooks are on by default in Codex, so no
   flag is ever set.
+
+# API Contract v1.46 — semantic skill search, and describing what you need
+
+Additive on top of v1.45. skills.sh's own search already ranks results by
+relevance and says how (`searchType`); the catalog stopped throwing that away
+by re-sorting on install count. The GitHub repo-search leg is skipped for a
+descriptive (>3-word) query, and the top skills.sh hits get their description
+scraped from the registry's own detail page. The installed skills tab gets its
+own one-shot match: describe what you need, get back the best-fitting
+installed skills.
+
+## New endpoints
+
+```
+POST /api/v1/skills/installed/match   matchInstalledSkills -> SkillMatchResponse
+```
+
+## Changed schemas
+
+```
+CatalogSearchResponse {
+  ...,
+  search_type: "semantic" | "fuzzy" | "unknown",   // NEW — skills.sh's own ranking signal
+}
+```
+
+## New schemas
+
+```
+SkillMatchRequest { query: string }
+
+SkillMatch { name, reason }                    // reason is the model's one-line why
+
+SkillMatchResponse { matches: SkillMatch[] }   // best first, capped at 8
+```
+
+## Behavior
+
+- **Ranking follows skills.sh when it says "semantic".** `search_type` carries
+  skills.sh's own `searchType` verbatim (`"unknown"` when absent, misspelt, or
+  the body is a bare list). A semantic result keeps skills.sh's order exactly;
+  GitHub-only extras are appended after it, sorted by installs. A fuzzy or
+  unknown result keeps the existing installs-desc sort over both sources
+  combined.
+- **A descriptive query (more than three words) never reaches GitHub's repo
+  search.** GitHub's `topic:claude-skills` search only returns noise for a
+  sentence-shaped query; skipping it is silent — no `CatalogSourceError`, and
+  not counted against the "every source failed" guard.
+- **The top ten skills.sh hits get a description for free.** skills.sh's search
+  records carry none; each hit's own detail page
+  (`https://www.skills.sh/{owner}/{repo}/{skill}`) is fetched once, 3s timeout,
+  no retry, and its `application/ld+json` `SoftwareApplication` block supplies
+  `description`. Any failure — timeout, non-2xx, no ld+json, malformed JSON —
+  leaves that one card's description at `""`; the search itself never fails
+  because of it.
+- **`matchInstalledSkills` spends one model call per click, never per
+  keystroke.** It feeds every installed skill's name and frontmatter
+  description to the cheap runner, asks for a ranked JSON array of
+  `{name, reason}`, drops any name it does not recognise, and caps the result
+  at 8. An empty result is a real answer (200, `matches: []`); only a runner
+  failure or an unparseable reply is a 502.

@@ -99,6 +99,11 @@ test('the catalog tab is selected from the URL and lists both results', async ({
   await mountCatalogTab(mount, page);
 
   await expect(page.getByRole('tab', { name: 'Catalog' })).toHaveAttribute('aria-selected', 'true');
+  await expect(
+    page.getByPlaceholder('Describe what you need, or type a skill name…'),
+  ).toBeVisible();
+  // The default fixture reports a semantic search.
+  await expect(page.getByText('Ranked by meaning')).toBeVisible();
 
   const licensed = page.getByRole('button', { name: /Frontend Dev/ });
   await expect(licensed).toContainText('acme/frontend-dev');
@@ -280,4 +285,12 @@ test('an installed card badges a cached upstream change, from one list request',
   // The badge reads the cached status: one list, never a check per card.
   expect(routes.calls.filter((c) => c === 'GET /api/v1/skills/installed')).toHaveLength(1);
   expect(routes.calls.filter((c) => c.includes('/check'))).toHaveLength(0);
+});
+
+test('a fuzzy search is captioned "Ranked by installs" instead', async ({ mount, page }) => {
+  await mockCatalog(page, { search: catalogSearchResponse({ search_type: 'fuzzy' }) });
+  await mountCatalogTab(mount, page);
+
+  await expect(page.getByText('Ranked by installs')).toBeVisible();
+  await expect(page.getByText('Ranked by meaning')).toHaveCount(0);
 });
