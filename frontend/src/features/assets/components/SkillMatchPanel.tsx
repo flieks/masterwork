@@ -21,8 +21,12 @@ export function SkillMatchPanel({ onMatches }: SkillMatchPanelProps) {
   async function handleFind() {
     const trimmed = query.trim();
     if (!trimmed) return;
-    const result = await findMatches(trimmed);
-    onMatches(result.matches);
+    try {
+      const result = await findMatches(trimmed);
+      onMatches(result.matches);
+    } catch {
+      // isError/error below already renders the message — nothing else to do.
+    }
   }
 
   return (
