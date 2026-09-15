@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+GenericTwin = Literal["identical", "differs"]
 
 
 class AssetKind(StrEnum):
@@ -47,6 +50,14 @@ class AssetSummary(BaseModel):
         ...,
         description="True when the skill is parked under its folder's `.disabled/`, where "
         "no coding agent loads it. Still readable and editable; `agents` is empty.",
+    )
+    generic_twin: GenericTwin | None = Field(
+        None,
+        description="Set on a Claude or Codex skill that is a real folder (not a link) while "
+        '~/.agents/skills holds a same-named skill: "identical" when the two trees match '
+        'byte for byte, "differs" otherwise. Null for everything else. Migrating the '
+        "agent copy merges the pair (an identical twin is adopted; a differing one needs "
+        "`replace_generic`).",
     )
 
 

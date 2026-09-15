@@ -70,6 +70,39 @@
         "site"
       ],
       "port": 5310
+    },
+    {
+      "name": "backend-verify2",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "CORS_ORIGINS=http://localhost:5202",
+        "uv",
+        "run",
+        "--directory",
+        "backend",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8014"
+      ],
+      "port": 8014
+    },
+    {
+      "name": "frontend-verify2",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_API_URL=http://localhost:8014",
+        "npm",
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5202",
+        "--strictPort"
+      ],
+      "port": 5202
     }
   ]
 }

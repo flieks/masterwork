@@ -281,6 +281,12 @@ export interface AssetDetail {
      */
     'disabled': boolean;
     /**
+     * 
+     * @type {string}
+     * @memberof AssetDetail
+     */
+    'generic_twin'?: AssetDetailGenericTwinEnum | null;
+    /**
      * Full markdown, including frontmatter.
      * @type {string}
      * @memberof AssetDetail
@@ -288,6 +294,12 @@ export interface AssetDetail {
     'content': string;
 }
 
+export const AssetDetailGenericTwinEnum = {
+    Identical: 'identical',
+    Differs: 'differs'
+} as const;
+
+export type AssetDetailGenericTwinEnum = typeof AssetDetailGenericTwinEnum[keyof typeof AssetDetailGenericTwinEnum];
 
 /**
  * 
@@ -572,8 +584,20 @@ export interface AssetSummary {
      * @memberof AssetSummary
      */
     'disabled': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSummary
+     */
+    'generic_twin'?: AssetSummaryGenericTwinEnum | null;
 }
 
+export const AssetSummaryGenericTwinEnum = {
+    Identical: 'identical',
+    Differs: 'differs'
+} as const;
+
+export type AssetSummaryGenericTwinEnum = typeof AssetSummaryGenericTwinEnum[keyof typeof AssetSummaryGenericTwinEnum];
 
 /**
  * 

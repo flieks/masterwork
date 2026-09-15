@@ -6,7 +6,13 @@ from collections.abc import Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.assets.schemas import AssetDetail, AssetKind, AssetMigrationResult, AssetSummary
+from app.api.v1.assets.schemas import (
+    AssetDetail,
+    AssetKind,
+    AssetMigrationResult,
+    AssetSummary,
+    GenericTwin,
+)
 from app.core.exceptions import (
     AssetNotFoundError,
     AssetNotMigratableError,
@@ -15,7 +21,7 @@ from app.core.exceptions import (
     ReadOnlyAssetError,
 )
 from app.providers.base import DISABLED_DIR, Provider, ScannedAsset, resolve_within_roots
-from app.providers.generic import GenericSkillProvider
+from app.providers.generic import PROVIDER_GENERIC, GenericSkillProvider
 from app.repositories import projects as project_repo
 from app.services import skill_migrate, skill_toggle
 from app.services.asset_history import prepare_snapshots, snapshot_writes
@@ -35,7 +41,7 @@ def parse_asset_id(asset_id: str) -> tuple[str, str, str]:
     return provider, kind, name
 
 
-def _to_summary(asset: ScannedAsset) -> AssetSummary:
+def _to_summary(asset: ScannedAsset, twin: GenericTwin | None = None) -> AssetSummary:
     return AssetSummary(
         id=asset.id,
         kind=AssetKind(asset.kind),
@@ -50,11 +56,41 @@ def _to_summary(asset: ScannedAsset) -> AssetSummary:
         updated_at=asset.updated_at,
         read_only=asset.read_only,
         disabled=asset.disabled,
+        generic_twin=twin,
     )
 
 
-def _to_detail(asset: ScannedAsset) -> AssetDetail:
-    return AssetDetail(**_to_summary(asset).model_dump(), content=asset.content)
+def _to_detail(asset: ScannedAsset, twin: GenericTwin | None = None) -> AssetDetail:
+    return AssetDetail(**_to_summary(asset, twin).model_dump(), content=asset.content)
+
+
+def _generic_twins(assets: Iterable[ScannedAsset]) -> dict[str, GenericTwin]:
+    """Agent-folder skills that are a real copy of a same-named generic skill.
+
+    skills.sh's CLI installs one copy per agent folder plus the ~/.agents one, so
+    the same skill shows up twice. Keyed by the agent copy's id; the value says
+    whether migrating it will adopt the generic copy or has to replace it."""
+    assets = list(assets)
+    generic = {
+        a.name: a
+        for a in assets
+        if a.provider == PROVIDER_GENERIC and a.kind == AssetKind.skill.value and not a.disabled
+    }
+    twins: dict[str, GenericTwin] = {}
+    for asset in assets:
+        if (
+            asset.kind != AssetKind.skill.value
+            or asset.provider not in MIGRATABLE_PROVIDERS
+            or asset.read_only
+            or asset.disabled
+        ):
+            continue
+        twin = generic.get(asset.name)
+        if twin is None or asset.path.parent.is_symlink():
+            continue
+        same = skill_migrate.trees_identical(asset.path.parent, twin.path.parent)
+        twins[asset.id] = "identical" if same else "differs"
+    return twins
 
 
 def _scan_all(providers: Iterable[Provider]) -> list[ScannedAsset]:
@@ -79,9 +115,10 @@ def list_assets(
     assets = _scan_all(providers)
     if kind is not None:
         assets = [a for a in assets if a.kind == kind.value]
+    twins = _generic_twins(assets)
     if q:
         assets = [a for a in assets if _matches_query(a, q)]
-    return [_to_summary(a) for a in assets]
+    return [_to_summary(a, twins.get(a.id)) for a in assets]
 
 
 def find_asset(providers: Iterable[Provider], asset_id: str) -> ScannedAsset:
@@ -99,7 +136,9 @@ def existing_asset_ids(providers: Iterable[Provider]) -> set[str]:
 
 
 def get_asset(providers: Iterable[Provider], asset_id: str) -> AssetDetail:
-    return _to_detail(find_asset(providers, asset_id))
+    assets = _scan_all(providers)
+    asset = find_asset(providers, asset_id)
+    return _to_detail(asset, _generic_twins(assets).get(asset.id))
 
 
 async def update_asset(providers: list[Provider], asset_id: str, content: str) -> AssetDetail:

@@ -11,6 +11,7 @@ import { AssetDatesStacked } from './AssetDates';
 import { ModelBadge } from './ModelBadge';
 import { AgentsBadge } from './AgentsBadge';
 import { DisabledBadge } from './DisabledBadge';
+import { GenericTwinBadge, MergeTwinButton } from './GenericTwinBadge';
 
 interface AssetGridProps {
   kind: AssetKind;
@@ -62,6 +63,12 @@ export function AssetGrid({ kind, assets, captions }: AssetGridProps) {
                     agents={asset.agents}
                     disabled={asset.disabled}
                   />
+                  {asset.generic_twin ? (
+                    <>
+                      <GenericTwinBadge twin={asset.generic_twin} />
+                      <MergeTwinButton asset={asset} />
+                    </>
+                  ) : null}
                   <ModelBadge model={asset.model} showInherit={kind === 'agent'} compact />
                 </div>
               </div>

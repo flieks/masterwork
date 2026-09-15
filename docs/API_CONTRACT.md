@@ -3645,3 +3645,41 @@ SkillMatchResponse { matches: SkillMatch[] }   // best first, capped at 8
   `{name, reason}`, drops any name it does not recognise, and caps the result
   at 8. An empty result is a real answer (200, `matches: []`); only a runner
   failure or an unparseable reply is a 502.
+
+
+---
+
+# API Contract v1.47 — twinned skills
+
+Additive on top of v1.46. skills.sh's CLI (`npx skills add`) writes one real
+copy of a skill into `~/.agents/skills` *and* one into each selected agent's
+own folder, so the same skill listed twice: "Claude only" and "Generic ·
+unlinked". The asset list now says when an agent-folder skill is such a twin,
+and the UI folds the pair into one row with a Merge control.
+
+## Changed schemas
+
+```
+AssetSummary / AssetDetail {
+  ...,
+  generic_twin: "identical" | "differs" | null,   // NEW
+}
+```
+
+## Behavior
+
+- **`generic_twin` is set only on a Claude or Codex skill that is a real
+  folder** (not a link) while `~/.agents/skills` holds a skill of the same
+  name. `"identical"` when the two trees match byte for byte, all the way
+  down; `"differs"` otherwise. Null on the generic side, on agents, on
+  plugin (read-only) and disabled skills, and on anything without a
+  same-named generic copy. A disabled generic copy does not count as a twin.
+- **Merging is the existing `migrateAssetToGeneric`.** An `"identical"` twin
+  is adopted (`adopted: true`, the agent folder becomes a link); a `"differs"`
+  twin conflicts with 409 unless `replace_generic` is set, exactly as before.
+  After either, the pair is one generic skill and `generic_twin` is null.
+- **The UI hides the orphaned generic row.** When an agent copy carries
+  `generic_twin` and the same-named generic copy links into no agent, only
+  the agent row is shown, badged "Duplicate of generic copy" or "Differs from
+  generic copy" with a Merge button; the installed count follows. A generic
+  copy some agent does link to keeps its row, since that row says who sees it.

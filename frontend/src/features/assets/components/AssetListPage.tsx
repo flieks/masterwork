@@ -13,6 +13,7 @@ import { apiErrorMessage } from '~/api/client';
 import { assetViewAtom } from '../atoms';
 import { assetsQueryAtom, assetsListKey, type AssetKind } from '../queries';
 import { ViewToggle } from './ViewToggle';
+import { hideMergedTwins } from '../duplicates';
 import { AssetGrid } from './AssetGrid';
 import { AssetTable } from './AssetTable';
 import { AssetListSkeleton } from './AssetListSkeleton';
@@ -55,6 +56,7 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
   const [{ data, isPending, isError, error, refetch }] = useAtom(
     assetsQueryAtom(assetsListKey(kind, debouncedQuery.trim())),
   );
+  const visible = useMemo(() => hideMergedTwins(data ?? []), [data]);
 
   // The describe-to-find match source: the unfiltered list, so a leftover
   // search term never hides a skill the model matched.
@@ -65,7 +67,7 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
 
   const matchedAssets = useMemo(() => {
     if (!matches || !unfilteredData) return null;
-    const byName = new Map(unfilteredData.map((a) => [a.name, a]));
+    const byName = new Map(hideMergedTwins(unfilteredData).map((a) => [a.name, a]));
     return matches.flatMap((m) => {
       const asset = byName.get(m.name);
       return asset ? [asset] : [];
@@ -145,7 +147,7 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
             </Button>
           }
         />
-      ) : data.length === 0 ? (
+      ) : visible.length === 0 ? (
         <EmptyState
           icon={<PackageOpen className="size-8" />}
           title={
@@ -160,9 +162,9 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
           }
         />
       ) : view === 'grid' ? (
-        <AssetGrid kind={kind} assets={data} />
+        <AssetGrid kind={kind} assets={visible} />
       ) : (
-        <AssetTable kind={kind} assets={data} />
+        <AssetTable kind={kind} assets={visible} />
       )}
     </div>
   );
@@ -173,8 +175,8 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">{copy.title}</h1>
           {tab === 'installed' && data ? (
-            <Badge variant="muted" aria-label={`${data.length} ${copy.noun}`}>
-              {data.length}
+            <Badge variant="muted" aria-label={`${visible.length} ${copy.noun}`}>
+              {visible.length}
             </Badge>
           ) : null}
         </div>

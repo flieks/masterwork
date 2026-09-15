@@ -8,6 +8,7 @@ import { assetDetailPath, assetUsageByNameAtom, type AssetKind } from '../querie
 import { NeverEdited, UnknownCreated } from './AssetDates';
 import { AgentsBadge } from './AgentsBadge';
 import { DisabledBadge } from './DisabledBadge';
+import { GenericTwinBadge, MergeTwinButton } from './GenericTwinBadge';
 
 interface AssetTableProps {
   kind: AssetKind;
@@ -70,11 +71,19 @@ export function AssetTable({ kind, assets, captions }: AssetTableProps) {
                   {asset.description || '—'}
                 </td>
                 <td className="px-4 py-2.5">
-                  <AgentsBadge
-                    provider={asset.provider}
-                    agents={asset.agents}
-                    disabled={asset.disabled}
-                  />
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <AgentsBadge
+                      provider={asset.provider}
+                      agents={asset.agents}
+                      disabled={asset.disabled}
+                    />
+                    {asset.generic_twin ? (
+                      <>
+                        <GenericTwinBadge twin={asset.generic_twin} />
+                        <MergeTwinButton asset={asset} />
+                      </>
+                    ) : null}
+                  </span>
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
                   {used ? used.uses : <span className="text-muted-foreground">—</span>}

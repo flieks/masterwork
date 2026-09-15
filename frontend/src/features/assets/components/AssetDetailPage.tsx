@@ -17,6 +17,7 @@ import { splitFrontmatter } from '~/lib/frontmatter';
 import { AssetChatPanel } from '~/features/chat';
 import { ProviderBadge } from './ProviderBadge';
 import { AgentsBadge } from './AgentsBadge';
+import { GenericTwinBadge } from './GenericTwinBadge';
 import { DisabledBadge } from './DisabledBadge';
 import { MakeGenericDialog } from './MakeGenericDialog';
 import { ModelBadge } from './ModelBadge';
@@ -110,7 +111,8 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
   }
 
   function openMakeGeneric() {
-    setGenericConflict(false);
+    // A known-different twin skips straight to the replace warning.
+    setGenericConflict(data?.generic_twin === 'differs');
     setConfirmGeneric(true);
   }
 
@@ -228,7 +230,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
                     onClick={openMakeGeneric}
                     title="Move this skill to ~/.agents/skills so every coding agent can use it"
                   >
-                    <Share2 /> Make generic
+                    <Share2 /> {data.generic_twin ? 'Merge with generic copy' : 'Make generic'}
                   </Button>
                 ) : null}
                 <Button size="sm" variant="outline" onClick={startEdit}>
@@ -249,6 +251,7 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
           <AgentsBadge provider={data.provider} agents={data.agents} disabled={data.disabled} />
+          {data.generic_twin ? <GenericTwinBadge twin={data.generic_twin} /> : null}
           <ProviderBadge provider={data.provider} />
           {data.disabled ? <DisabledBadge /> : null}
           <ModelBadge model={data.model} showInherit={kind === 'agent'} />

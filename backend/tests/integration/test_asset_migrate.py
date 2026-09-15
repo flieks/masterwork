@@ -138,6 +138,44 @@ async def test_migrate_adopts_an_identical_generic_copy(
     assert (trees["claude"] / "backend-dev").is_symlink()
 
 
+async def test_list_flags_a_real_copy_twinned_with_a_generic_skill(
+    migrate_client: AsyncClient, trees: dict[str, Path]
+) -> None:
+    # skills.sh's CLI leaves one real copy per folder: identical for backend-dev,
+    # diverged for frontend-dev, and a linked (already merged) one for theirs.
+    shutil.copytree(trees["claude"] / "backend-dev", trees["generic"] / "backend-dev")
+    (trees["generic"] / "frontend-dev").mkdir(parents=True)
+    (trees["generic"] / "frontend-dev" / "SKILL.md").write_text(
+        "---\nname: frontend-dev\n---\nolder\n"
+    )
+    r = await migrate_client.post(_migrate_url("codex:skill:theirs"))
+    assert r.status_code == 200, r.text
+
+    r = await migrate_client.get("/api/v1/assets")
+    assert r.status_code == 200
+    by_id = {a["id"]: a for a in r.json()}
+    assert by_id["claude:skill:backend-dev"]["generic_twin"] == "identical"
+    assert by_id["claude:skill:frontend-dev"]["generic_twin"] == "differs"
+    # The generic side and anything without a twin stay unflagged.
+    assert by_id["generic:skill:backend-dev"]["generic_twin"] is None
+    assert by_id["generic:skill:theirs"]["generic_twin"] is None
+    assert by_id["claude:agent:architect"]["generic_twin"] is None
+    assert "codex:skill:theirs" not in by_id
+
+    detail = await migrate_client.get(
+        "/api/v1/assets/" + quote("claude:skill:backend-dev", safe="")
+    )
+    assert detail.json()["generic_twin"] == "identical"
+
+    # Merging the identical pair clears the flag: one generic skill, linked everywhere.
+    r = await migrate_client.post(_migrate_url("claude:skill:backend-dev"))
+    assert r.status_code == 200 and r.json()["adopted"] is True
+    after = {a["id"]: a for a in (await migrate_client.get("/api/v1/assets")).json()}
+    assert "claude:skill:backend-dev" not in after
+    assert after["generic:skill:backend-dev"]["generic_twin"] is None
+    assert after["generic:skill:backend-dev"]["agents"] == ["claude", "codex"]
+
+
 async def test_migrate_unknown_asset_is_404(migrate_client: AsyncClient) -> None:
     r = await migrate_client.post(_migrate_url("claude:skill:nope"))
     assert r.status_code == 404

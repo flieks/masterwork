@@ -130,7 +130,7 @@ def migrate_to_generic(
 
     adopted = replaced = False
     if target.exists() or target.is_symlink():
-        if target.is_dir() and not target.is_symlink() and _trees_identical(source, target):
+        if target.is_dir() and not target.is_symlink() and trees_identical(source, target):
             adopted = True
         elif not replace_generic:
             raise GenericSkillExistsError(
@@ -198,12 +198,12 @@ def _remove(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def _trees_identical(a: Path, b: Path) -> bool:
+def trees_identical(a: Path, b: Path) -> bool:
     """Same files, same bytes, all the way down."""
     cmp = filecmp.dircmp(a, b, shallow=False)
     if cmp.left_only or cmp.right_only or cmp.diff_files or cmp.funny_files:
         return False
-    return all(_trees_identical(a / sub, b / sub) for sub in cmp.common_dirs)
+    return all(trees_identical(a / sub, b / sub) for sub in cmp.common_dirs)
 
 
 def _resolves_to(path: Path, target: Path) -> bool:
