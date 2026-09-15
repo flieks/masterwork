@@ -25,7 +25,6 @@ interface SkillPreviewDialogProps {
   onClose: () => void;
 }
 
-
 /** Split the leading `---` YAML block off the body. Delimiter scan only — the
  *  backend already parses the YAML; this just keeps it out of the rendered
  *  markdown, where `---` would come out as a stray rule. */
@@ -43,7 +42,9 @@ function splitFrontmatter(md: string): { frontmatter: string | null; body: strin
  *  Safe for third-party content: MarkdownView has no rehype-raw, so embedded HTML
  *  is escaped rather than run, and its mermaid renderer is securityLevel 'strict'. */
 export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) {
-  const key = skill ? catalogSkillKey(skill.owner, skill.repo, skill.skill) : catalogSkillKey('', '', '');
+  const key = skill
+    ? catalogSkillKey(skill.owner, skill.repo, skill.skill)
+    : catalogSkillKey('', '', '');
   const [{ data, isPending, isError, error }] = useAtom(catalogSkillQueryAtom(key));
   const [{ mutateAsync: install, isPending: installing }] = useAtom(installSkillMutationAtom);
   // An unlicensed skill, and a reinstall over an existing directory, each need a
@@ -153,7 +154,10 @@ export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) 
                 {data.last_change_summary ? (
                   <div className="flex w-full min-w-0 gap-1.5">
                     <dt className="shrink-0">Latest commit</dt>
-                    <dd className="min-w-0 truncate text-foreground" title={data.last_change_summary}>
+                    <dd
+                      className="min-w-0 truncate text-foreground"
+                      title={data.last_change_summary}
+                    >
                       {data.last_change_summary}
                     </dd>
                   </div>

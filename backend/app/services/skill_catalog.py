@@ -182,9 +182,9 @@ async def search_catalog(
         results = await asyncio.gather(*coros, return_exceptions=True)
 
         skills_sh_skills, skills_sh_errors, search_type = _collect_skills_sh(results[0])
-        if skip_github:
-            github_skills, github_errors = [], []
-        else:
+        github_skills: list[CatalogSkill] = []
+        github_errors: list[SourceError] = []
+        if not skip_github:
             github_skills, github_errors = _collect(results[1], "github")
         errors = skills_sh_errors + github_errors
 
@@ -264,8 +264,10 @@ def _search_type_of(data: Any) -> SearchType:
     values (absent, misspelt, non-string, or a bare-list body) is unknown."""
     if isinstance(data, dict):
         value = data.get("searchType")
-        if value in ("semantic", "fuzzy"):
-            return value
+        if value == "semantic":
+            return "semantic"
+        if value == "fuzzy":
+            return "fuzzy"
     return "unknown"
 
 

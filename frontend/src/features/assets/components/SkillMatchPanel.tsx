@@ -39,11 +39,7 @@ export function SkillMatchPanel({ onMatches }: SkillMatchPanelProps) {
         rows={2}
       />
       <div className="flex items-center justify-between gap-2">
-        {isError ? (
-          <p className="text-xs text-destructive">{apiErrorMessage(error)}</p>
-        ) : (
-          <span />
-        )}
+        {isError ? <p className="text-xs text-destructive">{apiErrorMessage(error)}</p> : <span />}
         <Button size="sm" onClick={() => void handleFind()} disabled={!query.trim() || isPending}>
           {isPending ? 'Finding…' : 'Find'}
         </Button>

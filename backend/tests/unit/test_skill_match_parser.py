@@ -11,12 +11,7 @@ def test_bare_json_array_parses() -> None:
 
 
 def test_fenced_json_array_parses() -> None:
-    text = (
-        "Here you go:\n\n"
-        "```json\n"
-        '[{"name": "frontend-dev", "reason": "React work"}]\n'
-        "```\n"
-    )
+    text = 'Here you go:\n\n```json\n[{"name": "frontend-dev", "reason": "React work"}]\n```\n'
     assert extract_matches(text) == [ParsedMatch(name="frontend-dev", reason="React work")]
 
 

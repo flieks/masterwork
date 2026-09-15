@@ -330,9 +330,7 @@ async def test_a_descriptive_query_never_reaches_github() -> None:
     """More than three words is a descriptive query — GitHub's repo search
     would only add noise, so it is never called, and the skip is not an error."""
     transport = _route(
-        skills_sh=_skills_sh_search(
-            {"searchType": "semantic", "results": []}
-        )
+        skills_sh=_skills_sh_search({"searchType": "semantic", "results": []})
         # no `github` handler — a request to it raises AssertionError.
     )
 
@@ -413,9 +411,7 @@ async def test_description_fetch_failures_degrade_to_empty_without_failing_the_s
         if skill == "no-ld-json":
             return httpx.Response(200, text="<html></html>")
         if skill == "malformed-ld-json":
-            return httpx.Response(
-                200, text='<script type="application/ld+json">{not json</script>'
-            )
+            return httpx.Response(200, text='<script type="application/ld+json">{not json</script>')
         return httpx.Response(
             200,
             text=(
