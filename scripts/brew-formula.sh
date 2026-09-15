@@ -8,7 +8,7 @@ url="https://github.com/flieks/masterwork/archive/refs/tags/${tag}.tar.gz"
 sha="$(curl -sL "$url" | shasum -a 256 | cut -d' ' -f1)"
 cat <<RUBY
 class Masterwork < Formula
-  desc "Workbench for the skills and subagents your AI coding agents use, with scored simulations"
+  desc "Workbench for AI coding agent skills, with scored simulation runs"
   homepage "https://masterwork-site.vercel.app"
   url "${url}"
   sha256 "${sha}"
@@ -22,13 +22,13 @@ class Masterwork < Formula
     # The launcher installs its own backend and frontend dependencies on first run.
     (bin/"masterwork").write <<~SH
       #!/bin/bash
-      exec "#{Formula["node"].opt_bin}/node" "#{libexec}/bin/masterwork.mjs" "\$@"
+      exec "#{formula_opt_bin("node")}/node" "#{libexec}/bin/masterwork.mjs" "\$@"
     SH
   end
 
   test do
     # The launcher has no --help; starting servers is not a brew test.
-    assert_predicate libexec/"bin/masterwork.mjs", :exist?
+    assert_path_exists libexec/"bin/masterwork.mjs"
   end
 end
 RUBY
