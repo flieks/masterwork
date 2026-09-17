@@ -34,20 +34,20 @@ brew install flieks/masterwork/masterwork
 
 ## 3. Site
 
-Live at https://masterwork-site.vercel.app (Vercel project `masterwork-site`,
+Live at https://masterwork.sh (Vercel project `masterwork-site`,
 team `itsource`). Source in `site/`, deploy with:
 
 ```bash
 cd site && vercel deploy --prod --yes --scope itsource
 ```
 
-A custom domain is a one-liner once bought (`vercel domains add <domain> --scope itsource`).
+Custom domain masterwork.sh (bought 2026-09-15 via Vercel) is attached to the project, with www redirecting to the apex.
 When a demo GIF exists, put it in `site/assets/` and swap it for the hero image.
 
 ## 4. Quiet channels first
 
 - GitHub topics: done (`claude-code`, `claude-skills`, `agent-skills`, `codex`, `skills`, `ai-agents`, `developer-tools`, `observability`).
-- Set the repo's website field to the site URL: `gh repo edit --homepage https://masterwork-site.vercel.app`.
+- Set the repo's website field to the site URL: `gh repo edit --homepage https://masterwork.sh`.
 - awesome-claude-code: submissions go through their web issue form only, never a PR or `gh`
   (https://github.com/hesreallyhim/awesome-claude-code/issues/new?template=recommend-resource.yml).
   Their CONTRIBUTING says they favour projects that already have users, so file this

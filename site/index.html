@@ -3,12 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c0d10">
 <title>Masterwork — prove your coding agent's skills</title>
 <meta name="description" content="A local workbench for the skills and subagents Claude Code and Codex load. Browse every folder, install from the catalog, and score a skill against real scenarios before you rely on it. npx masterwork.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:title" content="Masterwork — prove your coding agent's skills">
 <meta property="og:description" content="Browse, edit and install the skills your AI coding agents use, then score them against real scenarios. Runs on your machine, on your Claude subscription.">
-<meta property="og:image" content="/assets/og.png">
+<meta property="og:image" content="https://masterwork.sh/assets/og.png">
+<meta property="og:url" content="https://masterwork.sh/">
+<link rel="canonical" href="https://masterwork.sh/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,16 +19,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --paper: #f1f3f0;
-    --paper-deep: #e4e8e3;
-    --ink: #0f2a3d;
-    --ink-soft: #4a5d6b;
-    --line: #c9d0cc;
-    --brass: #b8932a;
-    --brass-deep: #8a6d18;
-    --verdigris: #2f7f6f;
-    --signal: #b23a3a;
-    --plate: #101114;
+    color-scheme: dark;
+    --paper: #0c0d10;
+    --paper-deep: #1c1f24;
+    --surface: #15171b;
+    --ink: #e9ebe7;
+    --ink-soft: #99a3aa;
+    --line: #2a2e35;
+    --brass: #c9a23c;
+    --brass-deep: #e2c26a;
+    --verdigris: #52b8a1;
+    --signal: #e57373;
+    --plate: #060709;
     --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
     --body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -73,13 +78,13 @@
   .hero h1 { font-size: clamp(2.8rem, 6vw, 5rem); font-weight: 800; max-width: 12ch; }
   .hero h1 em { font-style: normal; font-weight: 500; color: var(--ink-soft); display: block; font-size: 0.6em; letter-spacing: -0.01em; margin-top: 0.5rem; line-height: 1.2; }
   .hero .lede { margin-top: 0; }
-  .command { margin-top: 1.5rem; display: flex; align-items: stretch; border: 1.5px solid var(--ink); border-radius: 10px; overflow: hidden; background: #fff; max-width: 420px; }
+  .command { margin-top: 1.5rem; display: flex; align-items: stretch; border: 1.5px solid var(--ink); border-radius: 10px; overflow: hidden; background: var(--surface); max-width: 420px; }
   .command code { flex: 1; padding: 0.85rem 1.1rem; font-size: 1.15rem; display: flex; align-items: center; gap: 0.6rem; }
   .command code span { color: var(--ink-soft); user-select: none; }
   .command button { border: 0; border-left: 1.5px solid var(--ink); background: var(--ink); color: var(--paper); font: inherit; font-weight: 600; padding: 0 1.1rem; cursor: pointer; }
-  .command button:hover { background: #163a52; }
+  .command button:hover { background: #ffffff; }
   .fine { margin-top: 0.9rem; font-size: 0.95rem; color: var(--ink-soft); }
-  .plate { background: var(--plate); padding: 8px; border-radius: 14px; box-shadow: 0 30px 60px -30px rgba(15, 42, 61, 0.55), 0 1px 0 rgba(255,255,255,0.6) inset; }
+  .plate { background: var(--plate); padding: 8px; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8); }
   .plate img, .plate video { border-radius: 8px; display: block; width: 100%; height: auto; }
   .plate figcaption { color: #9aa3ab; font-size: 0.85rem; padding: 0.55rem 0.5rem 0.2rem; }
 
@@ -87,7 +92,7 @@
   .proof .wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 5rem); align-items: start; }
   .proof .copy { position: sticky; top: 2rem; }
   .proof .copy p { margin-top: 1.25rem; }
-  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.3rem; border-bottom: 1px solid var(--line); }
   .card-head strong { font-family: var(--display); font-size: 1.05rem; }
   .card-head .scenario { font-size: 0.9rem; color: var(--ink-soft); max-width: 34ch; }
@@ -97,32 +102,32 @@
   .checklist .why { font-size: 0.9rem; color: var(--ink-soft); margin-top: 0.15rem; }
   .mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; margin-top: 2px; }
   .mark svg { width: 13px; height: 13px; }
-  .pass .mark { background: color-mix(in srgb, var(--verdigris) 16%, white); color: var(--verdigris); }
-  .fail .mark { background: color-mix(in srgb, var(--signal) 14%, white); color: var(--signal); }
+  .pass .mark { background: color-mix(in srgb, var(--verdigris) 16%, var(--surface)); color: var(--verdigris); }
+  .fail .mark { background: color-mix(in srgb, var(--signal) 14%, var(--surface)); color: var(--signal); }
   .fail .why { color: var(--signal); }
   .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.3rem; background: var(--paper); border-top: 1px solid var(--line); }
   .card-foot button { font: inherit; font-weight: 600; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); border-radius: 8px; padding: 0.6rem 1rem; cursor: pointer; }
-  .card-foot button:hover { background: #fff; }
+  .card-foot button:hover { background: var(--paper-deep); }
   .card-foot button[disabled] { opacity: 0.5; cursor: default; }
-  .stamp { position: relative; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 2rem; letter-spacing: -0.04em; color: var(--brass-deep); border: 3px solid var(--brass); box-shadow: inset 0 2px 6px rgba(138, 109, 24, 0.35), inset 0 -1px 0 rgba(255,255,255,0.7); background: radial-gradient(circle at 50% 35%, #fff8e1, #f3e6b8); }
+  .stamp { position: relative; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 2rem; letter-spacing: -0.04em; color: var(--brass-deep); border: 3px solid var(--brass); box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 24px -6px rgba(201, 162, 60, 0.35); background: radial-gradient(circle at 50% 35%, #2e2611, #16120a); }
   .stamp small { position: absolute; bottom: 9px; font-size: 0.55rem; font-weight: 600; letter-spacing: 0.02em; color: var(--brass-deep); }
   .stamp.pressed { animation: press 420ms cubic-bezier(.2,.9,.3,1.2); }
   @keyframes press { 0% { transform: scale(1.35) rotate(-8deg); opacity: 0; } 60% { transform: scale(0.96) rotate(1deg); opacity: 1; } 100% { transform: none; } }
   @media (prefers-reduced-motion: reduce) { .stamp.pressed { animation: none; } }
-  .diff { font-family: var(--mono); font-size: 0.85rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1.1rem; margin-top: 1rem; line-height: 1.6; white-space: pre; overflow-x: auto; }
-  .diff .add { background: color-mix(in srgb, var(--verdigris) 14%, white); display: block; }
-  .diff .del { background: color-mix(in srgb, var(--signal) 12%, white); display: block; }
+  .diff { font-family: var(--mono); font-size: 0.85rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1.1rem; margin-top: 1rem; line-height: 1.6; white-space: pre; overflow-x: auto; }
+  .diff .add { background: color-mix(in srgb, var(--verdigris) 14%, var(--surface)); display: block; }
+  .diff .del { background: color-mix(in srgb, var(--signal) 12%, var(--surface)); display: block; }
   .diff[hidden] { display: none; }
 
   /* folders */
   .folders { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 2.5rem; }
-  .folder { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem 1.3rem; }
+  .folder { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem 1.3rem; }
   .folder code { display: block; font-size: 0.95rem; margin-bottom: 0.6rem; }
   .folder .who { font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
   .folder p { font-size: 0.95rem; color: var(--ink-soft); margin-top: 0.4rem; }
   .badge { display: inline-block; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.6rem; margin-top: 0.8rem; background: var(--paper); }
-  .badge.linked { border-color: color-mix(in srgb, var(--verdigris) 45%, white); color: var(--verdigris); background: color-mix(in srgb, var(--verdigris) 8%, white); }
-  .badge.unlinked { color: var(--brass-deep); border-color: color-mix(in srgb, var(--brass) 55%, white); background: color-mix(in srgb, var(--brass) 10%, white); }
+  .badge.linked { border-color: color-mix(in srgb, var(--verdigris) 45%, var(--surface)); color: var(--verdigris); background: color-mix(in srgb, var(--verdigris) 8%, var(--surface)); }
+  .badge.unlinked { color: var(--brass-deep); border-color: color-mix(in srgb, var(--brass) 55%, var(--surface)); background: color-mix(in srgb, var(--brass) 10%, var(--surface)); }
 
   /* features */
   .features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem 3rem; margin-top: 2.5rem; }
@@ -132,7 +137,7 @@
   .feature .plate figcaption { display: none; }
 
   /* comparison */
-  .compare { overflow-x: auto; margin-top: 2.5rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .compare { overflow-x: auto; margin-top: 2.5rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
   table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.97rem; }
   th, td { text-align: left; padding: 0.85rem 1rem; border-bottom: 1px solid var(--paper-deep); vertical-align: top; }
   thead th { font-family: var(--display); font-weight: 700; background: var(--paper); border-bottom: 1px solid var(--line); }
@@ -170,7 +175,7 @@
 <header>
   <div class="wrap">
     <a class="brand" href="/" aria-label="Masterwork home">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#0f2a3d"/><path d="M9 22V10l7 6 7-6v12" fill="none" stroke="#f1f3f0" stroke-width="2.6" stroke-linejoin="miter"/></svg>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#e9ebe7"/><path d="M9 22V10l7 6 7-6v12" fill="none" stroke="#0c0d10" stroke-width="2.6" stroke-linejoin="miter"/></svg>
       Masterwork
     </a>
     <nav aria-label="Page">

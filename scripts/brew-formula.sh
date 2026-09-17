@@ -9,7 +9,7 @@ sha="$(curl -sL "$url" | shasum -a 256 | cut -d' ' -f1)"
 cat <<RUBY
 class Masterwork < Formula
   desc "Workbench for the skills and subagents your AI coding agents use, with scored simulations"
-  homepage "https://masterwork-site.vercel.app"
+  homepage "https://masterwork.sh"
   url "${url}"
   sha256 "${sha}"
   license "Elastic-2.0"
