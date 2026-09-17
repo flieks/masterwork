@@ -56,6 +56,11 @@ class ChatSession(BaseModel):
     asset_id: str | None = Field(
         None, description="Owning asset, or null when the chat is not asset-scoped."
     )
+    agent: str | None = Field(
+        None,
+        description='Agent that answered the latest turn ("claude" | "codex"); null before '
+        "the first reply.",
+    )
     created_at: datetime
     updated_at: datetime
 

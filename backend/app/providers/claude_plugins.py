@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from app.providers.base import ScannedAsset, SnapshotTree
+from app.providers.base import AssetRef, ScannedAsset, SnapshotTree
 from app.providers.claude import _KIND_AGENT, _KIND_SKILL, AGENT_CLAUDE, build_asset
 
 _MANIFEST = "installed_plugins.json"
@@ -62,19 +62,25 @@ class ClaudePluginProvider:
                     found.append((plugin, Path(entry["installPath"])))
         return found
 
-    def scan(self) -> Iterable[ScannedAsset]:
+    def _asset_files(self) -> Iterable[tuple[str, str, Path]]:
         seen: set[tuple[str, str]] = set()
         for plugin, install_path in self._install_paths():
             for kind, path in _plugin_asset_files(install_path):
                 name = f"{plugin}:{path.parent.name if kind == _KIND_SKILL else path.stem}"
                 if (kind, name) in seen:
                     continue  # same plugin installed under several scopes
-                asset = build_asset(
-                    self.name, kind, name, path, read_only=True, agents=(AGENT_CLAUDE,)
-                )
-                if asset is not None:
-                    seen.add((kind, name))
-                    yield asset
+                seen.add((kind, name))
+                yield kind, name, path
+
+    def scan(self) -> Iterable[ScannedAsset]:
+        for kind, name, path in self._asset_files():
+            asset = build_asset(self.name, kind, name, path, read_only=True, agents=(AGENT_CLAUDE,))
+            if asset is not None:
+                yield asset
+
+    def asset_refs(self) -> Iterable[AssetRef]:
+        for kind, name, _path in self._asset_files():
+            yield AssetRef(self.name, kind, name)
 
     def asset_id_for_path(self, path: Path) -> str | None:
         try:

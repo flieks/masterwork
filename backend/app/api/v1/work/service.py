@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.launcher import schemas as launcher_schemas
 from app.api.v1.launcher import service as launcher_service
-from app.api.v1.settings.service import read_settings
+from app.api.v1.settings.service import read_projects_root
 from app.api.v1.work import schemas, serializers
 from app.core.exceptions import (
     InvalidRepoPathError,
@@ -31,6 +31,7 @@ from app.db.models.work import KIND_SPAWNED, WorkItem, WorkPullRequest, WorkSour
 from app.providers.azuredevops import AzureDevOpsClient, AzureDevOpsError
 from app.repositories import work as work_repo
 from app.services import repo_paths, work_prs, work_sync
+from app.services.agent_cli import AgentBins
 
 _ORG_URL_RE = re.compile(r"^https://dev\.azure\.com/[A-Za-z0-9._~-]+/?$")
 
@@ -226,6 +227,7 @@ async def delegate_pull_request(
     pr_id: int,
     client_factory: Callable[[WorkSource], AzureDevOpsClient],
     spawner: Callable[..., int],
+    bins: AgentBins,
 ) -> schemas.PullRequestDelegateResponse:
     """Refreshes threads, resolves a local checkout (stored mapping -> scan of
     projects_root -> unresolved), and on a hit launches the fix through the
@@ -240,7 +242,7 @@ async def delegate_pull_request(
     await db.commit()
     unresolved_count = sum(1 for t in threads if not t.is_resolved and t.comments)
 
-    projects_root = Path((await read_settings(db)).projects_root)
+    projects_root = Path(await read_projects_root(db))
     resolution = await repo_paths.resolve_local_path(db, pr.repository_remote_url, projects_root)
     if resolution.matched_from == "scan":
         # Persisted by resolve_local_path via flush; committed here, before the
@@ -266,6 +268,7 @@ async def delegate_pull_request(
             project_path=str(resolution.local_path), request_text=prompt
         ),
         spawner,
+        bins,
     )
     return schemas.PullRequestDelegateResponse(
         resolved=True,

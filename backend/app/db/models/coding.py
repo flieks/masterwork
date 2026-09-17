@@ -1,4 +1,4 @@
-"""Claude Code session observability: a run header, its lanes, its stages, its events.
+"""Coding-agent session observability: a run header, its lanes, its stages, its events.
 
 Written by hooks, not by the app — so the tables are append-heavy and tolerant:
 `event_type` is a free string (a new hook type must never 400), and the session
@@ -129,11 +129,10 @@ MAIN_AGENT = "main"
 # Codex has no such tool and says so with a `SubagentStart` instead.
 SPAWN_TOOLS = frozenset({"Task", "Agent"})
 
-# What a run reached for. The names match masterwork's own asset ids, so a card
-# links straight to the skill or subagent page: `<provider>:<kind>:<name>`.
+# What a run reached for, recorded by kind and name only: the asset id it links
+# to is resolved against the providers when read (app/services/asset_ids.py).
 ASSET_SKILL = "skill"
 ASSET_AGENT = "agent"
-ASSET_PROVIDER = "claude"
 # What a `SubagentStop` is called when nothing could name the agent that ran.
 UNKNOWN_AGENT = "subagent"
 
@@ -162,6 +161,8 @@ USE_SKILL_CALL = "skill_call"
 USE_SPAWN_CALL = "spawn_call"
 USE_SKILL_READ = "skill_read"
 USE_SUBAGENT_STOP = "subagent_stop"
+# A Codex prompt naming an installed skill as `$name`; carries the mention.
+USE_SKILL_MENTION = "skill_mention"
 
 # Where a session's title came from, weakest first — the order is the precedence
 # the ingest applies, so a boilerplate stage prompt cannot overwrite the
@@ -173,14 +174,10 @@ TITLE_PROVENANCE = "provenance"
 TITLE_FACTORY = "factory"
 
 
-def asset_id_for(kind: str, name: str) -> str:
-    return f"{ASSET_PROVIDER}:{kind}:{name}"
-
-
 class CodingSession(Base):
     __tablename__ = "coding_sessions"
 
-    # The Claude Code session_id, not a uuid we mint — hooks only know theirs.
+    # The agent's own session id, not a uuid we mint — hooks only know theirs.
     id: Mapped[str] = mapped_column(String(200), primary_key=True)
     cwd: Mapped[str] = mapped_column(Text, default="", server_default="")
     # Repo folder name derived from cwd on first sight; null outside a repo.

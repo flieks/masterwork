@@ -8,6 +8,7 @@ nothing else.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,11 +32,31 @@ class ScannedAsset:
     model: str | None = None  # frontmatter `model:`; None means it inherits the session model
     # Filesystem birth time; None where the platform has none. See `file_times`.
     created_at: datetime | None = None
-    # Coding agents that load this asset ("claude", "codex"). A generic skill
-    # lists every agent whose skills dir links to it; a factory role lists none.
+    # Coding agents that load this asset ("claude", "codex"). A generic skill lists
+    # Codex (native) plus each agent whose skills dir links to it; a factory role none.
     agents: tuple[str, ...] = ()
     # Parked under `<skills_root>/.disabled/`, where no coding agent looks.
     disabled: bool = False
+    # Why it is disabled: DISABLED_BY_FOLDER or DISABLED_BY_CODEX_CONFIG; None when enabled.
+    disabled_by: str | None = None
+
+    @property
+    def id(self) -> str:
+        return f"{self.provider}:{self.kind}:{self.name}"
+
+
+# `disabled_by` values. The folder is masterwork's to move; config.toml is not.
+DISABLED_BY_FOLDER = "folder"
+DISABLED_BY_CODEX_CONFIG = "codex-config"
+
+
+@dataclass(frozen=True)
+class AssetRef:
+    """An asset's identity without its content — what id resolution needs."""
+
+    provider: str
+    kind: str
+    name: str
 
     @property
     def id(self) -> str:
@@ -112,6 +133,10 @@ class SnapshotTree:
     # own home: masterwork commits there when *they* made it a repo, but never
     # turns it into one behind their back.
     may_create_repo: bool = False
+    # The asset's own folder or file, relative to `root`, that a commit may
+    # stage. None only for a masterwork-owned tree: a user's home repo holds
+    # auth tokens and databases that `git add -A` must never reach.
+    pathspec: str | None = None
 
 
 @runtime_checkable
@@ -142,6 +167,49 @@ class Provider(Protocol):
         keeps a write to a temp tree from being committed to the real one.
         """
         ...
+
+
+@runtime_checkable
+class IndexedProvider(Protocol):
+    """A provider that can list its asset ids without reading every file."""
+
+    name: str
+
+    def asset_refs(self) -> Iterable[AssetRef]: ...
+
+
+def user_tree_snapshot(path: Path, roots: Iterable[Path]) -> SnapshotTree | None:
+    """The snapshot for a write under one asset root of a user-owned home.
+
+    Scoped to the asset's own unit — `<root>/<name>` (or `.disabled/<name>`)
+    for a skill folder, `<root>/<file>` for an agent file — so a commit can
+    never stage anything else in that home, whatever its .gitignore says.
+
+    A path counts when it resolves under a root, and also when it merely sits
+    there: a skill link's entry changes in this tree while its target changes in
+    another, and a scoped commit only sees what it is pointed at.
+    """
+    for root in roots:
+        real_root = _real(root)
+        resolved = resolve_within_roots(path, [root])
+        candidates = [(resolved, real_root)] if resolved is not None else []
+        lexical = Path(os.path.abspath(path))
+        candidates += [(lexical, Path(os.path.abspath(root))), (lexical, real_root)]
+        for candidate, base in candidates:
+            if candidate is None or not candidate.is_relative_to(base):
+                continue
+            parts = candidate.relative_to(base).parts
+            unit = parts[:2] if parts[:1] == (DISABLED_DIR,) else parts[:1]
+            spec = Path(real_root.name, *unit).as_posix()
+            return SnapshotTree(root=real_root.parent, pathspec=spec)
+    return None
+
+
+def _real(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError):
+        return path
 
 
 def resolves_under(path: Path, root: Path | None) -> bool:

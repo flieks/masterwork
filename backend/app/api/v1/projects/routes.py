@@ -16,7 +16,7 @@ from app.api.v1.projects import (
     trigger_service,
 )
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner
+from app.services.agent_runner import AgentRunner
 
 router = APIRouter(tags=["projects"])
 
@@ -68,7 +68,7 @@ async def update_project(
 async def generate_summary(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-    runner: ClaudeRunner = Depends(get_light_runner),
+    runner: AgentRunner = Depends(get_light_runner),
 ) -> schemas.ProjectSummaryResponse:
     return await summary_service.generate_summary(db, runner, project_id)
 
@@ -95,7 +95,7 @@ async def suggest_links(
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
     # Simulation runner: the model reads shortlisted asset files first.
-    runner: ClaudeRunner = Depends(get_simulation_runner),
+    runner: AgentRunner = Depends(get_simulation_runner),
 ) -> schemas.ProjectSuggestLinksResponse:
     return await links_service.suggest_links(db, providers, runner, project_id)
 
@@ -110,7 +110,7 @@ async def generate_trigger(
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
     # Simulation runner: the model reads every linked asset file first.
-    runner: ClaudeRunner = Depends(get_simulation_runner),
+    runner: AgentRunner = Depends(get_simulation_runner),
 ) -> schemas.ProjectTriggerResponse:
     return await trigger_service.generate_trigger_guide(db, providers, runner, project_id)
 
@@ -125,7 +125,7 @@ async def audit_generality(
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
     # Simulation runner: the model reads every linked asset file first.
-    runner: ClaudeRunner = Depends(get_simulation_runner),
+    runner: AgentRunner = Depends(get_simulation_runner),
 ) -> schemas.ProjectGeneralityResponse:
     return await generality_service.generate_generality_report(db, providers, runner, project_id)
 

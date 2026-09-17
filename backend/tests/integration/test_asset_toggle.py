@@ -123,8 +123,24 @@ async def test_enable_restores_only_the_links_that_were_parked(
     assert (await _set(toggle_client, "generic:skill:shared", False)).status_code == 200
     r = await _set(toggle_client, "generic:skill:shared", True)
     assert r.status_code == 200, r.text
-    assert r.json()["agents"] == ["claude"]
+    # Codex loads it again without a link; none is invented for it.
+    assert r.json()["agents"] == ["claude", "codex"]
     assert not (trees["codex"] / "shared").exists()
+
+
+async def test_parking_a_generic_skill_codex_never_linked_switches_it_off_for_codex_too(
+    toggle_client: AsyncClient, trees: dict[str, Path]
+) -> None:
+    (trees["codex"] / "shared").unlink()
+    before = (await toggle_client.get(_url("generic:skill:shared"))).json()
+    assert before["agents"] == ["claude", "codex"]
+
+    r = await _set(toggle_client, "generic:skill:shared", False)
+    assert r.status_code == 200, r.text
+    assert (r.json()["disabled"], r.json()["agents"]) == (True, [])
+    # Off for Codex because the folder left ~/.agents/skills, not through any link.
+    assert not (trees["generic"] / "shared").exists()
+    assert not (trees["codex"] / ".disabled").exists()
 
 
 async def test_enabling_an_enabled_skill_is_a_no_op(toggle_client: AsyncClient) -> None:

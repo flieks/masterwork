@@ -15,6 +15,8 @@ from app.db.base import Base
 from app.db.types import UTCDateTime
 
 PROJECTS_ROOT_KEY = "projects_root"
+# "claude" | "codex"; unset means the first installed agent.
+ASSISTANT_AGENT_KEY = "assistant_agent"
 
 
 class AppSetting(Base):

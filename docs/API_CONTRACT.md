@@ -3683,3 +3683,403 @@ AssetSummary / AssetDetail {
   the agent row is shown, badged "Duplicate of generic copy" or "Differs from
   generic copy" with a Merge button; the installed count follows. A generic
   copy some agent does link to keeps its row, since that row says who sees it.
+
+
+---
+
+# API Contract v1.48 — one assistant, either agent
+
+Additive on top of v1.47, with one breaking field set on `AppSettings` and
+`InstructionsDoc` (both only ever returned, so a regenerated client just gains
+fields). Every assistant feature — chat, simulations and autopilot, scenario
+generation, trigger guides, link suggestions, change summaries, generality
+audits, asset diagrams, describe-to-find — shelled out to `claude -p`. Each now
+runs on whichever agent the user picks in Settings: Claude Code or OpenAI Codex
+(`codex exec`). The factory launcher follows the same choice.
+
+## No new endpoints
+
+`GET /api/v1/instructions` and `PUT /api/v1/instructions` gain an optional
+`agent` query parameter (same operationIds, `getInstructions` /
+`updateInstructions`). `GET`/`PATCH /api/v1/settings` gain fields.
+
+```
+GET /api/v1/instructions?agent=claude|codex   getInstructions(agent?) -> InstructionsDoc
+PUT /api/v1/instructions?agent=claude|codex   updateInstructions(InstructionsUpdateRequest, agent?) -> InstructionsDoc
+```
+
+## Changed schemas
+
+```
+AppSettings {
+  projects_root: string,
+  assistant_agent: AgentId,     // NEW — the EFFECTIVE agent, never null
+  agents: AgentInfo[],          // NEW — every supported agent, claude first
+}
+
+AppSettingsUpdateRequest {
+  projects_root?: string | null,
+  assistant_agent?: AgentId | null,   // NEW — omitted/null = unchanged
+}
+
+InstructionsDoc {
+  agent: AgentId,               // NEW
+  file_name: string,            // NEW — "CLAUDE.md" | "AGENTS.md"
+  path, content, exists, updated_at,
+  shadowed_by: string | null,   // NEW — codex only: a non-empty AGENTS.override.md that wins
+  same_file_as: string | null,  // NEW — the other agent's path when it is this same file
+}
+
+ChatSession {
+  ...,
+  agent: string | null,         // NEW — "claude" | "codex" whose CLI session the chat resumes;
+                                //       null until the first successful reply
+}
+```
+
+## New schemas
+
+```
+AgentId = "claude" | "codex"
+
+AgentInfo {
+  id: AgentId,
+  label: string,                // "Claude Code" | "Codex"
+  installed: boolean,
+  bin_path: string | null,      // absolute path of the CLI found
+}
+```
+
+## Behavior
+
+- **The effective agent.** The `app_settings` row `assistant_agent` when it
+  names a known agent — even one uninstalled since, which then fails loudly at
+  launch rather than silently switching agents. Unset (or junk) means the first
+  installed of claude, codex; nothing installed means claude.
+- **Picking an agent must find its CLI.** `PATCH /settings` with an
+  `assistant_agent` whose binary is not found answers 400
+  (`InvalidSettingError`, same as a bad `projects_root`) and writes nothing —
+  not even a valid `projects_root` in the same body. An id outside `AgentId`
+  is a 422 from request validation.
+- **Finding a CLI.** `shutil.which(<configured bin>)` on the process PATH
+  extended with `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin` and
+  `/usr/local/bin`, then fixed install locations: for Codex
+  `/Applications/ChatGPT.app/Contents/Resources/codex`,
+  `/Applications/Codex.app/Contents/Resources/codex`, `~/.local/bin/codex`; for
+  Claude `~/.claude/local/claude`. Detection runs per request; nothing is cached.
+- **One runner seam.** Both CLIs run read-only, with the same working
+  directory (`~/.claude` when it exists, else `~/.masterwork`, created) and
+  stdin closed. Claude keeps its exact v1.47 flags. Codex runs
+  `codex exec --json --skip-git-repo-check -s read-only [-m model]
+  -c web_search="disabled" [-c model_reasoning_effort=…]
+  [-c developer_instructions=…] --disable plugins --disable apps
+  --disable image_generation --disable browser_use --disable computer_use
+  --disable multi_agent -- <prompt>`; a chat turn resumes with
+  `codex exec resume <thread_id> …` (no `-s`, which resume rejects;
+  `-c sandbox_mode="read-only"` instead). Config values are TOML basic strings.
+- **Models.** Claude: `claude_model` for authoring (chat, simulations),
+  `claude_light_model` for derivative work. Codex: `codex_model` /
+  `codex_light_model`, both default null, which omits `-m` so the user's
+  `~/.codex/config.toml` default applies; the light runner also sets
+  `model_reasoning_effort="low"`. One timeout setting serves both agents.
+- **Codex output.** The reply is the text of the LAST `item.completed` whose
+  item is an `agent_message`; the session id is `thread.started.thread_id`.
+  Non-JSON lines are skipped. A `turn.failed`, a nonzero exit, or an `error`
+  event without a completed turn is a runner error carrying the message (an
+  `error` before a completed turn is a stream retry, not a failure). Simulation
+  `stats` keep their keys: `model` is the configured model or null,
+  `duration_ms` is wall clock, `num_turns` counts `turn.completed`, `cost_usd`
+  is always null, cache tokens map from `cached_input_tokens` /
+  `cache_write_input_tokens`. Error texts name the agent ("Codex failed to …").
+- **Prompts are agent-neutral.** No prompt names a tool (Read/Glob/Grep); the
+  chat system prompt names the running agent and lists every asset location —
+  `~/.claude/skills/<name>/SKILL.md`, `~/.claude/agents/<name>.md`,
+  `~/.codex/skills/<name>/SKILL.md`, `~/.codex/agents/<name>.toml`,
+  `~/.agents/skills/<name>/SKILL.md`. Proposals may still only write under the
+  provider roots accept validates (`~/.claude/skills`, `~/.claude/agents`,
+  `~/.codex/skills`, `~/.agents/skills`, plus the role store); Codex custom
+  agents are readable, not proposable. Simulations run "the way <agent>
+  would" and scenarios are requests typed to that agent. A Codex trigger guide
+  explains that Codex picks skills by description, that `$skill-name` forces
+  one, and names linked Claude-only assets Codex will never load; a Claude
+  guide is unchanged. Link suggestions show both `claude:skill:…` and
+  `codex:skill:…` id forms.
+- **Chat carries across a switch.** The system prompt is sent on EVERY turn for
+  both agents (a resumed `claude -p` drops the one it started with — this fixes
+  that for Claude too). A turn resumes the stored session id only when
+  `chat_sessions.agent` equals the running agent; otherwise it starts a fresh CLI
+  session and prepends a transcript of the earlier user/assistant messages
+  (errors left out, newest kept within ~20 000 characters, redacted), and the
+  new session id and agent are stored. A chat that never got a reply carries no
+  transcript.
+- **Per-agent instructions.** `agent` defaults to `claude`, so existing calls
+  are unchanged. Paths still come only from settings
+  (`claude_instructions_file`, `codex_instructions_file`,
+  `codex_instructions_override_file`). `shadowed_by` is set for codex when
+  `~/.codex/AGENTS.override.md` exists with non-blank content — Codex reads
+  that instead, so edits to `AGENTS.md` have no effect until it is emptied.
+  `same_file_as` is set on either side when the two agents' paths are the same
+  file (a symlink, a hard link), so one save changes both.
+- **Launcher.** A new launch refuses with 502 when the effective agent's CLI is
+  missing, naming it ("the Codex CLI ('codex') is not on the backend's PATH…"),
+  and appends `--agent <claude|codex>` to `factory/run.py` just before the
+  request text. A resume never passes `--agent` (the run record keeps its own)
+  and only refuses when no agent CLI at all is installed; a mismatch surfaces as
+  the factory's own refusal within the settle window. Every resolved agent
+  binary's directory is added to the child's PATH, so an app-bundle Codex is
+  reachable by name.
+- **Inspection runs stay out of usage rollups.** `include_inspection=false`
+  now excludes sessions whose cwd is either runner directory (`~/.claude` or
+  `~/.masterwork`), so Codex analysis runs reported through its hooks are not
+  counted as skill use either.
+- **DB**: `chat_sessions.agent`, nullable `varchar(20)`, Alembic
+  `0031_chat_session_agent`, backfilled to `claude` wherever
+  `claude_session_id` is set. `claude_session_id` keeps its name and now holds
+  either agent's session or thread id. `assistant_agent` is a new
+  `app_settings` key, so no migration for it.
+
+# API Contract v1.49 — Codex assets at parity
+
+Additive on top of v1.48. v1.48 let every assistant feature run on Codex; the
+assets it manages were still Claude-first. Codex custom agents
+(`~/.codex/agents/*.toml`) were invisible, Codex plugin skills were not listed,
+a skill switched off in `~/.codex/config.toml` still read as on, every recorded
+skill or agent use linked to a `claude:` id whatever ran it, a Codex factory
+stage never found its run, and the skill catalog could only install into
+`~/.claude/skills` (and broke updating a skill made generic since). This closes
+those gaps. No endpoint is added or renamed; existing parameters keep their
+order and defaults.
+
+## Changed endpoints (optional parameters only)
+
+```
+GET  /api/v1/coding-sessions?…&source=                    listCodingSessions(…, parentSessionId?, source?)
+GET  /api/v1/coding-assets?…&source=                      listCodingAssetUsage(since?, kind?, includeInspection?, source?)
+GET  /api/v1/coding-assets/{asset_id}/sessions?…&source=  listAssetSessionUses(assetId, limit?, includeInspection?, source?)
+GET  /api/v1/coding-analytics/gates|roles|models?…&source=  list{Gate,Role,Model}Stats(…, includeChildren?, source?)
+GET  /api/v1/coding-analytics/runs?…&limit=&source=       listRunStats(…, includeChildren?, limit?, source?)
+POST /api/v1/skills/install                               installSkill(SkillInstallRequest{…, target?})
+```
+
+`source` is appended last everywhere (after `limit` on `listRunStats`), so a
+positional call from the generated client is unchanged. Any other value is 422.
+
+## Changed schemas
+
+```
+AssetSummary / AssetDetail {
+  ...,
+  provider: string,             // + "codex" now also owns kind "agent"; NEW value "codex-plugin"
+  disabled: boolean,            // now also true when switched off in ~/.codex/config.toml
+  disabled_by: DisabledBy | null,  // NEW — why disabled; null when enabled
+  content: string,              // TOML for a Codex custom agent
+}
+
+AssetUse {                      // CodingSession(.Detail).assets[]
+  ...,
+  asset_id: string,             // CHANGED meaning — resolved against installed assets (see below)
+  asset_found: boolean,         // NEW — false when nothing installed has this kind + name
+}
+
+CodingAssetUsage {
+  ...,
+  asset_id: string,             // resolved, preferring the `source` filter's agent
+  asset_found: boolean,         // NEW
+}
+
+AssetCall { source: "skill_call" | "spawn_call" | "skill_read" | "subagent_stop"
+                  | "skill_mention" }   // NEW value
+
+ObservabilityIntegration {
+  ...,
+  note: string | null,          // NEW — standing caveat; set for codex (hook trust), null for claude-code
+}
+
+SkillInstallRequest {
+  owner, repo, skill, overwrite,
+  target?: SkillTarget,         // NEW — default "claude"
+}
+
+CatalogSkill / CatalogSkillDetail {
+  ...,
+  installed: boolean,           // now: present in ANY of the three skills folders
+  installed_in: SkillTarget[],  // NEW — folders holding a copy, generic first
+}
+
+InstalledSkill {
+  asset_id: string,             // "<location>:skill:<name>"; from `target` when gone from disk
+  target: SkillTarget,          // NEW — folder masterwork last wrote it into
+  location: SkillTarget | null, // NEW — folder the copy update/uninstall act on now
+  ...,
+}
+```
+
+## New schemas
+
+```
+SessionSource = "claude-code" | "codex"
+SkillTarget   = "claude" | "codex" | "generic"
+DisabledBy    = "folder" | "codex-config"       // inline on AssetSummary.disabled_by
+```
+
+## Behavior
+
+- **Codex custom agents.** `~/.codex/agents/<name>.toml` (setting
+  `codex_agents_root`) is indexed as `codex:agent:<name>` (the file stem),
+  writable, `agents: ["codex"]`. Title is the TOML `name`, description its
+  `description`, model its `model`; a file that does not parse is still listed
+  under its stem so it can be opened and fixed. Hidden files and non-`.toml`
+  files are skipped; the built-in agents (default, worker, explorer) have no
+  file and are not assets. `PUT /assets/{id}` on one validates first: the
+  content must parse as TOML and carry `name`, `description` and
+  `developer_instructions` as strings, else **400** (`InvalidAssetContentError`,
+  detail names the problem) and nothing is written. Proposal accepts and
+  simulation-suggestion applies run the same check on any `create`/`update`
+  landing in that folder and fail the proposal/suggestion before any file is
+  written. The folder is now a provider root, so proposals may write there; the
+  chat system prompt says so and states the three required keys.
+- **Codex plugin skills** (`codex-plugin`, read-only, `roots()` empty, setting
+  `codex_plugins_root`). Read from
+  `<plugins>/cache/<marketplace>/<plugin>/<version>/.codex-plugin/plugin.json`
+  and that version's skills folder (the manifest's `skills` path, never outside
+  the version folder, default `./skills/`). Ids mirror `claude-plugin`:
+  `codex-plugin:skill:<plugin>:<skill>`. One version per plugin: newest
+  modification time of the resolved version folder, ties to a real folder over
+  a link (`latest`), then the greater name — the asset's `path` names the
+  version picked. Hidden dirs (`.plugin-appserver`) are ignored; the same
+  plugin in two marketplaces yields one asset (first marketplace by name).
+  **Enabled only when config.toml says `[plugins."<plugin>@<marketplace>"]
+  enabled = true`** — the cache also holds marketplace plugins never switched
+  on — otherwise `disabled: true, disabled_by: "codex-config", agents: []`.
+- **`[[skills.config]]`.** An entry with `enabled = false` switches off the
+  skill whose `SKILL.md` it names (paths compared resolved, `~` expanded, as
+  Codex dedupes links). A Codex or Codex-plugin skill then reads
+  `disabled: true, disabled_by: "codex-config", agents: []`. A generic skill
+  stays enabled for the others and only loses `"codex"` from `agents`.
+  Parked skills now say `disabled_by: "folder"`. Masterwork never writes
+  config.toml: `PUT /assets/{id}/enabled` with `enabled: true` on a
+  `codex-config`-disabled skill is **409** (`AssetNotToggleableError`) naming
+  `~/.codex/config.toml` and what to change there, with no `.disabled/` move;
+  `enabled: false` stays the usual no-op 200. An unreadable config disables
+  nothing.
+- **Asset ids of recorded uses are resolved when read, not stored.** Sessions
+  record only kind + name; the id is looked up against the installed assets on
+  every read (`AssetUse`, `CodingAssetUsage`), so a skill made generic after
+  the run links to its new page with no backfill, and nothing stored needs
+  fixing. Preference by the session's `source` — Codex: skill `codex`,
+  `generic`, `codex-plugin`, `claude`, `claude-plugin`; agent `codex`,
+  `claude`, `claude-plugin`, `masterwork`. Claude Code: skill `claude`,
+  `generic`, `claude-plugin`, `codex`, `codex-plugin`; agent `claude`,
+  `claude-plugin`, `codex`, `masterwork`. Nothing matching gives the agent's
+  own form (`claude:…` / `codex:…`) with `asset_found: false` (e.g. a Codex
+  built-in agent, a `.system` skill, a deleted skill). The rollup resolves with
+  the `source` filter's order (Claude Code's when unfiltered). The lookup lists
+  ids from directory entries and plugin manifests, never file contents, once per
+  request and only when a row needs it. `listAssetSessionUses`
+  still matches (kind, name), but when exactly one agent's resolution lands on
+  the requested id (a Claude copy and a Codex copy of the same name) it keeps
+  only that agent's runs.
+- **Skill signals Codex sends.** A skill read now also counts from
+  `~/.codex/skills/.system/<name>/SKILL.md` (named `<name>`) and from
+  `<agent home>/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`
+  for Codex and Claude plugins (named `<plugin>:<name>`, the plugin providers'
+  naming), in Read/Glob paths and shell commands alike. A Codex
+  `UserPromptSubmit` whose prompt holds `$name` (or `$plugin:skill`), not glued
+  to a word or another `$`, counts one use per distinct name as
+  `source: "skill_mention"`, `input: {"mention": "$name"}` — only when the name
+  is a skill Codex loads (Codex, generic or Codex-plugin store), only for
+  `source: "codex"` sessions, and never for masterwork's own inspection runs
+  (cwd in `INSPECTION_CWDS`). The installed names are listed only when a prompt
+  holds a `$`. A backfill replays mentions against what is installed now.
+- **Codex stage children find their run.** The Codex forwarder copies
+  `MASTERWORK_FACTORY_RUN_ID` / `MASTERWORK_FACTORY_STAGE` into the
+  `SessionStart` payload as `factory_run_id` / `factory_stage`, exactly as the
+  Claude Code forwarder does, so ingest attaches the child to `factory-<run_id>`.
+  The forwarder changed, so a connected Codex integration reports `outdated`
+  (byte comparison) until Repair/connect copies the new script.
+- **Codex hook trust.** The Codex integration always carries a static `note`:
+  Codex only runs a user-configured hook after it is trusted in its `/hooks`
+  screen, and trust is tied to the hook definition, so trust again after a
+  repair. Static because where Codex records trust is unverified; masterwork
+  does not claim to know whether it was done.
+- **`source` filter.** Filters on `coding_sessions.source`. Sessions list and
+  the four analytics endpoints filter the runs counted; `/coding-assets` counts
+  only that agent's uses; the asset session log intersects it with the
+  resolution split above.
+- **Catalog install targets.** `target` picks the folder for a NEW install:
+  `claude` (default, unchanged), `codex`, or `generic` — written to
+  `~/.agents/skills/<name>` and then linked into each agent folder that has no
+  entry of that name. Detection looks in all three folders (live and
+  `.disabled/`); an agent entry that links into the generic folder is that copy,
+  not its own. A copy anywhere is **409** naming where, unless `overwrite`,
+  which replaces the copy where it lives (`target` ignored), so no twin is
+  created. `installed_skills.target` records the folder written.
+- **Update and uninstall act where the skill lives now.** The copy in the
+  recorded folder if present, else the first found (generic first) — a skill
+  made generic after install is updated in `~/.agents/skills`. Update stages
+  beside the real folder and swaps it in place: agent links stay intact, so
+  Claude and Codex both see the new copy (this fixes the migrated-skill update
+  that moved the link aside and failed on it). Uninstall removes every link in
+  the three folders (live or parked) that resolves to that copy, then the
+  folder; a same-named real copy in another folder is left alone, and links
+  elsewhere on disk cannot be found and are left dangling (documented rather
+  than refused — refusing would make a migrated skill uninstallable). An entry
+  that is a link to somewhere outside the three folders is **409**
+  (`SkillNotManagedError`) on update and uninstall, naming the target.
+- **Asset history is pathspec-scoped in user homes.** A write under
+  `~/.claude`, `~/.codex` or `~/.agents` commits only the written asset's own
+  unit — `skills/<name>` (or `skills/.disabled/<name>`), `agents/<file>` — both
+  when staging (`git add -A -- <unit>`) and when committing
+  (`git commit -- <unit>`), so neither an unignored `auth.json`/sqlite nor
+  anything the user staged can ride along. Chosen over a masterwork-owned repo:
+  it keeps the history in the repo the user made, needs no second work tree
+  over their home, and the scope holds whatever their `.gitignore` says. A link
+  change is committed in both trees it touches (the link's and the target's).
+  The role store is masterwork's own repo and is still committed whole.
+- **DB**: `installed_skills.target`, `varchar(20)` NOT NULL, server default
+  `'claude'` (every earlier install went there), Alembic
+  `0032_installed_skill_target`. Asset-id resolution needs no migration and no
+  backfill.
+
+# API Contract v1.50 — Codex loads the shared skills folder itself
+
+No endpoint, schema or field is added, renamed or retyped; only what some
+values mean changes. Verified against codex-cli 0.153.4: Codex loads skills from
+`~/.codex/skills`, **`~/.agents/skills` natively**, `~/.codex/skills/.system`
+and plugin caches, and a link in `~/.codex/skills` pointing into
+`~/.agents/skills` is deduplicated. Claude Code still reads only
+`~/.claude/skills`, so a generic skill reaches Claude only through a link
+there. v1.42–v1.49 assumed both agents needed that link.
+
+## Behavior
+
+- **`AssetSummary.agents` on a generic skill** always holds `"codex"` (no link
+  needed), unless a `[[skills.config]] enabled = false` entry switches it off
+  for Codex or the skill is parked (`disabled`, `agents: []`). `"claude"` is
+  still there only when `~/.claude/skills/<name>` links to it. A generic skill
+  in no agent's folder now reads `["codex"]`, not `[]` ("Generic · unlinked").
+- **`migrateAssetToGeneric` never creates a link in `~/.codex/skills`.** A Codex
+  source folder is removed after the copy (identical twin adopted, or copied),
+  not swapped for a link; a Claude source still becomes a link. A Codex link
+  already on disk is kept (deduped) and never deleted automatically.
+  `linked_agents` keeps its literal meaning (agents whose dir holds a link to
+  the generic copy, made now or already there), so it is usually `["claude"]`;
+  who loads the skill is `asset.agents`. `skipped_agents` and
+  `replace_generic` are unchanged; a skipped Codex loads both copies.
+- **Catalog install with `target: "generic"`** links into `~/.claude/skills`
+  only.
+- **Twins.** A real `~/.codex/skills/<name>` beside `~/.agents/skills/<name>` is
+  a genuine duplicate for Codex (it loads both), still flagged `generic_twin`
+  with the Merge control; merging removes the Codex folder. A Claude twin
+  shadows the generic copy for Claude only. The v1.47 UI rule "hide the generic
+  row when it links into no agent" (`agents.length === 0`) no longer fires for
+  enabled generic skills, since they list `"codex"`.
+- **`setAssetEnabled` on a generic skill** still parks the one real folder (and
+  moves any links with it), which switches it off for **every** agent at once:
+  there is no link to remove for Codex alone, and masterwork never writes
+  config.toml. Parking a Codex twin's own folder leaves Codex loading the
+  generic copy.
+- **Session attribution.** A Codex read of `~/.agents/skills/<name>/SKILL.md`
+  (or of a deduped link to it) resolves to `generic:skill:<name>`. Resolution
+  stays by kind + name, so with a Codex twin present it still prefers
+  `codex:skill:<name>`.

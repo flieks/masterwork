@@ -17,7 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.assets import service as asset_service
 from app.api.v1.chat import schemas, serializers
-from app.core.exceptions import ProposalNotFoundError, ProposalNotPendingError
+from app.core.exceptions import (
+    InvalidAssetContentError,
+    ProposalNotFoundError,
+    ProposalNotPendingError,
+)
 from app.db.models.chat import Proposal
 from app.providers.base import Provider, resolve_within_roots
 from app.repositories import projects as project_repo
@@ -117,12 +121,18 @@ async def accept_proposal(
 
     roots = [root for provider in providers for root in provider.roots()]
 
-    # Validate every path before writing anything.
+    # Validate every path (and any machine-format content) before writing anything.
     resolved_paths: list[Path] = []
     for change in proposal.changes:
         resolved = resolve_within_roots(Path(str(change.get("path"))), roots)
         if resolved is None:
             return await _fail(db, proposal, f"path outside allowed roots: {change.get('path')}")
+        new_content = change.get("new_content")
+        if change.get("action") != "delete" and isinstance(new_content, str):
+            try:
+                asset_service.validate_asset_content(providers, resolved, new_content)
+            except InvalidAssetContentError as exc:
+                return await _fail(db, proposal, f"{change.get('path')}: {exc.detail}")
         resolved_paths.append(resolved)
 
     await prepare_snapshots(providers, resolved_paths)

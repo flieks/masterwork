@@ -14,11 +14,12 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.api.deps import get_launch_spawner, get_resume_spawner
+from app.api.deps import get_agent_bins, get_launch_spawner, get_resume_spawner
 from app.api.v1.launcher import service as launcher_service
 from app.config import settings
 from app.db.models.launcher import SessionLaunch
 from app.main import app
+from app.services.agent_cli import AgentId
 
 
 class _FakeSpawner:
@@ -36,6 +37,7 @@ class _FakeSpawner:
         run_id: str | None = None,
         interview: bool = False,
         workflow: str | None = None,
+        agent: str | None = None,
     ) -> int:
         self.calls.append(
             {
@@ -45,6 +47,7 @@ class _FakeSpawner:
                 "run_id": run_id,
                 "interview": interview,
                 "workflow": workflow,
+                "agent": agent,
             }
         )
         return 4242 + len(self.calls) - 1
@@ -288,6 +291,7 @@ async def test_launch_writes_row_and_spawns_with_expected_argv(
     assert call["log_path"].name == f"{body['id']}.log"
     assert call["run_id"] == body["run_id"]  # the id the answer named
     assert call["interview"] is False
+    assert call["agent"] == "claude"  # the effective agent, since none was picked
 
     async with session_factory() as db:
         row = await db.get(SessionLaunch, body["id"])
@@ -710,6 +714,28 @@ async def test_resume_run_spawns_the_detached_resume(
     assert call["run_id"] == "aaaa1111"
 
 
+async def test_resume_needs_some_agent_cli_but_not_the_picked_one(
+    client: AsyncClient,
+    seeded_projects: Path,
+    runs_root: Path,
+    fake_resume_spawner: _FakeResumeSpawner,
+) -> None:
+    # The run resumes on the agent it started with, which may not be the picked one.
+    alpha = seeded_projects / "alpha"
+    _write_run_record(runs_root, alpha, "bbbb2222", state="stopped")
+    only_codex = {AgentId.CLAUDE: None, AgentId.CODEX: "/opt/codex"}
+    app.dependency_overrides[get_agent_bins] = lambda: only_codex
+    body = {"project_path": str(alpha), "run_id": "bbbb2222"}
+
+    assert (await client.post("/api/v1/launcher/runs/resume", json=body)).status_code == 200
+
+    app.dependency_overrides[get_agent_bins] = lambda: {**only_codex, AgentId.CODEX: None}
+    r = await client.post("/api/v1/launcher/runs/resume", json=body)
+    assert r.status_code == 502
+    assert "no agent CLI" in r.json()["detail"]
+    assert len(fake_resume_spawner.calls) == 1
+
+
 async def test_resume_unknown_run_404(
     client: AsyncClient,
     seeded_projects: Path,
@@ -1087,14 +1113,53 @@ async def test_launch_refuses_when_the_agent_cli_is_missing(
 ) -> None:
     # Without the CLI the factory dies in under a second, long after a naive
     # endpoint has already reported success.
-    monkeypatch.setattr(launcher_service.factory_launcher, "find_agent_cli", lambda: None)
+    app.dependency_overrides[get_agent_bins] = lambda: {
+        AgentId.CLAUDE: None,
+        AgentId.CODEX: None,
+    }
 
     r = await client.post(
         "/api/v1/launcher/launch",
         json={"project_path": str(seeded_projects / "alpha"), "request_text": "build it"},
     )
     assert r.status_code == 502
-    assert "not on the backend's PATH" in r.json()["detail"]
+    assert "the Claude Code CLI ('claude') is not on the backend's PATH" in r.json()["detail"]
+    assert fake_spawner.calls == []
+
+
+async def test_launch_passes_the_picked_agent_to_the_factory(
+    client: AsyncClient, seeded_projects: Path, fake_spawner: _FakeSpawner
+) -> None:
+    app.dependency_overrides[get_agent_bins] = lambda: {
+        AgentId.CLAUDE: "/usr/local/bin/claude",
+        AgentId.CODEX: "/Applications/Codex.app/Contents/Resources/codex",
+    }
+    r = await client.patch("/api/v1/settings", json={"assistant_agent": "codex"})
+    assert r.status_code == 200
+
+    r = await client.post(
+        "/api/v1/launcher/launch",
+        json={"project_path": str(seeded_projects / "alpha"), "request_text": "build it"},
+    )
+    assert r.status_code == 200
+    assert fake_spawner.calls[0]["agent"] == "codex"
+
+
+async def test_launch_refuses_when_the_picked_agent_is_gone(
+    client: AsyncClient, seeded_projects: Path, fake_spawner: _FakeSpawner
+) -> None:
+    both = {AgentId.CLAUDE: "/usr/local/bin/claude", AgentId.CODEX: "/opt/codex"}
+    app.dependency_overrides[get_agent_bins] = lambda: both
+    await client.patch("/api/v1/settings", json={"assistant_agent": "codex"})
+    # Uninstalled after it was picked: the stored choice stands and is refused by name.
+    app.dependency_overrides[get_agent_bins] = lambda: {**both, AgentId.CODEX: None}
+
+    r = await client.post(
+        "/api/v1/launcher/launch",
+        json={"project_path": str(seeded_projects / "alpha"), "request_text": "build it"},
+    )
+    assert r.status_code == 502
+    assert "the Codex CLI ('codex')" in r.json()["detail"]
     assert fake_spawner.calls == []
 
 
@@ -1109,6 +1174,7 @@ async def test_launch_reports_a_run_that_died_on_arrival(
         run_id: str | None = None,
         interview: bool = False,
         workflow: str | None = None,
+        agent: str | None = None,
     ) -> int:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("ab") as log:

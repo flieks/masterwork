@@ -1,6 +1,6 @@
 """Simulation persistence.
 
-A simulation is one dry-run evaluation of a project: claude -p reads the linked
+A simulation is one dry-run evaluation of a project: the agent CLI reads the linked
 asset files, walks a scenario against the project goal, and returns a scored
 report. Suggestions (with concrete file changes and per-suggestion apply state)
 live denormalized in JSONColumn — they are only ever read/mutated through their

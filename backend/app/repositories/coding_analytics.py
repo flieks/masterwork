@@ -42,24 +42,28 @@ from app.db.models.coding import (
 @dataclass(frozen=True, slots=True)
 class Scope:
     """The population an aggregate counts over. One object, because all four
-    endpoints take the same four filters and a partially-applied scope is a bug
+    endpoints take the same filters and a partially-applied scope is a bug
     that reads as a number."""
 
     since: datetime | None = None
     workflow: str | None = None
     # masterwork's own inspection runs, dropped unless the caller asks for them
-    # — see INSPECTION_CWD in the coding service.
-    exclude_cwd: str | None = None
+    # — see INSPECTION_CWDS in the coding service.
+    exclude_cwds: tuple[str, ...] = ()
     # A headless stage child is the inside view of a stage already counted on
     # its parent, so counting both reports the same work twice.
     include_children: bool = False
+    # Which agent recorded the run ("claude-code" | "codex"); None for both.
+    source: str | None = None
 
 
 def session_conditions(scope: Scope) -> list[ColumnElement[bool]]:
     """The scope's session-level filters, as WHERE clauses."""
     conditions: list[ColumnElement[bool]] = []
-    if scope.exclude_cwd is not None:
-        conditions.append(CodingSession.cwd != scope.exclude_cwd)
+    if scope.source is not None:
+        conditions.append(CodingSession.source == scope.source)
+    if scope.exclude_cwds:
+        conditions.append(CodingSession.cwd.not_in(scope.exclude_cwds))
     if not scope.include_children:
         conditions.append(CodingSession.parent_session_id.is_(None))
     if scope.workflow is not None:

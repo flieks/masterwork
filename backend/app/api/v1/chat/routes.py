@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_claude_runner, get_db, get_providers
+from app.api.deps import get_authoring_runner, get_db, get_providers
 from app.api.v1.chat import schemas, service
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner
+from app.services.agent_runner import AgentRunner
 
 router = APIRouter(tags=["chat"])
 
@@ -94,6 +94,6 @@ async def create_chat_message(
     body: schemas.ChatMessageCreateRequest,
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
-    runner: ClaudeRunner = Depends(get_claude_runner),
+    runner: AgentRunner = Depends(get_authoring_runner),
 ) -> schemas.ChatExchange:
     return await service.create_message(db, providers, runner, session_id, body)

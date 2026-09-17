@@ -30,3 +30,11 @@ class ObservabilityIntegration(BaseModel):
     backup_path: str | None = Field(
         None, description="Backup of the agent config taken before the last write, if any."
     )
+    note: str | None = Field(
+        None,
+        description=(
+            "A standing caveat that holds in every state, e.g. Codex only running a hook "
+            "after it is trusted in its /hooks screen. Static text: masterwork cannot read "
+            "whether that step was done."
+        ),
+    )

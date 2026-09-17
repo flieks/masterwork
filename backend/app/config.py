@@ -30,14 +30,22 @@ class Settings(BaseSettings):
     # (otherwise pydantic-settings would try to JSON-decode it and fail).
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5192"]
 
-    # Claude Code CLI used by the chat runner.
+    # Claude Code CLI, one of the two agents the assistant features can run on.
     claude_bin: str = "claude"
     # Authoring work — chat, simulations, audits. These write the skills and
     # subagents, so quality matters more than cost.
     claude_model: str = "fable"
     # Derivative work — summaries, diagrams. Reads what already exists.
     claude_light_model: str = "opus"
+    # Per-call timeout for either agent's CLI (the name predates Codex support).
     claude_timeout_seconds: int = 300
+    # Codex CLI. Resolved on PATH first, then inside the ChatGPT/Codex app bundles.
+    codex_bin: str = "codex"
+    # None omits -m, so the default in the user's ~/.codex/config.toml applies.
+    codex_model: str | None = None
+    codex_light_model: str | None = None
+    # Derivative work only; authoring keeps the user's configured effort.
+    codex_light_reasoning_effort: str = "low"
     # Simulations read every linked asset before answering — allow more time.
     simulation_timeout_seconds: int = 900
 
@@ -47,15 +55,18 @@ class Settings(BaseSettings):
     claude_agents_root: Path = Path.home() / ".claude" / "agents"
     claude_plugins_root: Path = Path.home() / ".claude" / "plugins"
     # The cross-agent skill folder (the Agent Skills layout skills.sh installs
-    # into): a skill here is loaded by every coding agent whose own skills dir
-    # links to it. Claude Code and Codex read only their own dirs, so a generic
-    # skill is symlinked into each rather than copied.
+    # into). Codex loads it natively; Claude Code reads only its own dir, so a
+    # generic skill reaches Claude through a symlink there rather than a copy.
     generic_skills_root: Path = Path.home() / ".agents" / "skills"
     codex_skills_root: Path = Path.home() / ".codex" / "skills"
+    # Codex custom agents, one TOML file each (<name>.toml).
+    codex_agents_root: Path = Path.home() / ".codex" / "agents"
+    # Codex's plugin cache (cache/<marketplace>/<plugin>/<version>/); read-only.
+    codex_plugins_root: Path = Path.home() / ".codex" / "plugins"
     # Claude Code's own settings file — where the observability hooks are written.
     claude_settings_file: Path = Path.home() / ".claude" / "settings.json"
     # Codex's observability wiring: hooks.json is written, config.toml only read
-    # (for the `[features] hooks` switch).
+    # (for the `[features] hooks` switch, plugin on/off and `[[skills.config]]`).
     codex_hooks_file: Path = Path.home() / ".codex" / "hooks.json"
     codex_config_file: Path = Path.home() / ".codex" / "config.toml"
     # Everything masterwork installs on disk (database, forwarder scripts).
@@ -76,6 +87,9 @@ class Settings(BaseSettings):
     # roots, so chat proposals can never write it), edited through its own
     # endpoint.
     claude_instructions_file: Path = Path.home() / ".claude" / "CLAUDE.md"
+    codex_instructions_file: Path = Path.home() / ".codex" / "AGENTS.md"
+    # Codex reads this instead of AGENTS.md whenever it is non-empty.
+    codex_instructions_override_file: Path = Path.home() / ".codex" / "AGENTS.override.md"
     # Repo root for the factory pipeline runner (factory/run.py), derived from
     # this file's own location rather than an env var.
     masterwork_repo_root: Path = Path(__file__).resolve().parents[2]

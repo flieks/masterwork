@@ -7,6 +7,7 @@ from app.providers.base import Provider
 from app.providers.claude import ClaudeProvider
 from app.providers.claude_plugins import ClaudePluginProvider
 from app.providers.codex import CodexProvider
+from app.providers.codex_plugins import CodexPluginProvider
 from app.providers.generic import GenericSkillProvider
 from app.providers.masterwork_roles import MasterworkRoleProvider
 
@@ -23,13 +24,22 @@ def build_providers(settings: Settings) -> list[Provider]:
             generic_root=generic_root,
         ),
         ClaudePluginProvider(plugins_root=settings.claude_plugins_root),
-        CodexProvider(skills_root=settings.codex_skills_root, generic_root=generic_root),
+        CodexProvider(
+            skills_root=settings.codex_skills_root,
+            agents_root=settings.codex_agents_root,
+            generic_root=generic_root,
+            config_file=settings.codex_config_file,
+        ),
+        CodexPluginProvider(
+            plugins_root=settings.codex_plugins_root, config_file=settings.codex_config_file
+        ),
         GenericSkillProvider(
             skills_root=generic_root,
             agent_roots={
                 "claude": settings.claude_skills_root,
                 "codex": settings.codex_skills_root,
             },
+            codex_config_file=settings.codex_config_file,
         ),
         MasterworkRoleProvider(store_root=settings.masterwork_agents_root),
     ]

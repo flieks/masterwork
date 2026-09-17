@@ -67,15 +67,16 @@ async def test_migrate_claude_skill_to_generic(
     assert body["asset"]["id"] == "generic:skill:frontend-dev"
     assert body["asset"]["provider"] == "generic"
     assert sorted(body["asset"]["agents"]) == ["claude", "codex"]
-    assert body["linked_agents"] == ["claude", "codex"]
+    # Codex loads ~/.agents/skills itself, so only Claude needs a link.
+    assert body["linked_agents"] == ["claude"]
     assert body["skipped_agents"] == []
     assert body["claude_only_keys"] == []
     assert body["relinked_projects"] == 1
     assert body["asset"]["path"] == str(trees["generic"] / "frontend-dev" / "SKILL.md")
 
-    # On disk once, linked from both agents' dirs.
+    # On disk once, linked from Claude's dir; Codex's dir is left without a link.
     assert (trees["claude"] / "frontend-dev").is_symlink()
-    assert (trees["codex"] / "frontend-dev").is_symlink()
+    assert not (trees["codex"] / "frontend-dev").is_symlink()
 
     # The old id is gone from the list; the new one is there once.
     listed = await migrate_client.get("/api/v1/assets", params={"kind": "skill"})
@@ -87,11 +88,17 @@ async def test_migrate_claude_skill_to_generic(
     assert project.json()["asset_ids"] == ["generic:skill:frontend-dev"]
 
 
-async def test_migrate_codex_skill_to_generic(migrate_client: AsyncClient) -> None:
+async def test_migrate_codex_skill_to_generic(
+    migrate_client: AsyncClient, trees: dict[str, Path]
+) -> None:
     r = await migrate_client.post(_migrate_url("codex:skill:theirs"))
     assert r.status_code == 200, r.text
     assert r.json()["asset"]["id"] == "generic:skill:theirs"
-    assert r.json()["linked_agents"] == ["claude", "codex"]
+    assert r.json()["asset"]["agents"] == ["claude", "codex"]
+    assert r.json()["linked_agents"] == ["claude"]
+    # The Codex folder is gone, not swapped for a link.
+    assert not (trees["codex"] / "theirs").exists()
+    assert not (trees["codex"] / "theirs").is_symlink()
 
 
 async def test_migrate_rejects_agents_and_generic_skills(migrate_client: AsyncClient) -> None:
@@ -161,6 +168,8 @@ async def test_list_flags_a_real_copy_twinned_with_a_generic_skill(
     assert by_id["generic:skill:theirs"]["generic_twin"] is None
     assert by_id["claude:agent:architect"]["generic_twin"] is None
     assert "codex:skill:theirs" not in by_id
+    # Claude's real copy shadows the generic one; Codex loads the generic one regardless.
+    assert by_id["generic:skill:backend-dev"]["agents"] == ["codex"]
 
     detail = await migrate_client.get(
         "/api/v1/assets/" + quote("claude:skill:backend-dev", safe="")
@@ -174,6 +183,26 @@ async def test_list_flags_a_real_copy_twinned_with_a_generic_skill(
     assert "claude:skill:backend-dev" not in after
     assert after["generic:skill:backend-dev"]["generic_twin"] is None
     assert after["generic:skill:backend-dev"]["agents"] == ["claude", "codex"]
+
+
+async def test_a_codex_real_copy_beside_a_generic_skill_is_a_twin_codex_loads_twice(
+    migrate_client: AsyncClient, trees: dict[str, Path]
+) -> None:
+    shutil.copytree(trees["codex"] / "theirs", trees["generic"] / "theirs")
+
+    by_id = {a["id"]: a for a in (await migrate_client.get("/api/v1/assets")).json()}
+    assert by_id["codex:skill:theirs"]["generic_twin"] == "identical"
+    # Both copies reach Codex: its own folder and ~/.agents/skills.
+    assert by_id["codex:skill:theirs"]["agents"] == ["codex"]
+    assert by_id["generic:skill:theirs"]["agents"] == ["codex"]
+
+    r = await migrate_client.post(_migrate_url("codex:skill:theirs"))
+    assert r.status_code == 200, r.text
+    assert r.json()["adopted"] is True
+    assert not (trees["codex"] / "theirs").exists()
+    after = {a["id"]: a for a in (await migrate_client.get("/api/v1/assets")).json()}
+    assert "codex:skill:theirs" not in after
+    assert after["generic:skill:theirs"]["agents"] == ["claude", "codex"]
 
 
 async def test_migrate_unknown_asset_is_404(migrate_client: AsyncClient) -> None:

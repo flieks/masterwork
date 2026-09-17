@@ -8,7 +8,7 @@ from typing import Any
 
 from httpx import AsyncClient
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
 
@@ -20,7 +20,7 @@ def _reply(summary: str, changes: list[dict[str, Any]]) -> str:
 async def _seed_proposal(
     client: AsyncClient, tree: tuple[Path, Path], summary: str, changes: list[dict[str, Any]]
 ) -> str:
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
         reply=_reply(summary, changes), session_id="cli"
     )
     app.dependency_overrides[get_providers] = lambda: providers_for(tree)
@@ -195,7 +195,7 @@ async def test_null_content_update_is_failed_at_creation(
 ) -> None:
     target = claude_tree[0] / "frontend-dev" / "SKILL.md"
     original = target.read_text(encoding="utf-8")
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
         reply=_reply(
             "rewrite",
             [{"path": str(target), "action": "update", "new_content": None, "description": "d"}],

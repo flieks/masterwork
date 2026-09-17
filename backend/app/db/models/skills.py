@@ -37,5 +37,8 @@ class InstalledSkill(Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     upstream_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
     drift_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # SkillTarget: the skills folder masterwork last wrote this skill into.
+    # Where it lives NOW is read off disk — a later migrate moves it to generic.
+    target: Mapped[str] = mapped_column(String(20), default="claude", server_default="claude")
 
     __table_args__ = (UniqueConstraint("name", name="uq_installed_skills_name"),)

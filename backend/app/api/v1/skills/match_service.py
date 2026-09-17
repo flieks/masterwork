@@ -1,4 +1,4 @@
-"""Describe-to-find over installed skills: one-shot claude -p over every
+"""Describe-to-find over installed skills: one-shot agent CLI call over every
 installed skill's name + description, picking the best-fitting few.
 
 Mirrors app/api/v1/projects/links_service.py's shape, but matches a free-text
@@ -13,7 +13,7 @@ from app.api.v1.assets.service import list_assets
 from app.api.v1.skills.schemas import SkillMatch, SkillMatchResponse
 from app.core.exceptions import SkillMatchError
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
+from app.services.agent_runner import AgentRunner, AgentRunnerError
 from app.services.redact import redact
 from app.services.skill_match_parser import extract_matches
 
@@ -41,7 +41,7 @@ def build_match_prompt(query: str, lines: list[str]) -> str:
     catalog = "\n".join(lines)
     return f"""\
 You are matching a user's description of what they need to the installed \
-Claude Code skills that best serve it.
+coding-agent skills that best serve it.
 
 WHAT THE USER WANTS
 {query}
@@ -59,7 +59,7 @@ Reply with ONLY a JSON array of this shape (valid JSON, no other text):
 
 
 async def match_installed(
-    providers: list[Provider], runner: ClaudeRunner, query: str
+    providers: list[Provider], runner: AgentRunner, query: str
 ) -> SkillMatchResponse:
     """The model's best-fitting installed skills for a free-text query.
 
@@ -70,8 +70,8 @@ async def match_installed(
     prompt = build_match_prompt(query, lines)
     try:
         reply = await runner.run_once(prompt)
-    except ClaudeRunnerError as exc:
-        raise SkillMatchError(f"claude failed to match skills: {exc}") from exc
+    except AgentRunnerError as exc:
+        raise SkillMatchError(f"{runner.display_name} failed to match skills: {exc}") from exc
 
     parsed = extract_matches(reply)
     if parsed is None:

@@ -1,5 +1,5 @@
 """Asset diagram business logic: read a cached diagram, or generate one via a
-one-shot ``claude -p`` that reads the asset file and returns a Mermaid flowchart.
+one-shot agent CLI call that reads the asset file and returns a Mermaid flowchart.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from app.api.v1.assets.schemas import AssetDiagram
 from app.core.exceptions import DiagramGenerationError, DiagramNotFoundError
 from app.providers.base import Provider, ScannedAsset
 from app.repositories import diagrams as diagram_repo
-from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
+from app.services.agent_runner import AgentRunner, AgentRunnerError
 from app.services.mermaid_parser import extract_mermaid
 from app.services.redact import redact
 
@@ -38,7 +38,7 @@ def _file_hash(asset: ScannedAsset) -> str:
 def _diagram_prompt(asset: ScannedAsset) -> str:
     # redact(): path and name are file-system-derived and could carry secrets.
     return redact(
-        f"Read the file at {asset.path} — it is a Claude Code {asset.kind} "
+        f"Read the file at {asset.path} — it is a coding-agent {asset.kind} "
         f'named "{asset.name}".\n\n'
         f"Then produce a Mermaid flowchart that explains how this {asset.kind} works "
         "internally: its trigger conditions, the main steps and decisions it takes, and "
@@ -65,7 +65,7 @@ async def get_diagram(db: AsyncSession, providers: list[Provider], asset_id: str
 async def generate_diagram(
     db: AsyncSession,
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     asset_id: str,
 ) -> AssetDiagram:
     asset = asset_service.find_asset(providers, asset_id)  # 400 malformed / 404 unknown
@@ -73,8 +73,10 @@ async def generate_diagram(
 
     try:
         reply = await runner.run_once(_diagram_prompt(asset))
-    except ClaudeRunnerError as exc:
-        raise DiagramGenerationError(f"claude failed to generate a diagram: {exc}") from exc
+    except AgentRunnerError as exc:
+        raise DiagramGenerationError(
+            f"{runner.display_name} failed to generate a diagram: {exc}"
+        ) from exc
 
     mermaid = extract_mermaid(reply)
     if mermaid is None:

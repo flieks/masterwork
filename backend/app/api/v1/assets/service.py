@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
+from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,7 @@ from app.api.v1.assets.schemas import (
     AssetKind,
     AssetMigrationResult,
     AssetSummary,
+    DisabledBy,
     GenericTwin,
 )
 from app.core.exceptions import (
@@ -20,7 +23,14 @@ from app.core.exceptions import (
     InvalidAssetIdError,
     ReadOnlyAssetError,
 )
-from app.providers.base import DISABLED_DIR, Provider, ScannedAsset, resolve_within_roots
+from app.providers.base import (
+    DISABLED_BY_CODEX_CONFIG,
+    DISABLED_DIR,
+    Provider,
+    ScannedAsset,
+    resolve_within_roots,
+)
+from app.providers.codex import CodexProvider, parse_agent_toml
 from app.providers.generic import PROVIDER_GENERIC, GenericSkillProvider
 from app.repositories import projects as project_repo
 from app.services import skill_migrate, skill_toggle
@@ -56,6 +66,7 @@ def _to_summary(asset: ScannedAsset, twin: GenericTwin | None = None) -> AssetSu
         updated_at=asset.updated_at,
         read_only=asset.read_only,
         disabled=asset.disabled,
+        disabled_by=cast(DisabledBy | None, asset.disabled_by),
         generic_twin=twin,
     )
 
@@ -153,6 +164,7 @@ async def update_asset(providers: list[Provider], asset_id: str, content: str) -
     if resolved is None:
         # Should never happen for a scanned asset, but never write outside a root.
         raise InvalidAssetIdError(f"asset path is outside provider roots: {asset.path}")
+    validate_asset_content(providers, resolved, content)
     # Snapshotted like an accepted proposal: an unrecorded manual edit would
     # also poison the next proposal's diff, which would then show both changes.
     await prepare_snapshots(providers, [resolved])
@@ -169,6 +181,12 @@ async def set_asset_enabled(
     asset = find_asset(providers, asset_id)
     if asset.kind != AssetKind.skill.value:
         raise AssetNotToggleableError("only skills can be switched off; agents stay as they are")
+    if asset.disabled_by == DISABLED_BY_CODEX_CONFIG and enabled:
+        raise AssetNotToggleableError(
+            f"{asset_id} is switched off in ~/.codex/config.toml, which masterwork never "
+            "writes: remove its [[skills.config]] entry (or set its plugin's enabled = true) "
+            "there to switch it back on"
+        )
     if asset.provider not in TOGGLEABLE_PROVIDERS or asset.read_only:
         raise AssetNotToggleableError(
             f"{asset_id} is not in a folder masterwork may write to and cannot be switched off"
@@ -196,6 +214,14 @@ async def set_asset_enabled(
     return get_asset(providers, asset_id)
 
 
+def validate_asset_content(providers: Iterable[Provider], path: Path, content: str) -> None:
+    """Refuse content its agent could not load. Only Codex custom agents have a
+    machine format to check; markdown assets accept any text."""
+    for provider in providers:
+        if isinstance(provider, CodexProvider) and provider.is_agent_file(path):
+            parse_agent_toml(content)
+
+
 def _generic_provider(providers: Iterable[Provider]) -> GenericSkillProvider:
     for provider in providers:
         if isinstance(provider, GenericSkillProvider):
@@ -207,7 +233,7 @@ async def migrate_asset(
     db: AsyncSession, providers: list[Provider], asset_id: str, *, replace_generic: bool = False
 ) -> AssetMigrationResult:
     """Move a Claude or Codex skill into the generic folder, link it back into
-    every agent's dir, and re-point project links to its new id."""
+    each agent dir that needs a link (not Codex's), and re-point project links."""
     asset = find_asset(providers, asset_id)
     if asset.kind != AssetKind.skill.value:
         raise AssetNotMigratableError("only skills have a cross-agent format; agents stay put")
@@ -221,8 +247,8 @@ async def migrate_asset(
     if asset.provider not in agent_roots:
         raise AssetNotMigratableError(f"no skills folder is known for {asset.provider}")
 
-    # The source tree loses a directory and gains a link; the generic tree gains
-    # the copy. Both are snapshotted where they are versioned.
+    # The source tree loses a directory (Claude's gains a link); the generic tree
+    # gains the copy. Both are snapshotted where they are versioned.
     touched = [asset.path, generic.skills_root / asset.name / "SKILL.md"]
     await prepare_snapshots(providers, touched)
     outcome = skill_migrate.migrate_to_generic(

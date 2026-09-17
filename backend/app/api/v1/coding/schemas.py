@@ -1,12 +1,20 @@
-"""Claude Code observability API schemas — names match the frozen contract v1.14."""
+"""Coding-agent observability API schemas — names match the frozen contract v1.14."""
 
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from functools import cache
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
+
+
+class SessionSource(StrEnum):
+    """Which agent's hooks recorded a session — the `source` filter's values."""
+
+    claude_code = "claude-code"
+    codex = "codex"
 
 
 class _NamedBlock(BaseModel):
@@ -129,7 +137,7 @@ class HookEventRequest(BaseModel):
     """One hook firing. Deliberately permissive: everything but `session_id` and
     `event_type` is optional, over-long values are truncated rather than
     rejected, and an optional field whose value will not validate is dropped
-    rather than answered with a 422 — a hook never fails a Claude Code run,
+    rather than answered with a 422 — a hook never fails an agent's run,
     including when the backend has moved on and it has not."""
 
     session_id: str = Field(..., min_length=1, description="The agent's own session id.")
@@ -248,7 +256,17 @@ class AssetUse(BaseModel):
     kind: str = Field(..., description='"skill" or "agent".')
     name: str
     asset_id: str = Field(
-        ..., description='"claude:skill:<name>" / "claude:agent:<name>" — links to the asset page.'
+        ...,
+        description=(
+            "The asset on disk this use resolves to, preferring the stores the session's "
+            'agent loads from ("codex:skill:x", "generic:skill:x", "codex-plugin:skill:p:x", '
+            '"claude:agent:x", …) — links to the asset page. Resolved when read, so it follows '
+            "a skill made generic. Unresolvable: the agent's own form "
+            '("claude:…" / "codex:…") with `asset_found` false.'
+        ),
+    )
+    asset_found: bool = Field(
+        ..., description="False when no installed asset has this kind and name."
     )
     lane: str | None = Field(
         ...,
@@ -272,7 +290,16 @@ class CodingAssetUsage(BaseModel):
 
     kind: str = Field(..., description='"skill" or "agent".')
     name: str
-    asset_id: str
+    asset_id: str = Field(
+        ...,
+        description=(
+            "Resolved like AssetUse.asset_id, preferring the stores of the `source` filter's "
+            "agent (Claude Code's when unfiltered)."
+        ),
+    )
+    asset_found: bool = Field(
+        ..., description="False when no installed asset has this kind and name."
+    )
     sessions: int = Field(..., description="Distinct runs that used it.")
     uses: int = Field(..., description="Total uses across those runs.")
     last_used_at: datetime
@@ -290,7 +317,8 @@ class AssetCall(BaseModel):
             "spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, "
             "carries the agent type and id) | skill_read (a SKILL.md read — a Read, a "
             "Glob, or a Codex shell command that prints it; carries only the path) | "
-            "subagent_stop (a finished subagent, carries nothing)."
+            "subagent_stop (a finished subagent, carries nothing) | skill_mention (a Codex "
+            "prompt naming an installed skill as `$name`; carries the mention)."
         ),
     )
     input: dict[str, str] | None = Field(
@@ -335,8 +363,9 @@ class CodingSession(BaseModel):
     launch_mode: str | None = Field(
         ...,
         description=(
-            '"automated" when a `claude -p` one-shot (script, hook, scheduler) started '
-            'the run, "interactive" when a person did, null when unknown.'
+            '"automated" when a headless one-shot (`claude -p`, `codex exec`: a script, '
+            'hook, scheduler) started the run, "interactive" when a person did, null when '
+            "unknown."
         ),
     )
     title: str | None = Field(..., description="The run's request or first prompt.")

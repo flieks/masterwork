@@ -61,7 +61,7 @@ def roots(tmp_path: Path) -> dict[str, Path]:
     return {"claude": claude, "codex": codex, "generic": generic}
 
 
-def test_migrate_copies_links_back_and_links_the_other_agent(roots: dict[str, Path]) -> None:
+def test_migrate_copies_and_links_back_but_never_links_codex(roots: dict[str, Path]) -> None:
     outcome = migrate_to_generic(
         "tdd",
         source_root=roots["claude"],
@@ -73,12 +73,12 @@ def test_migrate_copies_links_back_and_links_the_other_agent(roots: dict[str, Pa
     assert outcome.target == target
     assert (target / "SKILL.md").is_file() and not (target / "SKILL.md").is_symlink()
     assert (target / "references" / "notes.md").read_text() == "companion\n"
-    # The real copy is the only one; both agents hold links to it.
+    # The real copy is the only one; Claude links to it, Codex loads the generic root itself.
     assert (roots["claude"] / "tdd").is_symlink()
     assert (roots["claude"] / "tdd").resolve() == target.resolve()
-    assert (roots["codex"] / "tdd").is_symlink()
-    assert (roots["codex"] / "tdd" / "SKILL.md").read_text().startswith("---\nname: tdd")
-    assert outcome.linked == ("claude", "codex")
+    assert not (roots["codex"] / "tdd").exists() and not (roots["codex"] / "tdd").is_symlink()
+    assert (target / "SKILL.md").read_text().startswith("---\nname: tdd")
+    assert outcome.linked == ("claude",)
     assert outcome.skipped == ()
     assert outcome.claude_only_keys == ("disable-model-invocation",)
     assert outcome.name_rewritten is False
@@ -154,6 +154,56 @@ def test_migrate_adopts_an_identical_generic_copy(roots: dict[str, Path]) -> Non
     # The generic copy was not touched; the source became a link to it.
     assert (roots["generic"] / "tdd" / "SKILL.md").stat().st_mtime_ns == before
     assert (roots["claude"] / "tdd").is_symlink()
+    assert not (roots["codex"] / "tdd").is_symlink()
+    assert outcome.linked == ("claude",)
+
+
+def test_migrate_a_codex_skill_removes_its_folder_without_a_link(roots: dict[str, Path]) -> None:
+    shutil.move(str(roots["claude"] / "tdd"), str(roots["codex"] / "tdd"))
+
+    outcome = migrate_to_generic(
+        "tdd",
+        source_root=roots["codex"],
+        generic_root=roots["generic"],
+        agent_roots={"claude": roots["claude"], "codex": roots["codex"]},
+    )
+
+    # Codex finds the generic copy on its own; Claude gets the link.
+    assert not (roots["codex"] / "tdd").exists() and not (roots["codex"] / "tdd").is_symlink()
+    assert (roots["generic"] / "tdd" / "references" / "notes.md").is_file()
+    assert (roots["claude"] / "tdd").resolve() == (roots["generic"] / "tdd").resolve()
+    assert (outcome.linked, outcome.skipped) == (("claude",), ())
+
+
+def test_migrate_adopting_from_codex_drops_the_twin_folder(roots: dict[str, Path]) -> None:
+    shutil.copytree(roots["claude"] / "tdd", roots["generic"] / "tdd")
+    shutil.move(str(roots["claude"] / "tdd"), str(roots["codex"] / "tdd"))
+
+    outcome = migrate_to_generic(
+        "tdd",
+        source_root=roots["codex"],
+        generic_root=roots["generic"],
+        agent_roots={"claude": roots["claude"], "codex": roots["codex"]},
+    )
+
+    assert outcome.adopted is True
+    assert not (roots["codex"] / "tdd").exists() and not (roots["codex"] / "tdd").is_symlink()
+    assert (roots["claude"] / "tdd").is_symlink()
+
+
+def test_migrate_keeps_and_reports_an_existing_codex_link(roots: dict[str, Path]) -> None:
+    shutil.copytree(roots["claude"] / "tdd", roots["generic"] / "tdd")
+    roots["codex"].mkdir(parents=True)
+    (roots["codex"] / "tdd").symlink_to(roots["generic"] / "tdd", target_is_directory=True)
+
+    outcome = migrate_to_generic(
+        "tdd",
+        source_root=roots["claude"],
+        generic_root=roots["generic"],
+        agent_roots={"claude": roots["claude"], "codex": roots["codex"]},
+    )
+
+    # Codex dedupes the link, so it is left in place rather than cleaned up.
     assert (roots["codex"] / "tdd").is_symlink()
     assert outcome.linked == ("claude", "codex")
 

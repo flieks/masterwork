@@ -1,10 +1,17 @@
-"""Write a fetched community skill onto disk under settings.claude_skills_root.
+"""Write a fetched community skill onto disk, in Claude's, Codex's or the
+generic skills folder.
 
 Client-free leaf — no HTTP, it takes an already-fetched
-`skill_catalog.FetchedSkill`. Every write lands under the `skills_root` passed
-in, never a path read from settings directly, and a failed write never leaves
-a half-written skill folder: the whole tree is staged in a sibling directory
+`skill_catalog.FetchedSkill`. Every write lands under the roots passed in, never
+a path read from settings directly, and a failed write never leaves a
+half-written skill folder: the whole tree is staged in a sibling directory
 first, then swapped in with `os.replace`.
+
+A skill made generic is one real folder under `~/.agents/skills` plus a link in
+each agent folder that needs one (Claude's; Codex loads the generic folder
+itself). Updating one replaces the real folder in place and leaves the links
+alone; uninstalling one removes the links the agent folders hold to it, then
+the folder.
 """
 
 from __future__ import annotations
@@ -24,8 +31,10 @@ from app.core.exceptions import (
     SkillAlreadyInstalledError,
     SkillFetchError,
     SkillLicenseRefusedError,
+    SkillNotManagedError,
 )
 from app.providers.base import DISABLED_DIR
+from app.providers.generic import NATIVE_GENERIC_AGENTS
 from app.services.skill_catalog import MAX_SKILL_BYTES, FetchedSkill
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -34,6 +43,11 @@ SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 # all-rights-reserved license that forbids extraction — refused before any fetch.
 REFUSED_SOURCE_REPO = ("anthropics", "skills")
 REFUSED_DOCUMENT_SKILLS = frozenset({"docx", "pdf", "pptx", "xlsx"})
+
+
+def validate_slug(slug: str) -> None:
+    if not SLUG_RE.match(slug):
+        raise InvalidSkillNameError(f"not a valid skill slug: {slug!r}")
 
 
 def check_installable(owner: str, repo: str, skill: str) -> None:
@@ -94,8 +108,27 @@ def _write_within(root: Path, relative_path: str, content: bytes) -> None:
 def install_skill(
     fetched: FetchedSkill, *, slug: str, skills_root: Path, overwrite: bool = False
 ) -> Path:
+    # An update of a switched-off skill lands in its parked folder, not beside it.
+    target = (
+        installed_dir(slug, skills_root=skills_root) if overwrite else None
+    ) or skills_root / slug
+    if target.is_symlink():
+        if not overwrite:
+            raise SkillAlreadyInstalledError(f"{slug} is already installed")
+        # A migrated skill: rewrite the real folder, keep the link.
+        target = target.resolve()
+    return write_skill_folder(fetched, slug=slug, folder=target, overwrite=overwrite)
+
+
+def write_skill_folder(
+    fetched: FetchedSkill, *, slug: str, folder: Path, overwrite: bool = False
+) -> Path:
+    """Stage the skill beside `folder` and swap it in. `folder` is the real
+    directory — never a link, whose replacement would orphan what it points at."""
     if not SLUG_RE.match(slug):
         raise InvalidSkillNameError(f"not a valid skill slug: {slug!r}")
+    if folder.is_symlink():
+        raise SkillNotManagedError(f"{folder} is a link; refusing to replace it with a folder")
 
     # Defense in depth behind fetch_skill's own cap — install_skill never trusts
     # a FetchedSkill was necessarily built by it.
@@ -103,13 +136,12 @@ def install_skill(
     if total_bytes > MAX_SKILL_BYTES:
         raise SkillFetchError(f"skill exceeds {MAX_SKILL_BYTES} bytes")
 
-    skills_root.mkdir(parents=True, exist_ok=True)
-    # An update of a switched-off skill lands in its parked folder, not beside it.
-    target = (
-        installed_dir(slug, skills_root=skills_root) if overwrite else None
-    ) or skills_root / slug
-    staging = skills_root / f".masterwork-install-{slug}"
-    old_aside = skills_root / f".masterwork-old-{slug}"
+    parent = folder.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    target = folder
+    # Dot-named, so no agent (and no provider scan) ever mistakes them for a skill.
+    staging = parent / f".masterwork-install-{slug}"
+    old_aside = parent / f".masterwork-old-{slug}"
 
     if target.exists():
         if not overwrite:
@@ -138,6 +170,144 @@ def install_skill(
     if old_aside.exists():
         shutil.rmtree(old_aside)
     return target
+
+
+# --- where a skill lives -----------------------------------------------------
+
+
+class SkillTarget(StrEnum):
+    """The three skills folders masterwork installs into; each value is also the
+    provider name in the skill's asset id."""
+
+    claude = "claude"
+    codex = "codex"
+    generic = "generic"
+
+
+@dataclass(frozen=True)
+class SkillRoots:
+    claude: Path
+    codex: Path
+    generic: Path
+
+    def root(self, target: SkillTarget) -> Path:
+        return {
+            SkillTarget.claude: self.claude,
+            SkillTarget.codex: self.codex,
+            SkillTarget.generic: self.generic,
+        }[target]
+
+    def agent_roots(self) -> dict[str, Path]:
+        return {SkillTarget.claude.value: self.claude, SkillTarget.codex.value: self.codex}
+
+
+@dataclass(frozen=True)
+class SkillLocation:
+    target: SkillTarget
+    # `<root>/<slug>` or `<root>/.disabled/<slug>`; a link only when `outside` is set.
+    entry: Path
+    # The real folder the files are in.
+    folder: Path
+    # A link to somewhere that is none of the three folders — not masterwork's to write.
+    outside: bool = False
+
+
+# Generic first: once a skill is generic, the agents' entries are only links to it.
+_LOOKUP_ORDER = (SkillTarget.generic, SkillTarget.claude, SkillTarget.codex)
+
+
+def skill_locations(slug: str, roots: SkillRoots) -> list[SkillLocation]:
+    """Every copy of `slug` across the three folders, generic first. An agent
+    entry that links into the generic folder is that copy, not one of its own."""
+    generic_real = _real(roots.generic)
+    found: list[SkillLocation] = []
+    for target in _LOOKUP_ORDER:
+        entry = installed_dir(slug, skills_root=roots.root(target))
+        if entry is None:
+            continue
+        if not entry.is_symlink():
+            found.append(SkillLocation(target, entry, entry))
+            continue
+        real = _real(entry)
+        if target is SkillTarget.generic or not real.is_relative_to(generic_real):
+            found.append(SkillLocation(target, entry, real, outside=True))
+    return found
+
+
+def installed_anywhere(roots: SkillRoots) -> dict[str, list[SkillTarget]]:
+    """slug -> the folders holding it, for badging a whole result page at once."""
+    slugs: set[str] = set()
+    for target in _LOOKUP_ORDER:
+        root = roots.root(target)
+        for parent in (root, root / DISABLED_DIR):
+            slugs |= {name for name in installed_slugs(parent) if SLUG_RE.match(name)}
+    return {
+        slug: [loc.target for loc in locations]
+        for slug in slugs
+        if (locations := skill_locations(slug, roots))
+    }
+
+
+def primary_location(
+    locations: list[SkillLocation], prefer: SkillTarget | None = None
+) -> SkillLocation | None:
+    """The copy an update or uninstall acts on: the preferred folder's when it
+    holds one, else the first found."""
+    for location in locations:
+        if location.target is prefer:
+            return location
+    return locations[0] if locations else None
+
+
+def ensure_managed(location: SkillLocation, slug: str) -> None:
+    if location.outside:
+        raise SkillNotManagedError(
+            f"{location.entry} is a link to {location.folder}, outside the skills folders "
+            f"masterwork manages; change {slug!r} there instead"
+        )
+
+
+def link_into_agents(slug: str, folder: Path, roots: SkillRoots) -> list[str]:
+    """Link a generic skill into every non-native agent folder with no entry of
+    that name yet, as migrating one does. Returns the agents linked."""
+    linked: list[str] = []
+    for agent, root in roots.agent_roots().items():
+        link = root / slug
+        if agent in NATIVE_GENERIC_AGENTS or link.exists() or link.is_symlink():
+            continue
+        root.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(folder, target_is_directory=True)
+        linked.append(agent)
+    return linked
+
+
+def remove_location(slug: str, location: SkillLocation, roots: SkillRoots) -> list[Path]:
+    """Delete one copy: first every link in the three folders (live or parked)
+    that points at it, then the folder. Links elsewhere on disk cannot be found
+    and are left dangling. Returns the links removed."""
+    if not SLUG_RE.match(slug):
+        raise InvalidSkillNameError(f"not a valid skill slug: {slug!r}")
+    ensure_managed(location, slug)
+    folder = _real(location.folder)
+    root = _real(roots.root(location.target))
+    if not folder.is_relative_to(root):
+        raise InvalidSkillNameError(f"refusing to remove a path outside the skills root: {slug!r}")
+    removed: list[Path] = []
+    for target in _LOOKUP_ORDER:
+        base = roots.root(target)
+        for link in (base / slug, base / DISABLED_DIR / slug):
+            if link.is_symlink() and _real(link) == folder:
+                link.unlink()
+                removed.append(link)
+    shutil.rmtree(folder)
+    return removed
+
+
+def _real(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError):
+        return path
 
 
 def uninstall_skill(slug: str, *, skills_root: Path) -> None:
@@ -204,8 +374,11 @@ def read_installed_files(slug: str, *, skills_root: Path) -> dict[str, bytes] | 
     None when the folder is missing. Symlinked files are read, not followed as
     trees — a generic skill reaches here through a folder link."""
     root = installed_dir(slug, skills_root=skills_root)
-    if root is None:
-        return None
+    return None if root is None else read_folder_files(root)
+
+
+def read_folder_files(root: Path) -> dict[str, bytes]:
+    """`read_installed_files` for a folder already located."""
     files: dict[str, bytes] = {}
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not (Path(dirpath) / d).is_symlink()]

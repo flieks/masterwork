@@ -18,7 +18,7 @@ from app.api.v1.assets.schemas import (
     AssetUpdateRequest,
 )
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner
+from app.services.agent_runner import AgentRunner
 
 router = APIRouter(tags=["assets"])
 
@@ -103,6 +103,6 @@ async def generate_asset_diagram(
     asset_id: str,
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
-    runner: ClaudeRunner = Depends(get_light_runner),
+    runner: AgentRunner = Depends(get_light_runner),
 ) -> AssetDiagram:
     return await diagram_service.generate_diagram(db, providers, runner, asset_id)

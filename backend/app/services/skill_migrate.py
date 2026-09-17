@@ -1,9 +1,11 @@
-"""Move one agent's skill into the generic folder and link it back.
+"""Move one agent's skill into the generic folder and link it back where needed.
 
 Client-free leaf: pure filesystem work on the roots it is handed. The result is
-one real copy under the generic root, the agent's own dir holding a symlink to
-it, and a symlink in every other agent's dir that has no entry of that name yet
-— so the skill lives on disk once and every agent still finds it.
+one real copy under the generic root and a symlink in every agent dir that
+needs one (Claude) and has no entry of that name yet — so the skill lives on
+disk once and every agent still finds it. Codex loads the generic root itself:
+its source folder is simply removed and it never gains a new link; a link
+already there is kept, as Codex dedupes it.
 
 The "generic format" is the Agent Skills SKILL.md: the same file, with `name`
 required and equal to the folder. Claude-only frontmatter keys are kept, not
@@ -28,6 +30,7 @@ from app.core.exceptions import (
     SkillFetchError,
 )
 from app.providers.claude import parse_frontmatter
+from app.providers.generic import NATIVE_GENERIC_AGENTS
 from app.services.skill_install import SLUG_RE
 
 # Frontmatter keys the Agent Skills spec defines; everything else is agent-specific.
@@ -54,7 +57,7 @@ _NAME_LINE = re.compile(r"^name\s*:")
 @dataclass(frozen=True)
 class MigrationOutcome:
     target: Path
-    # Agents whose skills dir now links to the generic copy.
+    # Agents whose skills dir links to the generic copy (made now or already there).
     linked: tuple[str, ...]
     # Agents that already had an unrelated entry of this name; left alone.
     skipped: tuple[str, ...]
@@ -62,7 +65,7 @@ class MigrationOutcome:
     # True when `name:` was added or corrected to match the folder.
     name_rewritten: bool = False
     # The generic folder already held an identical copy: nothing was copied,
-    # the source simply became a link to it.
+    # the source simply became a link to it (or went, for a native agent).
     adopted: bool = False
     # A differing generic copy was thrown away in favour of the source.
     replaced_generic: bool = False
@@ -104,8 +107,9 @@ def migrate_to_generic(
     replace_generic: bool = False,
 ) -> MigrationOutcome:
     """Copy `<source_root>/<name>` to `<generic_root>/<name>`, replace the source
-    dir with a symlink, and link the other agents' dirs. `agent_roots` maps agent
-    name -> its skills dir, and must include the one `source_root` belongs to.
+    dir with a symlink (or just remove it for an agent in NATIVE_GENERIC_AGENTS),
+    and link the other non-native agents' dirs. `agent_roots` maps agent name ->
+    its skills dir, and must include the one `source_root` belongs to.
 
     A generic copy that already exists and is identical is adopted: nothing is
     copied, the source just becomes the link. One that differs is refused
@@ -162,9 +166,10 @@ def migrate_to_generic(
         if old_aside.is_symlink() or old_aside.exists():
             _remove(old_aside)
 
-    # The source becomes a link: the agent keeps finding the skill, on disk once.
+    # The source becomes a link, unless its agent reads the generic root itself.
     shutil.rmtree(source)
-    source.symlink_to(target, target_is_directory=True)
+    if _agent_for(source_root, agent_roots) not in NATIVE_GENERIC_AGENTS:
+        source.symlink_to(target, target_is_directory=True)
 
     linked: list[str] = []
     skipped: list[str] = []
@@ -176,6 +181,8 @@ def migrate_to_generic(
             else:
                 skipped.append(agent)
             continue
+        if agent in NATIVE_GENERIC_AGENTS:
+            continue  # a new link would only duplicate what it already loads
         root.mkdir(parents=True, exist_ok=True)
         link.symlink_to(target, target_is_directory=True)
         linked.append(agent)
@@ -204,6 +211,10 @@ def trees_identical(a: Path, b: Path) -> bool:
     if cmp.left_only or cmp.right_only or cmp.diff_files or cmp.funny_files:
         return False
     return all(trees_identical(a / sub, b / sub) for sub in cmp.common_dirs)
+
+
+def _agent_for(root: Path, agent_roots: Mapping[str, Path]) -> str | None:
+    return next((a for a, r in agent_roots.items() if _resolves_to(r, root)), None)
 
 
 def _resolves_to(path: Path, target: Path) -> bool:

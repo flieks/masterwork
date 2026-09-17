@@ -1,4 +1,4 @@
-"""Claude Code observability endpoints: hook ingest, plus session and event reads.
+"""Coding-agent observability endpoints: hook ingest, plus session and event reads.
 
 Two routers because the consumers differ: `hooks` is written by a shell hook,
 `coding` by the Sessions screen. Like the rest of this API, neither has auth —
@@ -14,20 +14,31 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_providers
 from app.api.v1.coding import analytics, schemas, service
+from app.providers.base import Provider
+from app.services.asset_ids import AssetIdResolver, codex_skill_names
 
 router = APIRouter(tags=["coding"])
+
+
+def _source(value: schemas.SessionSource | None) -> str | None:
+    """The plain column value the service compares against."""
+    return value.value if value is not None else None
+
+
 hooks_router = APIRouter(tags=["hooks"])
 
-# The four filters every analytics endpoint takes, described once. They are
+# The filters every analytics endpoint takes, described once. They are
 # declared per-route rather than as a dependency so the generated TS client gets
 # named arguments instead of an opaque object.
 _SINCE = "Count only what happened at or after this instant. Omit for all time."
 _WORKFLOW = (
     'Keep only runs of this workflow — "factory" for pipeline runs, "chat" for plain '
-    "Claude Code sessions (which also matches the ones that never named one)."
+    "agent sessions (which also matches the ones that never named one)."
 )
+_SOURCE = 'Keep only runs recorded by this agent\'s hooks: "claude-code" or "codex". Omit for both.'
+
 _INSPECTION = (
     "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md "
     "and would otherwise rank assets by inspection rather than use."
@@ -47,8 +58,9 @@ _CHILDREN = (
 async def ingest_hook_event(
     body: schemas.HookEventRequest,
     db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
 ) -> None:
-    await service.ingest_event(db, body)
+    await service.ingest_event(db, body, mentionable=codex_skill_names(providers))
 
 
 @router.get(
@@ -69,15 +81,15 @@ async def list_coding_sessions(
     include_automated: bool = Query(
         False,
         description=(
-            "Include sessions a `claude -p` one-shot started — wrapper scripts, hooks, "
-            "schedulers — rather than a person. Hidden by default."
+            "Include sessions a headless one-shot (`claude -p`, `codex exec`) started — "
+            "wrapper scripts, hooks, schedulers — rather than a person. Hidden by default."
         ),
     ),
     workflow: str | None = Query(
         None,
         description=(
             'Keep only runs of this workflow — "factory" for pipeline runs, "chat" for '
-            "plain Claude Code sessions (which also matches the ones that never named one)."
+            "plain agent sessions (which also matches the ones that never named one)."
         ),
     ),
     status_filter: str | None = Query(
@@ -106,7 +118,9 @@ async def list_coding_sessions(
             "the population the parent's `child_count` counts."
         ),
     ),
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
 ) -> list[schemas.CodingSession]:
     return await service.list_sessions(
         db,
@@ -118,6 +132,8 @@ async def list_coding_sessions(
         status=status_filter,
         roots_only=roots_only,
         parent_session_id=parent_session_id,
+        source=_source(source),
+        resolver=AssetIdResolver(providers),
     )
 
 
@@ -143,10 +159,17 @@ async def list_coding_asset_usage(
             "SKILL.md and would otherwise rank assets by inspection rather than use."
         ),
     ),
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
 ) -> list[schemas.CodingAssetUsage]:
     return await service.list_asset_usage(
-        db, kind=kind, since=since, include_inspection=include_inspection
+        db,
+        kind=kind,
+        since=since,
+        include_inspection=include_inspection,
+        source=_source(source),
+        resolver=AssetIdResolver(providers),
     )
 
 
@@ -166,11 +189,19 @@ async def list_asset_session_uses(
             "SKILL.md — see the same flag on /coding-assets."
         ),
     ),
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
 ) -> list[schemas.AssetSessionUse]:
-    """Matched on the id's kind and name, so a plugin asset's own id works too."""
+    """Matched on the id's kind and name, so a plugin asset's own id works too; where
+    two installed copies share the name, only runs whose agent resolves it to this id."""
     return await service.list_asset_sessions(
-        db, asset_id, limit=limit, include_inspection=include_inspection
+        db,
+        asset_id,
+        limit=limit,
+        include_inspection=include_inspection,
+        source=_source(source),
+        resolver=AssetIdResolver(providers),
     )
 
 
@@ -185,6 +216,7 @@ async def list_gate_stats(
     workflow: str | None = Query(None, description=_WORKFLOW),
     include_inspection: bool = Query(False, description=_INSPECTION),
     include_children: bool = Query(False, description=_CHILDREN),
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
 ) -> list[schemas.GateStat]:
     """Reads the v1.19 evidence rows, so it sees only the runs that reported or
@@ -196,6 +228,7 @@ async def list_gate_stats(
             workflow=workflow,
             include_inspection=include_inspection,
             include_children=include_children,
+            source=_source(source),
         ),
     )
 
@@ -213,6 +246,7 @@ async def list_role_stats(
     workflow: str | None = Query(None, description=_WORKFLOW),
     include_inspection: bool = Query(False, description=_INSPECTION),
     include_children: bool = Query(False, description=_CHILDREN),
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
 ) -> list[schemas.RoleStat]:
     return await analytics.list_role_stats(
@@ -222,6 +256,7 @@ async def list_role_stats(
             workflow=workflow,
             include_inspection=include_inspection,
             include_children=include_children,
+            source=_source(source),
         ),
     )
 
@@ -245,6 +280,8 @@ async def list_run_stats(
         le=500,
         description="The most recent runs to return. They come back oldest first.",
     ),
+    # After `limit`, so the generated client's positional arguments keep their order.
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
 ) -> list[schemas.RunStat]:
     """Oldest first, so a client plots them left to right without re-sorting."""
@@ -255,6 +292,7 @@ async def list_run_stats(
             workflow=workflow,
             include_inspection=include_inspection,
             include_children=include_children,
+            source=_source(source),
         ),
         limit=limit,
     )
@@ -273,6 +311,7 @@ async def list_model_stats(
     workflow: str | None = Query(None, description=_WORKFLOW),
     include_inspection: bool = Query(False, description=_INSPECTION),
     include_children: bool = Query(False, description=_CHILDREN),
+    source: schemas.SessionSource | None = Query(None, description=_SOURCE),
     db: AsyncSession = Depends(get_db),
 ) -> list[schemas.ModelStat]:
     return await analytics.list_model_stats(
@@ -282,6 +321,7 @@ async def list_model_stats(
             workflow=workflow,
             include_inspection=include_inspection,
             include_children=include_children,
+            source=_source(source),
         ),
     )
 
@@ -292,8 +332,10 @@ async def list_model_stats(
     operation_id="backfillCodingSessions",
     summary="Rebuild every session's derived rows from its stored events",
 )
-async def backfill_coding_sessions(db: AsyncSession = Depends(get_db)) -> schemas.BackfillTotals:
-    totals = await service.backfill_all(db)
+async def backfill_coding_sessions(
+    db: AsyncSession = Depends(get_db), providers: list[Provider] = Depends(get_providers)
+) -> schemas.BackfillTotals:
+    totals = await service.backfill_all(db, mentionable=codex_skill_names(providers))
     return schemas.BackfillTotals(**asdict(totals))
 
 
@@ -306,6 +348,7 @@ async def backfill_coding_sessions(db: AsyncSession = Depends(get_db)) -> schema
 async def backfill_coding_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
 ) -> schemas.BackfillResult:
     """Replay the stored stream through the current derivation.
 
@@ -314,7 +357,9 @@ async def backfill_coding_session(
     the derived rows are dropped and rebuilt, never updated. The event stream
     itself is never touched — it is the record this rebuilds from.
     """
-    result = await service.backfill_session(db, session_id)
+    result = await service.backfill_session(
+        db, session_id, mentionable=codex_skill_names(providers)
+    )
     return schemas.BackfillResult(**asdict(result))
 
 
@@ -326,8 +371,9 @@ async def backfill_coding_session(
 async def get_coding_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    providers: list[Provider] = Depends(get_providers),
 ) -> schemas.CodingSessionDetail:
-    return await service.get_session(db, session_id)
+    return await service.get_session(db, session_id, resolver=AssetIdResolver(providers))
 
 
 @router.get(

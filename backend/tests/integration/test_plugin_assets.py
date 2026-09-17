@@ -10,7 +10,7 @@ from urllib.parse import quote
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
 
@@ -65,7 +65,9 @@ async def _seed_proposal(
     client: AsyncClient, tree: tuple[Path, Path], plugins: Path, reply_payload: dict[str, Any]
 ) -> str:
     reply = f"ok\n\n```project\n{json.dumps(reply_payload)}\n```"
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(reply=reply, session_id="cli")
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
+        reply=reply, session_id="cli"
+    )
     app.dependency_overrides[get_providers] = lambda: providers_for(tree, plugins)
     pid = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
     sid = (await client.post("/api/v1/chat/sessions", json={"project_id": pid})).json()["id"]
@@ -106,7 +108,9 @@ async def test_proposal_file_change_into_plugin_dir_fails(
         )
         + "\n```"
     )
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(reply=reply, session_id="cli")
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
+        reply=reply, session_id="cli"
+    )
     app.dependency_overrides[get_providers] = lambda: providers_for(claude_tree, plugin_tree)
     sid = (await client.post("/api/v1/chat/sessions", json={})).json()["id"]
     r = await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "go"})

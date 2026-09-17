@@ -6,7 +6,7 @@ from pathlib import Path
 
 from httpx import AsyncClient
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
 
@@ -14,7 +14,7 @@ AGENT_ID = "claude:agent:architect"
 
 
 def _use(runner: FakeRunner, tree: tuple[Path, Path]) -> None:
-    app.dependency_overrides[get_claude_runner] = lambda: runner
+    app.dependency_overrides[get_authoring_runner] = lambda: runner
     app.dependency_overrides[get_providers] = lambda: providers_for(tree)
 
 
@@ -81,7 +81,7 @@ async def test_first_message_carries_asset_context(
     assert runner.calls[0]["prompt"].startswith(f"[current asset: id={AGENT_ID};")
 
 
-async def test_followup_resumes_without_system_prompt(
+async def test_followup_resumes_and_resends_the_system_prompt(
     client: AsyncClient, claude_tree: tuple[Path, Path]
 ) -> None:
     runner = FakeRunner(reply="ack", session_id="cli-a2")
@@ -91,9 +91,9 @@ async def test_followup_resumes_without_system_prompt(
     await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "first"})
     await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "second"})
 
-    assert runner.calls[1]["system_prompt"] is None
+    assert "This chat is scoped to ONE asset" in (runner.calls[1]["system_prompt"] or "")
     assert runner.calls[1]["resume"] == "cli-a2"
-    # The state line is re-sent every turn, since --resume reuses the old system prompt.
+    # The state line is re-sent every turn too, since the asset may have changed.
     assert runner.calls[1]["prompt"].startswith(f"[current asset: id={AGENT_ID};")
 
 

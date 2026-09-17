@@ -1,11 +1,11 @@
 """Provider for the cross-agent skill folder (``~/.agents/skills``).
 
 This is the Agent Skills layout every coding agent can share: one real copy of
-``<root>/<name>/SKILL.md``, and each agent's own skills dir (``~/.claude/skills``,
-``~/.codex/skills``) holds a symlink to it. The provider owns the real files;
-the per-agent providers skip the links. Each asset's ``agents`` names the agents
-whose dir actually links to it, so the UI can say "generic, but Codex does not
-see it yet" rather than assuming every generic skill reaches everyone.
+``<root>/<name>/SKILL.md``. Codex loads this folder itself; Claude Code reads only
+``~/.claude/skills``, so it reaches a generic skill through a symlink there. The
+provider owns the real files; the per-agent providers skip links into it. Each
+asset's ``agents`` names the agents that actually load it, so the UI can say
+"generic, but Claude does not see it yet" rather than assuming it reaches everyone.
 """
 
 from __future__ import annotations
@@ -14,15 +14,19 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from app.providers.base import (
+    AssetRef,
     ScannedAsset,
     SnapshotTree,
     iter_skill_dirs,
-    resolve_within_roots,
     skill_dir_name,
+    user_tree_snapshot,
 )
 from app.providers.claude import _KIND_SKILL, _safe_resolve, build_asset
+from app.providers.codex_config import read_codex_config
 
 PROVIDER_GENERIC = "generic"
+# Agents that load ~/.agents/skills natively (Codex 0.153+); the rest need a link in their own dir.
+NATIVE_GENERIC_AGENTS = frozenset({"codex"})
 
 
 class GenericSkillProvider:
@@ -30,10 +34,18 @@ class GenericSkillProvider:
 
     name = PROVIDER_GENERIC
 
-    def __init__(self, skills_root: Path, *, agent_roots: Mapping[str, Path]) -> None:
+    def __init__(
+        self,
+        skills_root: Path,
+        *,
+        agent_roots: Mapping[str, Path],
+        codex_config_file: Path | None = None,
+    ) -> None:
         self._skills_root = skills_root
         # agent name -> that agent's own skills dir, where a link would live.
         self._agent_roots = dict(agent_roots)
+        # A `[[skills.config]]` entry there switches the skill off for Codex alone.
+        self._codex_config_file = codex_config_file
 
     @property
     def skills_root(self) -> Path:
@@ -57,25 +69,37 @@ class GenericSkillProvider:
             if (root / name).exists() and _safe_resolve(root / name) == target
         )
 
+    def loading_agents(self, name: str) -> tuple[str, ...]:
+        """Agents that load ``<name>``: the native ones always, the rest only through a link."""
+        linked = set(self.linked_agents(name))
+        return tuple(a for a in self._agent_roots if a in NATIVE_GENERIC_AGENTS or a in linked)
+
     def scan(self) -> Iterable[ScannedAsset]:
+        codex = read_codex_config(self._codex_config_file)
         for entry, disabled in iter_skill_dirs(self._skills_root, skip_hidden=True):
+            agents = () if disabled else self.loading_agents(entry.name)
+            if codex.skill_disabled(entry / "SKILL.md"):
+                agents = tuple(agent for agent in agents if agent != "codex")
             # Disabled: the agents' links moved into their own .disabled/, so none loads it.
             asset = build_asset(
                 self.name,
                 _KIND_SKILL,
                 entry.name,
                 entry / "SKILL.md",
-                agents=() if disabled else self.linked_agents(entry.name),
+                agents=agents,
                 disabled=disabled,
             )
             if asset is not None:
                 yield asset
 
+    def asset_refs(self) -> Iterable[AssetRef]:
+        for entry, _disabled in iter_skill_dirs(self._skills_root, skip_hidden=True):
+            yield AssetRef(self.name, _KIND_SKILL, entry.name)
+
     def snapshot_tree(self, path: Path) -> SnapshotTree | None:
-        """~/.agents is the user's home too: versioned only if they made it a repo."""
-        if resolve_within_roots(path, self.roots()) is None:
-            return None
-        return SnapshotTree(root=self._skills_root.parent)
+        """~/.agents is the user's home too: versioned only if they made it a
+        repo, and then only the written skill's folder is committed."""
+        return user_tree_snapshot(path, self.roots())
 
     def asset_id_for_path(self, path: Path) -> str | None:
         resolved = _safe_resolve(path)

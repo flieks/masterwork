@@ -13,6 +13,7 @@ def session_to_schema(session: ChatSession) -> schemas.ChatSession:
         title=session.title,
         project_id=str(session.project_id) if session.project_id is not None else None,
         asset_id=session.asset_id,
+        agent=session.agent,
         created_at=session.created_at,
         updated_at=session.updated_at,
     )

@@ -31,8 +31,11 @@ class ChatSession(Base):
     # Null = not asset-scoped. Asset ids ("claude:agent:architect") live on disk,
     # so this is a plain string, not an FK.
     asset_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
-    # Internal: the claude CLI session id used for --resume. Never exposed in the API.
+    # Internal: the CLI session id used to resume — a Claude session or a Codex
+    # thread, per `agent` (the column name predates Codex). Never exposed.
     claude_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "claude" | "codex": the agent whose CLI the stored session id belongs to.
+    agent: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime, server_default=func.now(), onupdate=func.now()

@@ -3,7 +3,7 @@
 Integration tests run against a real database, never a mock — SQLite in a
 throwaway file by default, or a dedicated `masterwork_test` Postgres database
 when DATABASE_URL points at Postgres. Never the dev database either way.
-Asset providers and the claude runner are overridden per test.
+Asset providers and the agent runners are overridden per test.
 """
 
 from __future__ import annotations
@@ -24,7 +24,8 @@ from app.config import settings
 from app.db.base import Base
 from app.db.session import make_engine
 from app.main import app
-from app.services import factory_launcher
+from app.services import agent_cli
+from app.services.agent_cli import AgentId
 
 TEST_DB_NAME = "masterwork_test"
 _IS_POSTGRES = settings.database_url.startswith("postgresql")
@@ -65,10 +66,38 @@ def _test_database() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _agent_cli_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The launcher refuses to spawn without a `claude` on PATH, and a CI runner
-    has none. Tests spawn through fakes anyway; the one that wants the refusal
-    re-patches this to None."""
-    monkeypatch.setattr(factory_launcher, "find_agent_cli", lambda: "/usr/local/bin/claude")
+    """Only Claude counts as installed, and nothing looks at the real machine: the
+    launcher refuses to spawn without a CLI, and a CI runner has none. A test
+    that wants another answer re-patches this or overrides `get_agent_bins`."""
+
+    def _bins(*_: object, **__: object) -> dict[AgentId, str | None]:
+        return {AgentId.CLAUDE: "/usr/local/bin/claude", AgentId.CODEX: None}
+
+    monkeypatch.setattr(agent_cli, "detect_agent_bins", _bins)
+
+
+# Every asset root the providers read, so an endpoint that scans them (asset-id
+# resolution, `$skill` mentions, catalog install detection) never sees this machine.
+_ASSET_ROOT_SETTINGS = (
+    "claude_skills_root",
+    "claude_agents_root",
+    "claude_plugins_root",
+    "generic_skills_root",
+    "codex_skills_root",
+    "codex_agents_root",
+    "codex_plugins_root",
+    "codex_config_file",
+    "masterwork_agents_root",
+)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_asset_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the settings-built providers at an empty tmp home; a test that wants
+    assets re-patches a root or overrides `get_providers`."""
+    home = tmp_path / "_hermetic-home"
+    for name in _ASSET_ROOT_SETTINGS:
+        monkeypatch.setattr(settings, name, home / name)
 
 
 @pytest_asyncio.fixture

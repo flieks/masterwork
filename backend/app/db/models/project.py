@@ -31,7 +31,7 @@ class Project(Base):
     # Last generated summary of all applied asset changes (markdown).
     change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     change_summary_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
-    # Last generated guide on how to trigger this toolkit from Claude Code (markdown).
+    # Last generated guide on how to trigger this toolkit from the active agent (markdown).
     trigger_guide: Mapped[str | None] = mapped_column(Text, nullable=True)
     trigger_guide_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     # Last generality audit: whether the linked assets stayed general or leaked

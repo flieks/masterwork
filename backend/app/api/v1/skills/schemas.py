@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.services.skill_install import DriftStatus, FileChange
+from app.services.skill_install import DriftStatus, FileChange, SkillTarget
 
 
 class SkillRegistry(StrEnum):
@@ -33,7 +33,14 @@ class CatalogSkill(BaseModel):
     )
     url: str = Field(..., description="Link to the source repository on GitHub.")
     installed: bool = Field(
-        ..., description="A skill directory with this slug already exists on disk."
+        ...,
+        description="A skill with this slug exists in ~/.claude/skills, ~/.codex/skills or "
+        "~/.agents/skills (live or switched off).",
+    )
+    installed_in: list[SkillTarget] = Field(
+        default_factory=list,
+        description="Which of those folders hold a copy, generic first. An agent folder that "
+        "only links to the generic copy is not listed separately.",
     )
 
 
@@ -84,7 +91,11 @@ class CatalogSkillDetail(BaseModel):
         description="Null when nothing is installed; true when the disk SKILL.md differs.",
     )
     installed: bool = Field(
-        ..., description="A skill directory with this slug already exists on disk."
+        ...,
+        description="A skill with this slug exists in any of the three skills folders.",
+    )
+    installed_in: list[SkillTarget] = Field(
+        default_factory=list, description="Which folders hold a copy, generic first."
     )
     installed_by_masterwork: bool = Field(
         ...,
@@ -98,12 +109,32 @@ class SkillInstallRequest(BaseModel):
     owner: str
     repo: str
     skill: str
-    overwrite: bool = Field(False, description="Replace an existing directory at this slug.")
+    overwrite: bool = Field(
+        False,
+        description="Replace the existing copy at this slug — where it already lives, "
+        "whatever `target` says.",
+    )
+    target: SkillTarget = Field(
+        SkillTarget.claude,
+        description='Skills folder for a new install: "claude" (~/.claude/skills), "codex" '
+        '(~/.codex/skills) or "generic" (~/.agents/skills, which Codex loads itself, then '
+        "linked into ~/.claude/skills when that has no entry of that name).",
+    )
 
 
 class InstalledSkill(BaseModel):
     asset_id: str = Field(
-        ..., description='"claude:skill:<name>", the id the assets API also uses.'
+        ...,
+        description='"<location>:skill:<name>" ("claude", "codex" or "generic"), the id the '
+        "assets API also uses; from `target` when the skill is gone from disk.",
+    )
+    target: SkillTarget = Field(
+        SkillTarget.claude, description="The folder masterwork last wrote the skill into."
+    )
+    location: SkillTarget | None = Field(
+        None,
+        description="The folder the copy update and uninstall act on now — `generic` once the "
+        "skill was made generic. Null when no copy is on disk.",
     )
     name: str
     owner: str

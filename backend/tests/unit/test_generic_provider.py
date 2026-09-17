@@ -18,7 +18,7 @@ def _skill(root: Path, name: str, body: str = "body") -> Path:
     return root / name
 
 
-def test_generic_scan_reports_which_agents_link_to_each_skill(tmp_path: Path) -> None:
+def test_generic_scan_reports_which_agents_load_each_skill(tmp_path: Path) -> None:
     generic = tmp_path / "agents" / "skills"
     claude = tmp_path / "claude" / "skills"
     codex = tmp_path / "codex" / "skills"
@@ -37,8 +37,54 @@ def test_generic_scan_reports_which_agents_link_to_each_skill(tmp_path: Path) ->
     assert set(assets) == {"shared", "orphan"}
     assert assets["shared"].provider == "generic"
     assert assets["shared"].id == "generic:skill:shared"
-    assert assets["shared"].agents == ("claude",)  # codex has its own copy, not a link
-    assert assets["orphan"].agents == ()
+    # Codex loads ~/.agents/skills itself, next to its own same-named copy.
+    assert assets["shared"].agents == ("claude", "codex")
+    # No link needed for Codex; Claude still needs one.
+    assert assets["orphan"].agents == ("codex",)
+
+
+def test_generic_skill_reaches_codex_without_a_link_unless_config_or_parked(
+    tmp_path: Path,
+) -> None:
+    generic = tmp_path / "agents" / "skills"
+    claude = tmp_path / "claude" / "skills"
+    codex = tmp_path / "codex" / "skills"
+    shared = _skill(generic, "shared")
+    _skill(generic, "muted")
+    _skill(generic / ".disabled", "parked")
+    claude.mkdir(parents=True)
+    (claude / "shared").symlink_to(shared, target_is_directory=True)
+    config = tmp_path / "config.toml"
+    # Named by its generic path: Codex never had a link to it.
+    config.write_text(
+        f'[[skills.config]]\npath = "{generic}/muted/SKILL.md"\nenabled = false\n',
+        encoding="utf-8",
+    )
+
+    provider = GenericSkillProvider(
+        skills_root=generic,
+        agent_roots={"claude": claude, "codex": codex},
+        codex_config_file=config,
+    )
+    assets = {a.name: a for a in provider.scan()}
+
+    assert not codex.exists()  # scanning never writes a link
+    assert assets["shared"].agents == ("claude", "codex")
+    assert (assets["muted"].agents, assets["muted"].disabled) == ((), False)
+    assert (assets["parked"].agents, assets["parked"].disabled) == ((), True)
+
+
+def test_a_legacy_codex_link_is_not_counted_twice(tmp_path: Path) -> None:
+    generic = tmp_path / "agents" / "skills"
+    codex = tmp_path / "codex" / "skills"
+    shared = _skill(generic, "shared")
+    codex.mkdir(parents=True)
+    (codex / "shared").symlink_to(shared, target_is_directory=True)
+
+    provider = GenericSkillProvider(skills_root=generic, agent_roots={"codex": codex})
+    (asset,) = provider.scan()
+    assert asset.agents == ("codex",)
+    assert list(CodexProvider(skills_root=codex, generic_root=generic).scan()) == []
 
 
 def test_agent_providers_skip_links_into_the_generic_folder(tmp_path: Path) -> None:

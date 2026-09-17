@@ -1,11 +1,11 @@
 """Mask secret-looking values in backend-built prompt content.
 
 `redact()` runs over file-derived text (asset titles, descriptions, paths, ids)
-before it is embedded into a `claude -p` prompt, so a secret accidentally pasted
+before it is embedded into an agent CLI prompt, so a secret accidentally pasted
 into a skill/agent file is not shipped to the LLM provider verbatim.
 
-Limitation: prompts often only *point* claude at asset files (simulations,
-diagram generation) and the CLI then reads them itself with its Read tool —
+Limitation: prompts often only *point* the agent at asset files (simulations,
+diagram generation) and the CLI then reads them itself —
 that content never passes through the backend and cannot be redacted here.
 This module covers the interceptable surface only: text the backend embeds.
 """

@@ -80,6 +80,7 @@ async def test_an_explicit_skill_call_is_recorded(client: AsyncClient) -> None:
             "kind": "skill",
             "name": "caveman",
             "asset_id": "claude:skill:caveman",
+            "asset_found": False,
             "lane": "main",
             "uses": 1,
             "via_children": 0,
@@ -154,6 +155,7 @@ async def test_a_task_call_names_the_subagent(client: AsyncClient) -> None:
             "kind": "agent",
             "name": "code-reviewer",
             "asset_id": "claude:agent:code-reviewer",
+            "asset_found": False,
             "lane": "main",
             "uses": 1,
             "via_children": 0,
@@ -390,7 +392,7 @@ async def test_the_window_still_leaves_out_the_inspection_runs(client: AsyncClie
     on: an all-time ranking without masterwork's own reads and a 24h one with
     them would look like the assets changed places."""
     await _ingest(
-        client, session_id="inspect", event_type="SessionStart", cwd=service.INSPECTION_CWD
+        client, session_id="inspect", event_type="SessionStart", cwd=service.INSPECTION_CWDS[0]
     )
     await _read(client, f"{SKILLS}/tdd/SKILL.md", "inspect")
     await _ingest(client, session_id="real", event_type="SessionStart", cwd="/repo")
@@ -493,7 +495,7 @@ async def test_the_rollup_leaves_out_masterworks_own_inspection_runs(
         client,
         session_id="inspect",
         event_type="SessionStart",
-        cwd=service.INSPECTION_CWD,
+        cwd=service.INSPECTION_CWDS[0],
     )
     await _read(client, f"{SKILLS}/tdd/SKILL.md", "inspect")
     await _read(client, f"{SKILLS}/mobile-dev/SKILL.md", "inspect")
@@ -504,6 +506,23 @@ async def test_the_rollup_leaves_out_masterworks_own_inspection_runs(
 
     both = {r["name"]: r["uses"] for r in await _usage(client, include_inspection="true")}
     assert both == {"tdd": 2, "mobile-dev": 1}
+
+
+async def test_the_rollup_also_leaves_out_inspection_runs_from_the_fallback_cwd(
+    client: AsyncClient,
+) -> None:
+    """Without a ~/.claude the agent CLIs run in masterwork's own home; those
+    inspection runs are masterwork's too, whichever agent made them."""
+    await _ingest(
+        client,
+        session_id="codex-inspect",
+        event_type="SessionStart",
+        cwd=service.INSPECTION_CWDS[1],
+    )
+    await _read(client, f"{SKILLS}/tdd/SKILL.md", "codex-inspect")
+
+    assert await _usage(client) == []
+    assert [r["uses"] for r in await _usage(client, include_inspection="true")] == [1]
 
 
 # ------------------------------------------------- the per-asset session log ---
@@ -630,7 +649,7 @@ async def test_a_plugin_assets_own_id_finds_its_uses(client: AsyncClient) -> Non
 
 async def test_the_log_leaves_out_masterworks_own_inspection_runs(client: AsyncClient) -> None:
     await _ingest(
-        client, session_id="inspect", event_type="SessionStart", cwd=service.INSPECTION_CWD
+        client, session_id="inspect", event_type="SessionStart", cwd=service.INSPECTION_CWDS[0]
     )
     await _read(client, f"{SKILLS}/tdd/SKILL.md", "inspect")
 

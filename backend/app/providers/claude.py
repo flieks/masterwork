@@ -15,13 +15,15 @@ from typing import Any
 import yaml
 
 from app.providers.base import (
+    DISABLED_BY_FOLDER,
+    AssetRef,
     ScannedAsset,
     SnapshotTree,
     file_times,
     iter_skill_dirs,
-    resolve_within_roots,
     resolves_under,
     skill_dir_name,
+    user_tree_snapshot,
 )
 
 _KIND_SKILL = "skill"
@@ -86,6 +88,7 @@ def build_asset(
     read_only: bool = False,
     agents: tuple[str, ...] = (),
     disabled: bool = False,
+    disabled_by: str | None = None,
 ) -> ScannedAsset | None:
     """Read one asset file into a ScannedAsset; None if the file is unreadable."""
     try:
@@ -108,6 +111,8 @@ def build_asset(
         created_at=created_at,
         agents=agents,
         disabled=disabled,
+        # A parked folder is the only way a skill is off unless the caller says otherwise.
+        disabled_by=(disabled_by or DISABLED_BY_FOLDER) if disabled else None,
     )
 
 
@@ -131,10 +136,26 @@ class ClaudeProvider:
         yield from self._scan_skills()
         yield from self._scan_agents()
 
-    def _scan_skills(self) -> Iterable[ScannedAsset]:
+    def asset_refs(self) -> Iterable[AssetRef]:
+        for entry, _disabled in self._skill_entries():
+            yield AssetRef(self.name, _KIND_SKILL, entry.name)
+        for entry in self._agent_files():
+            yield AssetRef(self.name, _KIND_AGENT, entry.stem)
+
+    def _skill_entries(self) -> Iterable[tuple[Path, bool]]:
         for entry, disabled in iter_skill_dirs(self._skills_root, skip_hidden=False):
-            if resolves_under(entry, self._generic_root):
-                continue
+            if not resolves_under(entry, self._generic_root):
+                yield entry, disabled
+
+    def _agent_files(self) -> Iterable[Path]:
+        if not self._agents_root.is_dir():
+            return
+        for entry in sorted(self._agents_root.iterdir()):
+            if entry.is_file() and entry.suffix == ".md":
+                yield entry
+
+    def _scan_skills(self) -> Iterable[ScannedAsset]:
+        for entry, disabled in self._skill_entries():
             # A disabled skill is loaded by nobody, so it claims no agent.
             asset = build_asset(
                 self.name,
@@ -148,21 +169,16 @@ class ClaudeProvider:
                 yield asset
 
     def _scan_agents(self) -> Iterable[ScannedAsset]:
-        if not self._agents_root.is_dir():
-            return
-        for entry in sorted(self._agents_root.iterdir()):
-            if not entry.is_file() or entry.suffix != ".md":
-                continue
+        for entry in self._agent_files():
             asset = build_asset(self.name, _KIND_AGENT, entry.stem, entry, agents=(AGENT_CLAUDE,))
             if asset is not None:
                 yield asset
 
     def snapshot_tree(self, path: Path) -> SnapshotTree | None:
-        """The whole ~/.claude tree, which is where the repo sits: it holds both
-        roots, and its own .gitignore is what keeps everything else out of it."""
-        if resolve_within_roots(path, self.roots()) is None:
-            return None
-        return SnapshotTree(root=self._skills_root.parent)
+        """~/.claude, where the repo sits when the user made one — scoped to the
+        written asset, so its .gitignore is no longer the only thing between a
+        commit and the rest of that home."""
+        return user_tree_snapshot(path, self.roots())
 
     def asset_id_for_path(self, path: Path) -> str | None:
         """Map a resolved absolute path back to an asset id, if it is one."""

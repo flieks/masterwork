@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 GenericTwin = Literal["identical", "differs"]
+DisabledBy = Literal["folder", "codex-config"]
 
 
 class AssetKind(StrEnum):
@@ -21,14 +22,16 @@ class AssetSummary(BaseModel):
     kind: AssetKind
     provider: str = Field(
         ...,
-        description='Owning store: "claude", "claude-plugin" (read-only), "codex", '
-        '"generic" (the cross-agent ~/.agents/skills folder), or "masterwork" '
-        "(the factory role store).",
+        description='Owning store: "claude", "claude-plugin" (read-only), "codex" (skills '
+        'and ~/.codex/agents/*.toml custom agents), "codex-plugin" (read-only), "generic" '
+        '(the cross-agent ~/.agents/skills folder), or "masterwork" (the factory role store).',
     )
     agents: list[str] = Field(
         ...,
         description='Coding agents that load this asset ("claude", "codex"). A generic '
-        "skill lists every agent whose skills dir links to it; a factory role lists none.",
+        'skill lists "codex" (it loads ~/.agents/skills itself) unless switched off in '
+        "~/.codex/config.toml, plus each other agent whose skills dir links to it (Claude); "
+        "a factory role lists none.",
     )
     name: str = Field(..., description="Filename/dir-derived asset name.")
     title: str = Field(..., description="Frontmatter name/title, or the name as fallback.")
@@ -48,32 +51,51 @@ class AssetSummary(BaseModel):
     )
     disabled: bool = Field(
         ...,
-        description="True when the skill is parked under its folder's `.disabled/`, where "
-        "no coding agent loads it. Still readable and editable; `agents` is empty.",
+        description="True when no coding agent loads the skill: parked under its folder's "
+        "`.disabled/`, or switched off in ~/.codex/config.toml. Still readable; `agents` "
+        "is empty.",
+    )
+    disabled_by: DisabledBy | None = Field(
+        None,
+        description='Why `disabled` is true: "folder" (parked under `.disabled/`, which '
+        'setAssetEnabled reverses) or "codex-config" (a `[[skills.config]]` entry, or a '
+        "plugin not enabled, in ~/.codex/config.toml — masterwork never writes that file, "
+        "so setAssetEnabled refuses). Null when enabled.",
     )
     generic_twin: GenericTwin | None = Field(
         None,
         description="Set on a Claude or Codex skill that is a real folder (not a link) while "
         '~/.agents/skills holds a same-named skill: "identical" when the two trees match '
-        'byte for byte, "differs" otherwise. Null for everything else. Migrating the '
-        "agent copy merges the pair (an identical twin is adopted; a differing one needs "
-        "`replace_generic`).",
+        'byte for byte, "differs" otherwise. Null for everything else. For Codex it is a '
+        "genuine duplicate (Codex loads both folders); for Claude the generic copy is "
+        "shadowed. Migrating the agent copy merges the pair (an identical twin is adopted; "
+        "a differing one needs `replace_generic`).",
     )
 
 
 class AssetDetail(AssetSummary):
-    content: str = Field(..., description="Full markdown, including frontmatter.")
+    content: str = Field(
+        ...,
+        description="Full file content: markdown with frontmatter, or TOML for a Codex "
+        "custom agent.",
+    )
 
 
 class AssetUpdateRequest(BaseModel):
-    content: str = Field(..., description="Full new file content to write.")
+    content: str = Field(
+        ...,
+        description="Full new file content to write. A Codex custom agent must parse as "
+        "TOML with string `name`, `description` and `developer_instructions` (else 400).",
+    )
 
 
 class AssetEnabledRequest(BaseModel):
     enabled: bool = Field(
         ...,
         description="False parks the skill under `.disabled/` so no agent loads it; true "
-        "brings it back. Setting the state it already has is a no-op.",
+        "brings it back. A generic skill parks as one folder, so it goes off for every "
+        "agent at once (Codex loads ~/.agents/skills itself, so no per-agent link can switch "
+        "it off for Codex alone). Setting the state it already has is a no-op.",
     )
 
 
@@ -96,11 +118,15 @@ class AssetMigrationResult(BaseModel):
     asset: AssetDetail = Field(..., description="The skill at its new generic id.")
     previous_id: str = Field(..., description="The id the skill had before the move.")
     linked_agents: list[str] = Field(
-        ..., description="Agents whose skills dir now links to the generic copy."
+        ...,
+        description="Agents whose skills dir holds a link to the generic copy (made now, or "
+        "already there). Claude only for a fresh move: Codex loads ~/.agents/skills itself and "
+        "gets no new link. Who loads the skill is `asset.agents`.",
     )
     skipped_agents: list[str] = Field(
         ...,
-        description="Agents that already had an unrelated skill of this name; left alone.",
+        description="Agents that already had an unrelated skill of this name; left alone. "
+        "A skipped Codex loads both copies.",
     )
     claude_only_keys: list[str] = Field(
         ...,
@@ -116,7 +142,7 @@ class AssetMigrationResult(BaseModel):
     adopted: bool = Field(
         ...,
         description="The generic folder already held an identical copy: nothing was copied, "
-        "the source just became a link to it.",
+        "the source just became a link to it (a Codex source is removed instead).",
     )
     replaced_generic: bool = Field(
         ..., description="A differing generic copy was replaced by this one on request."

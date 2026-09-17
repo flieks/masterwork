@@ -38,13 +38,19 @@ from app.services import skill_catalog, skill_install
 from app.services.asset_history import prepare_snapshots, snapshot_writes
 from app.services.skill_catalog import CatalogSkill as CatalogSkillData
 from app.services.skill_catalog import FetchedSkill, SkillHistory, SourceError
-from app.services.skill_install import DriftStatus
+from app.services.skill_install import (
+    DriftStatus,
+    SkillLocation,
+    SkillRoots,
+    SkillTarget,
+    primary_location,
+    skill_locations,
+)
 
-ASSET_PROVIDER = "claude"
 ASSET_KIND = "skill"
 
 
-def _to_catalog_skill(skill: CatalogSkillData, *, installed: bool) -> CatalogSkill:
+def _to_catalog_skill(skill: CatalogSkillData, *, installed_in: list[SkillTarget]) -> CatalogSkill:
     return CatalogSkill(
         owner=skill.owner,
         repo=skill.repo,
@@ -56,7 +62,8 @@ def _to_catalog_skill(skill: CatalogSkillData, *, installed: bool) -> CatalogSki
         license=skill.license,
         license_resolved=skill.license_resolved,
         url=skill.url,
-        installed=installed,
+        installed=bool(installed_in),
+        installed_in=installed_in,
     )
 
 
@@ -98,9 +105,26 @@ def _skill_url(owner: str, repo: str, root_path: str | None) -> str:
     return f"{base}/tree/HEAD/{root_path}" if root_path else base
 
 
-def _to_installed(row: InstalledSkillRow) -> InstalledSkill:
+def _row_target(row: InstalledSkillRow) -> SkillTarget:
+    try:
+        return SkillTarget(row.target)
+    except ValueError:
+        return SkillTarget.claude
+
+
+def _location_of(row: InstalledSkillRow, roots: SkillRoots) -> SkillLocation | None:
+    """The copy this install row governs: the one in the folder it was written
+    to, or wherever it moved since (a migrate makes it generic)."""
+    return primary_location(skill_locations(row.name, roots), _row_target(row))
+
+
+def _to_installed(row: InstalledSkillRow, roots: SkillRoots) -> InstalledSkill:
+    location = _location_of(row, roots)
+    provider = (location.target if location else _row_target(row)).value
     return InstalledSkill(
-        asset_id=f"{ASSET_PROVIDER}:{ASSET_KIND}:{row.name}",
+        asset_id=f"{provider}:{ASSET_KIND}:{row.name}",
+        target=_row_target(row),
+        location=location.target if location else None,
         name=row.name,
         owner=row.owner,
         repo=row.repo,
@@ -120,13 +144,13 @@ async def search_catalog(
     query: str,
     limit: int,
     *,
-    skills_root: Path,
+    roots: SkillRoots,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> CatalogSearchResponse:
     result = await skill_catalog.search_catalog(query, limit, transport=transport)
-    on_disk = skill_install.installed_slugs(skills_root)
+    on_disk = skill_install.installed_anywhere(roots)
     return CatalogSearchResponse(
-        skills=[_to_catalog_skill(s, installed=s.skill in on_disk) for s in result.skills],
+        skills=[_to_catalog_skill(s, installed_in=on_disk.get(s.skill, [])) for s in result.skills],
         errors=[_to_source_error(e) for e in result.errors],
         search_type=result.search_type,
     )
@@ -138,7 +162,7 @@ async def get_catalog_skill(
     repo: str,
     skill: str,
     *,
-    skills_root: Path,
+    roots: SkillRoots,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> CatalogSkillDetail:
     fetched, license_id = await asyncio.gather(
@@ -147,7 +171,10 @@ async def get_catalog_skill(
     )
     # Needs the folder fetch_skill resolved, so it cannot join the gather above.
     history = await skill_catalog.fetch_history(owner, repo, fetched.root_path, transport=transport)
-    local_md = skill_install.read_installed_skill_md(skill, skills_root=skills_root)
+    row = await skills_repo.get_installed(db, skill)
+    locations = skill_locations(skill, roots)
+    location = primary_location(locations, _row_target(row) if row else None)
+    local_md = _read_skill_md(location.folder) if location else None
     return CatalogSkillDetail(
         owner=owner,
         repo=repo,
@@ -165,8 +192,9 @@ async def get_catalog_skill(
         differs_from_installed=(
             None if local_md is None else local_md.strip() != fetched.skill_md.strip()
         ),
-        installed=skill_install.is_installed(skill, skills_root=skills_root),
-        installed_by_masterwork=await skills_repo.get_installed(db, skill) is not None,
+        installed=bool(locations),
+        installed_in=[loc.target for loc in locations],
+        installed_by_masterwork=row is not None,
         skill_md=fetched.skill_md,
         files=[f.relative_path for f in fetched.files],
     )
@@ -179,12 +207,20 @@ async def install_skill(
     skill: str,
     *,
     overwrite: bool,
-    skills_root: Path,
+    target: SkillTarget = SkillTarget.claude,
+    roots: SkillRoots,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> InstalledSkill:
     skill_install.check_installable(owner, repo, skill)
-    if not overwrite and skill_install.is_installed(skill, skills_root=skills_root):
-        raise SkillAlreadyInstalledError(f"{skill} is already installed")
+    skill_install.validate_slug(skill)
+    locations = skill_locations(skill, roots)
+    if locations and not overwrite:
+        where = ", ".join(str(loc.entry) for loc in locations)
+        raise SkillAlreadyInstalledError(f"{skill} is already installed ({where})")
+    # An overwrite replaces the copy where it lives, so it never leaves a twin behind.
+    existing = primary_location(locations, target)
+    if existing is not None:
+        skill_install.ensure_managed(existing, skill)
 
     fetched, license_id = await asyncio.gather(
         skill_catalog.fetch_skill(owner, repo, skill, transport=transport),
@@ -192,7 +228,11 @@ async def install_skill(
     )
     # Needs the folder fetch_skill resolved; None on failure, and the install goes ahead.
     sha = await skill_catalog.fetch_head_sha(owner, repo, fetched.root_path, transport=transport)
-    skill_install.install_skill(fetched, slug=skill, skills_root=skills_root, overwrite=overwrite)
+    written_to = existing.target if existing else target
+    folder = existing.folder if existing else roots.root(target) / skill
+    skill_install.write_skill_folder(fetched, slug=skill, folder=folder, overwrite=overwrite)
+    if existing is None and target is SkillTarget.generic:
+        skill_install.link_into_agents(skill, folder, roots)
 
     registry = _inferred_registry(owner, repo, skill)
     row = await skills_repo.upsert_installed(
@@ -203,22 +243,31 @@ async def install_skill(
         license=license_id,
         registry=registry.value,
         installed_sha=sha,
-        installed_tree_hash=_disk_hash(skill, skills_root),
+        installed_tree_hash=_disk_hash(folder),
         root_path=fetched.root_path,
+        target=written_to.value,
     )
     await db.commit()
-    return _to_installed(row)
+    return _to_installed(row, roots)
 
 
-def _disk_hash(name: str, skills_root: Path) -> str | None:
+def _disk_hash(folder: Path) -> str | None:
     """Hashed from what landed on disk, not from the fetch, so the baseline is
     exactly what a later local-edit check will re-read."""
-    files = skill_install.read_installed_files(name, skills_root=skills_root)
-    return skill_install.tree_hash(files) if files is not None else None
+    if not folder.is_dir():
+        return None
+    return skill_install.tree_hash(skill_install.read_folder_files(folder))
 
 
-async def list_installed(db: AsyncSession) -> list[InstalledSkill]:
-    return [_to_installed(row) for row in await skills_repo.list_installed(db)]
+def _read_skill_md(folder: Path) -> str | None:
+    try:
+        return (folder / "SKILL.md").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+async def list_installed(db: AsyncSession, roots: SkillRoots) -> list[InstalledSkill]:
+    return [_to_installed(row, roots) for row in await skills_repo.list_installed(db)]
 
 
 @dataclass(frozen=True)
@@ -230,7 +279,10 @@ class _Comparison:
 
 
 async def _compare_with_upstream(
-    row: InstalledSkillRow, *, skills_root: Path, transport: httpx.AsyncBaseTransport | None
+    row: InstalledSkillRow,
+    *,
+    location: SkillLocation | None,
+    transport: httpx.AsyncBaseTransport | None,
 ) -> _Comparison:
     """Re-fetch the folder the install came from and classify the drift.
     Raises SkillNotFoundError when upstream no longer has it."""
@@ -242,7 +294,7 @@ async def _compare_with_upstream(
     history = await skill_catalog.fetch_history(
         row.owner, row.repo, fetched.root_path, transport=transport
     )
-    local = skill_install.read_installed_files(row.name, skills_root=skills_root) or {}
+    local = skill_install.read_folder_files(location.folder) if location else {}
     status = skill_install.classify_drift(
         local_hash=skill_install.tree_hash(local),
         upstream_hash=skill_install.tree_hash(skill_install.fetched_files(fetched)),
@@ -257,7 +309,7 @@ async def check_upstream(
     db: AsyncSession,
     name: str,
     *,
-    skills_root: Path,
+    roots: SkillRoots,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> UpstreamCheckResult:
     now = datetime.now(UTC)
@@ -272,7 +324,9 @@ async def check_upstream(
         )
 
     try:
-        cmp = await _compare_with_upstream(row, skills_root=skills_root, transport=transport)
+        cmp = await _compare_with_upstream(
+            row, location=_location_of(row, roots), transport=transport
+        )
     except SkillNotFoundError:
         await skills_repo.record_check(
             db, row, checked_at=now, upstream_sha=None, status=DriftStatus.unknown_origin.value
@@ -316,29 +370,35 @@ async def update_from_upstream(
     name: str,
     *,
     force: bool,
-    skills_root: Path,
+    roots: SkillRoots,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> InstalledSkill:
     row = await skills_repo.get_installed(db, name)
     if row is None:
         raise InstalledSkillNotFoundError(f"no installed skill named {name!r}")
+    location = _location_of(row, roots)
+    if location is not None:
+        skill_install.ensure_managed(location, name)
 
     # A vanished upstream propagates as the 404 it is; the update has no source.
-    cmp = await _compare_with_upstream(row, skills_root=skills_root, transport=transport)
+    cmp = await _compare_with_upstream(row, location=location, transport=transport)
     if cmp.status in (DriftStatus.edited_locally, DriftStatus.diverged) and not force:
         raise SkillLocallyEditedError(
             f"{name} was edited locally since it was installed; updating would overwrite"
             " those edits. Pass force to replace them with the upstream copy."
         )
 
-    folder = skill_install.installed_dir(name, skills_root=skills_root) or skills_root / name
+    # The real folder, even when the agent folders only link to it: the links stay.
+    target = location.target if location else _row_target(row)
+    folder = location.folder if location else roots.root(target) / name
     touched = [folder / "SKILL.md"]
     await prepare_snapshots(providers, touched)
-    skill_install.install_skill(cmp.fetched, slug=name, skills_root=skills_root, overwrite=True)
+    skill_install.write_skill_folder(cmp.fetched, slug=name, folder=folder, overwrite=True)
     await snapshot_writes(providers, touched, f"masterwork: update skill from upstream: {name}")
 
     row.installed_sha = cmp.history.last_commit_sha
-    row.installed_tree_hash = _disk_hash(name, skills_root)
+    row.installed_tree_hash = _disk_hash(folder)
+    row.target = target.value
     row.root_path = cmp.fetched.root_path
     await skills_repo.record_check(
         db,
@@ -348,13 +408,18 @@ async def update_from_upstream(
         status=DriftStatus.current.value,
     )
     await db.commit()
-    return _to_installed(row)
+    return _to_installed(row, roots)
 
 
-async def uninstall_skill(db: AsyncSession, name: str, *, skills_root: Path) -> None:
+async def uninstall_skill(db: AsyncSession, name: str, *, roots: SkillRoots) -> None:
+    """Remove the copy the row governs — for a generic skill, its folder and the
+    links the agent folders hold to it. A copy in another folder is left alone."""
     row = await skills_repo.get_installed(db, name)
     if row is None:
         raise InstalledSkillNotFoundError(f"no installed skill named {name!r}")
-    skill_install.uninstall_skill(name, skills_root=skills_root)
+    skill_install.validate_slug(name)
+    location = _location_of(row, roots)
+    if location is not None:
+        skill_install.remove_location(name, location, roots)
     await skills_repo.delete_installed(db, name)
     await db.commit()

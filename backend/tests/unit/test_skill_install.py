@@ -247,3 +247,36 @@ def test_changed_paths_reports_added_removed_and_changed_but_not_skill_md() -> N
         ("gone.md", "removed"),
         ("new.md", "added"),
     ]
+
+
+def test_overwriting_through_a_link_rewrites_the_real_folder_and_keeps_the_link(
+    tmp_path: Path,
+) -> None:
+    """A skill made generic: the agent folder holds a link. Replacing the link
+    itself used to leave a Claude-only copy and a stale generic one behind."""
+    generic = tmp_path / "agents" / "skills"
+    claude, codex = tmp_path / "claude" / "skills", tmp_path / "codex" / "skills"
+    real = skill_install.install_skill(
+        _fetched(skill_md="v1"), slug="my-skill", skills_root=generic
+    )
+    for root in (claude, codex):
+        root.mkdir(parents=True)
+        (root / "my-skill").symlink_to(real, target_is_directory=True)
+
+    target = skill_install.install_skill(
+        _fetched(skill_md="v2"), slug="my-skill", skills_root=claude, overwrite=True
+    )
+
+    assert target == real.resolve()
+    for root in (claude, codex):
+        assert (root / "my-skill").is_symlink()
+        assert (root / "my-skill" / "SKILL.md").read_text() == "v2"
+    assert sorted(p.name for p in claude.iterdir()) == ["my-skill"]
+
+
+def test_a_link_is_never_silently_replaced_without_overwrite(tmp_path: Path) -> None:
+    real = skill_install.install_skill(_fetched(), slug="my-skill", skills_root=tmp_path / "g")
+    (tmp_path / "c").mkdir()
+    (tmp_path / "c" / "my-skill").symlink_to(real, target_is_directory=True)
+    with pytest.raises(SkillAlreadyInstalledError):
+        skill_install.install_skill(_fetched(), slug="my-skill", skills_root=tmp_path / "c")

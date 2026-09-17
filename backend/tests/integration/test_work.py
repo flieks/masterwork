@@ -288,6 +288,7 @@ class _FakeSpawner:
         run_id: str | None = None,
         interview: bool = False,
         workflow: str | None = None,
+        agent: str | None = None,
     ) -> int:
         self.calls.append(
             {
@@ -297,6 +298,7 @@ class _FakeSpawner:
                 "run_id": run_id,
                 "interview": interview,
                 "workflow": workflow,
+                "agent": agent,
             }
         )
         return 9000 + len(self.calls) - 1

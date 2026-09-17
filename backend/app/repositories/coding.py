@@ -1,4 +1,4 @@
-"""Data access for Claude Code sessions and their event stream."""
+"""Data access for coding-agent sessions and their event stream."""
 
 from __future__ import annotations
 
@@ -165,9 +165,12 @@ async def list_sessions(
     status: str | None = None,
     roots_only: bool = False,
     parent_session_id: str | None = None,
+    source: str | None = None,
 ) -> list[CodingSession]:
     cutoff = _idle_cutoff()
     query = select(CodingSession)
+    if source is not None:
+        query = query.where(CodingSession.source == source)
     # Naming a parent is a lookup of a known run's children, not a browse of the
     # grid, so the two hygiene suppressions are skipped: a pipeline's stages are
     # headless by construction, and `child_count` counts all of them — filtered,
@@ -512,7 +515,8 @@ async def asset_usage(
     *,
     kind: str | None = None,
     since: datetime | None = None,
-    exclude_cwd: str | None = None,
+    exclude_cwds: tuple[str, ...] = (),
+    source: str | None = None,
 ) -> list[tuple[str, str, int, int, datetime]]:
     """The cross-session rollup: (kind, name, sessions, uses, last_used_at).
 
@@ -528,22 +532,34 @@ async def asset_usage(
     named `count` or `index` collides with a method on SQLAlchemy's Row.
     """
     if since is None:
-        return await _usage_from_counters(db, kind=kind, exclude_cwd=exclude_cwd)
-    return await _usage_from_log(db, kind=kind, since=since, exclude_cwd=exclude_cwd)
+        return await _usage_from_counters(db, kind=kind, exclude_cwds=exclude_cwds, source=source)
+    return await _usage_from_log(
+        db, kind=kind, since=since, exclude_cwds=exclude_cwds, source=source
+    )
+
+
+def _session_scope(exclude_cwds: tuple[str, ...], source: str | None) -> list[ColumnElement[bool]]:
+    """The session-level filters the two usage queries share."""
+    conditions: list[ColumnElement[bool]] = []
+    if exclude_cwds:
+        # Runs launched from that directory are masterwork reading assets, not an
+        # agent using them — see INSPECTION_CWDS in the service.
+        conditions.append(CodingSession.cwd.not_in(exclude_cwds))
+    if source is not None:
+        conditions.append(CodingSession.source == source)
+    return conditions
 
 
 async def _usage_from_counters(
-    db: AsyncSession, *, kind: str | None, exclude_cwd: str | None
+    db: AsyncSession, *, kind: str | None, exclude_cwds: tuple[str, ...], source: str | None
 ) -> list[tuple[str, str, int, int, datetime]]:
     sessions = func.count(func.distinct(CodingAsset.session_id))
     uses = func.sum(CodingAsset.uses)
     last_used = func.max(CodingAsset.last_seen_at)
     query = select(CodingAsset.kind, CodingAsset.name, sessions, uses, last_used)
-    if exclude_cwd is not None:
-        # Runs launched from that directory are masterwork reading assets, not an
-        # agent using them — see INSPECTION_CWD in the service.
+    if conditions := _session_scope(exclude_cwds, source):
         query = query.join(CodingSession, CodingSession.id == CodingAsset.session_id).where(
-            CodingSession.cwd != exclude_cwd
+            *conditions
         )
     if kind is not None:
         query = query.where(CodingAsset.kind == kind)
@@ -556,7 +572,12 @@ async def _usage_from_counters(
 
 
 async def _usage_from_log(
-    db: AsyncSession, *, kind: str | None, since: datetime, exclude_cwd: str | None
+    db: AsyncSession,
+    *,
+    kind: str | None,
+    since: datetime,
+    exclude_cwds: tuple[str, ...],
+    source: str | None,
 ) -> list[tuple[str, str, int, int, datetime]]:
     """The same shape, counted per call inside the window.
 
@@ -569,9 +590,9 @@ async def _usage_from_log(
     query = select(CodingAssetUse.kind, CodingAssetUse.name, sessions, uses, last_used).where(
         CodingAssetUse.used_at >= since
     )
-    if exclude_cwd is not None:
+    if conditions := _session_scope(exclude_cwds, source):
         query = query.join(CodingSession, CodingSession.id == CodingAssetUse.session_id).where(
-            CodingSession.cwd != exclude_cwd
+            *conditions
         )
     if kind is not None:
         query = query.where(CodingAssetUse.kind == kind)
@@ -615,7 +636,8 @@ async def asset_sessions(
     kind: str,
     name: str,
     limit: int,
-    exclude_cwd: str | None = None,
+    exclude_cwds: tuple[str, ...] = (),
+    sources: tuple[str, ...] | None = None,
 ) -> list[tuple[CodingSession, int, datetime, datetime]]:
     """(session, uses, first_used_at, last_used_at) for every run that used one
     asset, most recently used first.
@@ -631,8 +653,10 @@ async def asset_sessions(
         .join(CodingAsset, CodingAsset.session_id == CodingSession.id)
         .where(CodingAsset.kind == kind, CodingAsset.name == name)
     )
-    if exclude_cwd is not None:
-        query = query.where(CodingSession.cwd != exclude_cwd)
+    if exclude_cwds:
+        query = query.where(CodingSession.cwd.not_in(exclude_cwds))
+    if sources is not None:
+        query = query.where(CodingSession.source.in_(sources))
     result = await db.execute(
         query.group_by(CodingSession.id).order_by(last_used.desc()).limit(limit)
     )

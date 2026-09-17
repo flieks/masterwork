@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.deps import get_db, get_providers, get_session_factory, get_simulation_runner
 from app.api.v1.simulations import schemas, service
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner
+from app.services.agent_runner import AgentRunner
 
 router = APIRouter(tags=["simulations"])
 
@@ -40,7 +40,7 @@ async def create_simulation(
     db: AsyncSession = Depends(get_db),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
     providers: list[Provider] = Depends(get_providers),
-    runner: ClaudeRunner = Depends(get_simulation_runner),
+    runner: AgentRunner = Depends(get_simulation_runner),
 ) -> schemas.Simulation:
     return await service.start_simulation(
         db, session_factory, providers, runner, background, project_id, body
@@ -60,7 +60,7 @@ async def start_autopilot(
     db: AsyncSession = Depends(get_db),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
     providers: list[Provider] = Depends(get_providers),
-    runner: ClaudeRunner = Depends(get_simulation_runner),
+    runner: AgentRunner = Depends(get_simulation_runner),
 ) -> schemas.Simulation:
     return await service.start_autopilot(
         db, session_factory, providers, runner, background, project_id, body
@@ -88,7 +88,7 @@ async def generate_scenario(
     project_id: str,
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
-    runner: ClaudeRunner = Depends(get_simulation_runner),
+    runner: AgentRunner = Depends(get_simulation_runner),
 ) -> schemas.ScenarioGenerateResponse:
     return await service.generate_scenario(db, providers, runner, project_id)
 

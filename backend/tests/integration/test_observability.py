@@ -69,6 +69,7 @@ async def test_lists_claude_code_as_disconnected(client: AsyncClient, wire: Path
     assert integration["ingest_url"] == INGEST
     assert integration["events"] == EVENTS
     assert integration["config_path"] == str(wire)
+    assert integration["note"] is None  # the Codex hook-trust caveat is Codex's alone
 
 
 async def test_connect_installs_hooks_and_the_forwarder(client: AsyncClient, wire: Path) -> None:

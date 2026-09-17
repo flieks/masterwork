@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.coding.service import FACTORY_SESSION_PREFIX
 from app.api.v1.launcher import schemas
-from app.api.v1.settings.service import read_settings
+from app.api.v1.settings.service import read_assistant_agent, read_projects_root
 from app.config import settings as app_settings
 from app.core.exceptions import (
     InterviewAnswerMismatchError,
@@ -35,7 +35,8 @@ from app.core.exceptions import (
 from app.db.models.launcher import MODE_INTERVIEW, SessionLaunch
 from app.providers.base import resolve_within_roots
 from app.repositories import launcher as launcher_repo
-from app.services import factory_launcher, factory_runs
+from app.services import factory_runs
+from app.services.agent_cli import AGENT_LABELS, AgentBins, AgentId
 
 _MAX_NAME_LEN = 100
 
@@ -59,15 +60,26 @@ def _refusal_in(log_text: str) -> str | None:
     return None
 
 
-def _require_agent_cli() -> None:
+def _cli_missing(what: str) -> LaunchFailedError:
+    return LaunchFailedError(
+        f"{what} is not on the backend's PATH, so a run would die immediately — "
+        "install it or start the backend from a shell that can reach it"
+    )
+
+
+def _require_agent_cli(agent: AgentId, bins: AgentBins) -> None:
     """A missing CLI kills the run in under a second, long after this endpoint
     has reported success — so it is refused here instead."""
-    if factory_launcher.find_agent_cli() is None:
-        raise LaunchFailedError(
-            f"the '{factory_launcher.AGENT_CLI}' CLI is not on the backend's PATH, "
-            "so a run would die immediately — install it or start the backend "
-            "from a shell that can reach it"
-        )
+    if bins.get(agent) is None:
+        raise _cli_missing(f"the {AGENT_LABELS[agent]} CLI ('{agent.value}')")
+
+
+def _require_any_agent_cli(bins: AgentBins) -> None:
+    """A resume runs the agent its run record names, which need not be the one
+    picked now; the factory's own refusal covers a mismatch within the settle
+    window."""
+    if not any(bins.values()):
+        raise _cli_missing("no agent CLI (claude or codex)")
 
 
 def _validate_project_name(name: str) -> str:
@@ -86,7 +98,7 @@ def _validate_project_name(name: str) -> str:
 
 
 async def _projects_root(db: AsyncSession) -> Path:
-    return Path((await read_settings(db)).projects_root)
+    return Path(await read_projects_root(db))
 
 
 async def list_projects(db: AsyncSession) -> list[schemas.LauncherProject]:
@@ -186,6 +198,7 @@ async def launch(
     db: AsyncSession,
     body: schemas.LaunchRequest,
     spawner: Callable[..., int],
+    bins: AgentBins,
 ) -> schemas.SessionLaunchRead:
     root = await _projects_root(db)
     resolved = resolve_within_roots(Path(body.project_path), [root])
@@ -212,7 +225,8 @@ async def launch(
         run_id=run_id,
         checks_run_id=body.checks_run_id,
     )
-    _require_agent_cli()
+    agent = await read_assistant_agent(db, bins)
+    _require_agent_cli(agent, bins)
     log_path = _log_path(launch_row.id)
     written_before = log_path.stat().st_size if log_path.is_file() else 0
     try:
@@ -223,6 +237,7 @@ async def launch(
             run_id=run_id,
             interview=is_interview,
             workflow=body.workflow.value if body.workflow else None,
+            agent=agent.value,
         )
     except OSError as exc:
         await db.rollback()
@@ -503,6 +518,7 @@ async def resume_run(
     db: AsyncSession,
     body: schemas.FactoryRunResumeRequest,
     resume_spawner: Callable[..., int],
+    bins: AgentBins,
 ) -> schemas.FactoryRunResumeRead:
     root = await _projects_root(db)
     resolved = resolve_within_roots(Path(body.project_path), [root])
@@ -523,7 +539,7 @@ async def resume_run(
     if not run.resumable:
         raise RunNotResumableError(f"run '{body.run_id}' cannot be resumed: {run.resume_hint}")
 
-    _require_agent_cli()
+    _require_any_agent_cli(bins)
     log_path = app_settings.masterwork_home / "launches" / f"run-{body.run_id}.log"
     written_before = log_path.stat().st_size if log_path.is_file() else 0
     try:

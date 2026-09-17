@@ -498,7 +498,9 @@ async def test_masterworks_own_inspection_runs_are_left_out_by_default(
     skill uses were masterwork inspecting assets, not agents using them."""
     await _stage(client, "run-a", seq=1, role="plan", corrections=1)
     await _gate(client, "run-a", seq=1, role="plan", gate="envelope", ok=True, note="parsed")
-    await _stage(client, "inspect", seq=1, role="plan", corrections=9, cwd=service.INSPECTION_CWD)
+    await _stage(
+        client, "inspect", seq=1, role="plan", corrections=9, cwd=service.INSPECTION_CWDS[0]
+    )
     await _gate(
         client,
         "inspect",
@@ -507,7 +509,7 @@ async def test_masterworks_own_inspection_runs_are_left_out_by_default(
         gate="envelope",
         ok=False,
         note="inspection",
-        cwd=service.INSPECTION_CWD,
+        cwd=service.INSPECTION_CWDS[0],
     )
 
     assert [(r["role"], r["corrections"]) for r in await _get(client, "roles")] == [("plan", 1)]
@@ -580,6 +582,7 @@ async def test_a_parent_runs_assets_include_what_its_children_used(
             "kind": "skill",
             "name": "tdd",
             "asset_id": "claude:skill:tdd",
+            "asset_found": False,
             "lane": None,
             "uses": 2,
             "via_children": 2,
@@ -634,6 +637,7 @@ async def test_a_run_with_no_children_is_unchanged(client: AsyncClient) -> None:
             "kind": "skill",
             "name": "tdd",
             "asset_id": "claude:skill:tdd",
+            "asset_found": False,
             "lane": "main",
             "uses": 1,
             "via_children": 0,

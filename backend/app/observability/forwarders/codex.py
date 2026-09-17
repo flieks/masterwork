@@ -31,6 +31,16 @@ DEFAULT_INGEST_URL = "http://localhost:8008/api/v1/hooks/events"
 AGENT = "codex"
 
 PROMPT_CHARS = 4000
+
+# The pipeline runner exports these into each headless stage child, whichever
+# agent it runs, so the stage is attached to its run by what the runner states
+# rather than by reading a command line. Same names as the Claude Code forwarder.
+FACTORY_RUN_ID_ENV = "MASTERWORK_FACTORY_RUN_ID"
+FACTORY_STAGE_ENV = "MASTERWORK_FACTORY_STAGE"
+
+# Column-bound on the ingest side; truncate here so a runaway env var still posts.
+MAX_RUN_ID = 200
+MAX_STAGE = 100
 # Codex hands the turn's final answer to Stop; enough of it to read, no more.
 ANSWER_CHARS = 2000
 
@@ -92,6 +102,19 @@ def ancestry(limit: int = 6) -> list[str]:
         if pid <= 1:
             break
     return chain
+
+
+def factory_stage() -> dict[str, str]:
+    """What the pipeline runner says this session is, if it said anything. Only
+    the run id is required: a stage without a name still belongs under its run."""
+    run_id = (os.environ.get(FACTORY_RUN_ID_ENV) or "").strip()
+    if not run_id:
+        return {}
+    stated = {"factory_run_id": run_id[:MAX_RUN_ID]}
+    stage = (os.environ.get(FACTORY_STAGE_ENV) or "").strip()
+    if stage:
+        stated["factory_stage"] = stage[:MAX_STAGE]
+    return stated
 
 
 # USD per million tokens, (input, output), by exact model name — a dated
@@ -300,6 +323,8 @@ def build_body(raw: dict[str, Any]) -> dict[str, Any] | None:
                 payload[key] = raw[key]
     elif event == "SessionStart":
         payload["source"] = raw.get("source", "")
+        # Provenance, strongest first: what the launcher declared, then the ancestry.
+        payload.update(factory_stage())
         payload["launched_by"] = ancestry()
         for key in ("transcript_path", "permission_mode"):
             if raw.get(key):

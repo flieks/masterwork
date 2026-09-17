@@ -16,7 +16,7 @@ from urllib.parse import quote
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
 
@@ -56,7 +56,9 @@ async def _accept_proposal(
     changes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     reply = "ok\n\n```proposal\n" + json.dumps({"summary": summary, "changes": changes}) + "\n```"
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(reply=reply, session_id="cli")
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
+        reply=reply, session_id="cli"
+    )
     app.dependency_overrides[get_providers] = lambda: providers_for(
         claude_tree, roles_root=roles_root
     )

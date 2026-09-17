@@ -730,11 +730,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
-                            "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default.",
+                            "description": "Include sessions a headless one-shot (`claude -p`, `codex exec`) started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default.",
                             "default": false,
                             "title": "Include Automated"
                         },
-                        "description": "Include sessions a `claude -p` one-shot started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default."
+                        "description": "Include sessions a headless one-shot (`claude -p`, `codex exec`) started \u2014 wrapper scripts, hooks, schedulers \u2014 rather than a person. Hidden by default."
                     },
                     {
                         "name": "workflow",
@@ -749,10 +749,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "status",
@@ -801,6 +801,24 @@
                             "title": "Parent Session Id"
                         },
                         "description": "Keep only the runs this one launched \u2014 the complement of `roots_only`, and the way to list a pipeline's stages. Children are headless by construction, so this scope ignores `include_empty`/`include_automated` and returns exactly the population the parent's `child_count` counts."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -887,6 +905,24 @@
                             "title": "Include Inspection"
                         },
                         "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md and would otherwise rank assets by inspection rather than use."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -923,7 +959,7 @@
                     "coding"
                 ],
                 "summary": "The runs that used one asset, with the arguments each call carried",
-                "description": "Matched on the id's kind and name, so a plugin asset's own id works too.",
+                "description": "Matched on the id's kind and name, so a plugin asset's own id works too; where\ntwo installed copies share the name, only runs whose agent resolves it to this id.",
                 "operationId": "listAssetSessionUses",
                 "parameters": [
                     {
@@ -958,6 +994,24 @@
                             "title": "Include Inspection"
                         },
                         "description": "Include masterwork's own analysis runs, which Read every linked asset's SKILL.md \u2014 see the same flag on /coding-assets."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -1029,10 +1083,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1057,6 +1111,24 @@
                             "title": "Include Children"
                         },
                         "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -1127,10 +1199,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1155,6 +1227,24 @@
                             "title": "Include Children"
                         },
                         "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -1226,10 +1316,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1268,6 +1358,24 @@
                             "title": "Limit"
                         },
                         "description": "The most recent runs to return. They come back oldest first."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -1338,10 +1446,10 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one).",
+                            "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one).",
                             "title": "Workflow"
                         },
-                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain Claude Code sessions (which also matches the ones that never named one)."
+                        "description": "Keep only runs of this workflow \u2014 \"factory\" for pipeline runs, \"chat\" for plain agent sessions (which also matches the ones that never named one)."
                     },
                     {
                         "name": "include_inspection",
@@ -1366,6 +1474,24 @@
                             "title": "Include Children"
                         },
                         "description": "Include runs that another run launched. Off by default: a pipeline's headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice."
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/SessionSource"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both.",
+                            "title": "Source"
+                        },
+                        "description": "Keep only runs recorded by this agent's hooks: \"claude-code\" or \"codex\". Omit for both."
                     }
                 ],
                 "responses": {
@@ -1704,6 +1830,19 @@
                 ],
                 "summary": "Get Instructions",
                 "operationId": "getInstructions",
+                "parameters": [
+                    {
+                        "name": "agent",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "$ref": "#/components/schemas/AgentId",
+                            "description": "Whose instructions file; defaults to claude.",
+                            "default": "claude"
+                        },
+                        "description": "Whose instructions file; defaults to claude."
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successful Response",
@@ -1711,6 +1850,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/InstructionsDoc"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
                                 }
                             }
                         }
@@ -1723,15 +1872,28 @@
                 ],
                 "summary": "Update Instructions",
                 "operationId": "updateInstructions",
+                "parameters": [
+                    {
+                        "name": "agent",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "$ref": "#/components/schemas/AgentId",
+                            "description": "Whose instructions file; defaults to claude.",
+                            "default": "claude"
+                        },
+                        "description": "Whose instructions file; defaults to claude."
+                    }
+                ],
                 "requestBody": {
+                    "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "$ref": "#/components/schemas/InstructionsUpdateRequest"
                             }
                         }
-                    },
-                    "required": true
+                    }
                 },
                 "responses": {
                     "200": {
@@ -3559,6 +3721,7 @@
                     "skills"
                 ],
                 "summary": "Uninstall Skill",
+                "description": "Removes the copy masterwork installed: for a skill made generic since, its\n~/.agents/skills folder plus the links the agent folders hold to it.",
                 "operationId": "uninstallSkill",
                 "parameters": [
                     {
@@ -4038,6 +4201,14 @@
     },
     "components": {
         "schemas": {
+            "AgentId": {
+                "type": "string",
+                "enum": [
+                    "claude",
+                    "codex"
+                ],
+                "title": "AgentId"
+            },
             "AgentIn": {
                 "properties": {
                     "name": {
@@ -4133,6 +4304,42 @@
                 "type": "object",
                 "title": "AgentIn",
                 "description": "One lane of the run as a hook reports it; same partial-update rules."
+            },
+            "AgentInfo": {
+                "properties": {
+                    "id": {
+                        "$ref": "#/components/schemas/AgentId"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label",
+                        "description": "\"Claude Code\" or \"Codex\"."
+                    },
+                    "installed": {
+                        "type": "boolean",
+                        "title": "Installed",
+                        "description": "True when its CLI was found on this machine."
+                    },
+                    "bin_path": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bin Path",
+                        "description": "Absolute path of the CLI found, else null."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "installed"
+                ],
+                "title": "AgentInfo"
             },
             "AgentLane": {
                 "properties": {
@@ -4245,11 +4452,25 @@
                         "type": "string",
                         "title": "Projects Root",
                         "description": "Absolute folder all code projects live under."
+                    },
+                    "assistant_agent": {
+                        "$ref": "#/components/schemas/AgentId",
+                        "description": "The agent every assistant feature runs on: the stored choice, else the first installed of claude, codex, else claude."
+                    },
+                    "agents": {
+                        "items": {
+                            "$ref": "#/components/schemas/AgentInfo"
+                        },
+                        "type": "array",
+                        "title": "Agents",
+                        "description": "Every supported agent, claude first."
                     }
                 },
                 "type": "object",
                 "required": [
-                    "projects_root"
+                    "projects_root",
+                    "assistant_agent",
+                    "agents"
                 ],
                 "title": "AppSettings"
             },
@@ -4266,6 +4487,17 @@
                         ],
                         "title": "Projects Root",
                         "description": "New projects root; omitted or null leaves it unchanged."
+                    },
+                    "assistant_agent": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/AgentId"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "Agent to run assistant features on; must be installed. Null leaves it."
                     }
                 },
                 "type": "object",
@@ -4293,7 +4525,7 @@
                     "source": {
                         "type": "string",
                         "title": "Source",
-                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read \u2014 a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing)."
+                        "description": "Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read \u2014 a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing) | skill_mention (a Codex prompt naming an installed skill as `$name`; carries the mention)."
                     },
                     "input": {
                         "anyOf": [
@@ -4334,7 +4566,7 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\" (skills and ~/.codex/agents/*.toml custom agents), \"codex-plugin\" (read-only), \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
                     },
                     "agents": {
                         "items": {
@@ -4342,7 +4574,7 @@
                         },
                         "type": "array",
                         "title": "Agents",
-                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none."
+                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists \"codex\" (it loads ~/.agents/skills itself) unless switched off in ~/.codex/config.toml, plus each other agent whose skills dir links to it (Claude); a factory role lists none."
                     },
                     "name": {
                         "type": "string",
@@ -4403,7 +4635,23 @@
                     "disabled": {
                         "type": "boolean",
                         "title": "Disabled",
-                        "description": "True when the skill is parked under its folder's `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty."
+                        "description": "True when no coding agent loads the skill: parked under its folder's `.disabled/`, or switched off in ~/.codex/config.toml. Still readable; `agents` is empty."
+                    },
+                    "disabled_by": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "folder",
+                                    "codex-config"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Disabled By",
+                        "description": "Why `disabled` is true: \"folder\" (parked under `.disabled/`, which setAssetEnabled reverses) or \"codex-config\" (a `[[skills.config]]` entry, or a plugin not enabled, in ~/.codex/config.toml \u2014 masterwork never writes that file, so setAssetEnabled refuses). Null when enabled."
                     },
                     "generic_twin": {
                         "anyOf": [
@@ -4419,12 +4667,12 @@
                             }
                         ],
                         "title": "Generic Twin",
-                        "description": "Set on a Claude or Codex skill that is a real folder (not a link) while ~/.agents/skills holds a same-named skill: \"identical\" when the two trees match byte for byte, \"differs\" otherwise. Null for everything else. Migrating the agent copy merges the pair (an identical twin is adopted; a differing one needs `replace_generic`)."
+                        "description": "Set on a Claude or Codex skill that is a real folder (not a link) while ~/.agents/skills holds a same-named skill: \"identical\" when the two trees match byte for byte, \"differs\" otherwise. Null for everything else. For Codex it is a genuine duplicate (Codex loads both folders); for Claude the generic copy is shadowed. Migrating the agent copy merges the pair (an identical twin is adopted; a differing one needs `replace_generic`)."
                     },
                     "content": {
                         "type": "string",
                         "title": "Content",
-                        "description": "Full markdown, including frontmatter."
+                        "description": "Full file content: markdown with frontmatter, or TOML for a Codex custom agent."
                     }
                 },
                 "type": "object",
@@ -4480,7 +4728,7 @@
                     "enabled": {
                         "type": "boolean",
                         "title": "Enabled",
-                        "description": "False parks the skill under `.disabled/` so no agent loads it; true brings it back. Setting the state it already has is a no-op."
+                        "description": "False parks the skill under `.disabled/` so no agent loads it; true brings it back. A generic skill parks as one folder, so it goes off for every agent at once (Codex loads ~/.agents/skills itself, so no per-agent link can switch it off for Codex alone). Setting the state it already has is a no-op."
                     }
                 },
                 "type": "object",
@@ -4526,7 +4774,7 @@
                         },
                         "type": "array",
                         "title": "Linked Agents",
-                        "description": "Agents whose skills dir now links to the generic copy."
+                        "description": "Agents whose skills dir holds a link to the generic copy (made now, or already there). Claude only for a fresh move: Codex loads ~/.agents/skills itself and gets no new link. Who loads the skill is `asset.agents`."
                     },
                     "skipped_agents": {
                         "items": {
@@ -4534,7 +4782,7 @@
                         },
                         "type": "array",
                         "title": "Skipped Agents",
-                        "description": "Agents that already had an unrelated skill of this name; left alone."
+                        "description": "Agents that already had an unrelated skill of this name; left alone. A skipped Codex loads both copies."
                     },
                     "claude_only_keys": {
                         "items": {
@@ -4557,7 +4805,7 @@
                     "adopted": {
                         "type": "boolean",
                         "title": "Adopted",
-                        "description": "The generic folder already held an identical copy: nothing was copied, the source just became a link to it."
+                        "description": "The generic folder already held an identical copy: nothing was copied, the source just became a link to it (a Codex source is removed instead)."
                     },
                     "replaced_generic": {
                         "type": "boolean",
@@ -4675,7 +4923,7 @@
                     "provider": {
                         "type": "string",
                         "title": "Provider",
-                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
+                        "description": "Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\" (skills and ~/.codex/agents/*.toml custom agents), \"codex-plugin\" (read-only), \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store)."
                     },
                     "agents": {
                         "items": {
@@ -4683,7 +4931,7 @@
                         },
                         "type": "array",
                         "title": "Agents",
-                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none."
+                        "description": "Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists \"codex\" (it loads ~/.agents/skills itself) unless switched off in ~/.codex/config.toml, plus each other agent whose skills dir links to it (Claude); a factory role lists none."
                     },
                     "name": {
                         "type": "string",
@@ -4744,7 +4992,23 @@
                     "disabled": {
                         "type": "boolean",
                         "title": "Disabled",
-                        "description": "True when the skill is parked under its folder's `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty."
+                        "description": "True when no coding agent loads the skill: parked under its folder's `.disabled/`, or switched off in ~/.codex/config.toml. Still readable; `agents` is empty."
+                    },
+                    "disabled_by": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "folder",
+                                    "codex-config"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Disabled By",
+                        "description": "Why `disabled` is true: \"folder\" (parked under `.disabled/`, which setAssetEnabled reverses) or \"codex-config\" (a `[[skills.config]]` entry, or a plugin not enabled, in ~/.codex/config.toml \u2014 masterwork never writes that file, so setAssetEnabled refuses). Null when enabled."
                     },
                     "generic_twin": {
                         "anyOf": [
@@ -4760,7 +5024,7 @@
                             }
                         ],
                         "title": "Generic Twin",
-                        "description": "Set on a Claude or Codex skill that is a real folder (not a link) while ~/.agents/skills holds a same-named skill: \"identical\" when the two trees match byte for byte, \"differs\" otherwise. Null for everything else. Migrating the agent copy merges the pair (an identical twin is adopted; a differing one needs `replace_generic`)."
+                        "description": "Set on a Claude or Codex skill that is a real folder (not a link) while ~/.agents/skills holds a same-named skill: \"identical\" when the two trees match byte for byte, \"differs\" otherwise. Null for everything else. For Codex it is a genuine duplicate (Codex loads both folders); for Claude the generic copy is shadowed. Migrating the agent copy merges the pair (an identical twin is adopted; a differing one needs `replace_generic`)."
                     }
                 },
                 "type": "object",
@@ -4784,7 +5048,7 @@
                     "content": {
                         "type": "string",
                         "title": "Content",
-                        "description": "Full new file content to write."
+                        "description": "Full new file content to write. A Codex custom agent must parse as TOML with string `name`, `description` and `developer_instructions` (else 400)."
                     }
                 },
                 "type": "object",
@@ -4807,7 +5071,12 @@
                     "asset_id": {
                         "type": "string",
                         "title": "Asset Id",
-                        "description": "\"claude:skill:<name>\" / \"claude:agent:<name>\" \u2014 links to the asset page."
+                        "description": "The asset on disk this use resolves to, preferring the stores the session's agent loads from (\"codex:skill:x\", \"generic:skill:x\", \"codex-plugin:skill:p:x\", \"claude:agent:x\", \u2026) \u2014 links to the asset page. Resolved when read, so it follows a skill made generic. Unresolvable: the agent's own form (\"claude:\u2026\" / \"codex:\u2026\") with `asset_found` false."
+                    },
+                    "asset_found": {
+                        "type": "boolean",
+                        "title": "Asset Found",
+                        "description": "False when no installed asset has this kind and name."
                     },
                     "lane": {
                         "anyOf": [
@@ -4836,6 +5105,7 @@
                     "kind",
                     "name",
                     "asset_id",
+                    "asset_found",
                     "lane",
                     "uses",
                     "via_children"
@@ -5067,7 +5337,15 @@
                     "installed": {
                         "type": "boolean",
                         "title": "Installed",
-                        "description": "A skill directory with this slug already exists on disk."
+                        "description": "A skill with this slug exists in ~/.claude/skills, ~/.codex/skills or ~/.agents/skills (live or switched off)."
+                    },
+                    "installed_in": {
+                        "items": {
+                            "$ref": "#/components/schemas/SkillTarget"
+                        },
+                        "type": "array",
+                        "title": "Installed In",
+                        "description": "Which of those folders hold a copy, generic first. An agent folder that only links to the generic copy is not listed separately."
                     }
                 },
                 "type": "object",
@@ -5204,7 +5482,15 @@
                     "installed": {
                         "type": "boolean",
                         "title": "Installed",
-                        "description": "A skill directory with this slug already exists on disk."
+                        "description": "A skill with this slug exists in any of the three skills folders."
+                    },
+                    "installed_in": {
+                        "items": {
+                            "$ref": "#/components/schemas/SkillTarget"
+                        },
+                        "type": "array",
+                        "title": "Installed In",
+                        "description": "Which folders hold a copy, generic first."
                     },
                     "installed_by_masterwork": {
                         "type": "boolean",
@@ -5376,6 +5662,18 @@
                         "title": "Asset Id",
                         "description": "Owning asset, or null when the chat is not asset-scoped."
                     },
+                    "agent": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Agent",
+                        "description": "Agent that answered the latest turn (\"claude\" | \"codex\"); null before the first reply."
+                    },
                     "created_at": {
                         "type": "string",
                         "format": "date-time",
@@ -5464,7 +5762,13 @@
                     },
                     "asset_id": {
                         "type": "string",
-                        "title": "Asset Id"
+                        "title": "Asset Id",
+                        "description": "Resolved like AssetUse.asset_id, preferring the stores of the `source` filter's agent (Claude Code's when unfiltered)."
+                    },
+                    "asset_found": {
+                        "type": "boolean",
+                        "title": "Asset Found",
+                        "description": "False when no installed asset has this kind and name."
                     },
                     "sessions": {
                         "type": "integer",
@@ -5487,6 +5791,7 @@
                     "kind",
                     "name",
                     "asset_id",
+                    "asset_found",
                     "sessions",
                     "uses",
                     "last_used_at"
@@ -5829,7 +6134,7 @@
                             }
                         ],
                         "title": "Launch Mode",
-                        "description": "\"automated\" when a `claude -p` one-shot (script, hook, scheduler) started the run, \"interactive\" when a person did, null when unknown."
+                        "description": "\"automated\" when a headless one-shot (`claude -p`, `codex exec`: a script, hook, scheduler) started the run, \"interactive\" when a person did, null when unknown."
                     },
                     "title": {
                         "anyOf": [
@@ -6128,7 +6433,7 @@
                             }
                         ],
                         "title": "Launch Mode",
-                        "description": "\"automated\" when a `claude -p` one-shot (script, hook, scheduler) started the run, \"interactive\" when a person did, null when unknown."
+                        "description": "\"automated\" when a headless one-shot (`claude -p`, `codex exec`: a script, hook, scheduler) started the run, \"interactive\" when a person did, null when unknown."
                     },
                     "title": {
                         "anyOf": [
@@ -7887,14 +8192,30 @@
                     "event_type"
                 ],
                 "title": "HookEventRequest",
-                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails a Claude Code run,\nincluding when the backend has moved on and it has not."
+                "description": "One hook firing. Deliberately permissive: everything but `session_id` and\n`event_type` is optional, over-long values are truncated rather than\nrejected, and an optional field whose value will not validate is dropped\nrather than answered with a 422 \u2014 a hook never fails an agent's run,\nincluding when the backend has moved on and it has not."
             },
             "InstalledSkill": {
                 "properties": {
                     "asset_id": {
                         "type": "string",
                         "title": "Asset Id",
-                        "description": "\"claude:skill:<name>\", the id the assets API also uses."
+                        "description": "\"<location>:skill:<name>\" (\"claude\", \"codex\" or \"generic\"), the id the assets API also uses; from `target` when the skill is gone from disk."
+                    },
+                    "target": {
+                        "$ref": "#/components/schemas/SkillTarget",
+                        "description": "The folder masterwork last wrote the skill into.",
+                        "default": "claude"
+                    },
+                    "location": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/SkillTarget"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "The folder the copy update and uninstall act on now \u2014 `generic` once the skill was made generic. Null when no copy is on disk."
                     },
                     "name": {
                         "type": "string",
@@ -8007,10 +8328,19 @@
             },
             "InstructionsDoc": {
                 "properties": {
+                    "agent": {
+                        "$ref": "#/components/schemas/AgentId",
+                        "description": "Whose global instructions these are."
+                    },
+                    "file_name": {
+                        "type": "string",
+                        "title": "File Name",
+                        "description": "\"CLAUDE.md\" for Claude Code, \"AGENTS.md\" for Codex."
+                    },
                     "path": {
                         "type": "string",
                         "title": "Path",
-                        "description": "Absolute path to the global CLAUDE.md."
+                        "description": "Absolute path to the agent's global instructions file."
                     },
                     "content": {
                         "type": "string",
@@ -8034,10 +8364,36 @@
                         ],
                         "title": "Updated At",
                         "description": "File mtime, null when absent."
+                    },
+                    "shadowed_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Shadowed By",
+                        "description": "Codex only: a non-empty AGENTS.override.md that Codex reads instead, so edits to this file have no effect. Null when nothing shadows it."
+                    },
+                    "same_file_as": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Same File As",
+                        "description": "The other agent's instructions path when it resolves to this same file (e.g. a symlink), so an edit here changes both. Null otherwise."
                     }
                 },
                 "type": "object",
                 "required": [
+                    "agent",
+                    "file_name",
                     "path",
                     "content",
                     "exists"
@@ -8547,6 +8903,18 @@
                         ],
                         "title": "Backup Path",
                         "description": "Backup of the agent config taken before the last write, if any."
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note",
+                        "description": "A standing caveat that holds in every state, e.g. Codex only running a hook after it is trusted in its /hooks screen. Static text: masterwork cannot read whether that step was done."
                     }
                 },
                 "type": "object",
@@ -9911,6 +10279,15 @@
                 ],
                 "title": "SessionLaunchRead"
             },
+            "SessionSource": {
+                "type": "string",
+                "enum": [
+                    "claude-code",
+                    "codex"
+                ],
+                "title": "SessionSource",
+                "description": "Which agent's hooks recorded a session \u2014 the `source` filter's values."
+            },
             "Simulation": {
                 "properties": {
                     "id": {
@@ -10417,8 +10794,13 @@
                     "overwrite": {
                         "type": "boolean",
                         "title": "Overwrite",
-                        "description": "Replace an existing directory at this slug.",
+                        "description": "Replace the existing copy at this slug \u2014 where it already lives, whatever `target` says.",
                         "default": false
+                    },
+                    "target": {
+                        "$ref": "#/components/schemas/SkillTarget",
+                        "description": "Skills folder for a new install: \"claude\" (~/.claude/skills), \"codex\" (~/.codex/skills) or \"generic\" (~/.agents/skills, which Codex loads itself, then linked into ~/.claude/skills when that has no entry of that name).",
+                        "default": "claude"
                     }
                 },
                 "type": "object",
@@ -10487,6 +10869,16 @@
                     "github"
                 ],
                 "title": "SkillRegistry"
+            },
+            "SkillTarget": {
+                "type": "string",
+                "enum": [
+                    "claude",
+                    "codex",
+                    "generic"
+                ],
+                "title": "SkillTarget",
+                "description": "The three skills folders masterwork installs into; each value is also the\nprovider name in the skill's asset id."
             },
             "SkillUpdateRequest": {
                 "properties": {

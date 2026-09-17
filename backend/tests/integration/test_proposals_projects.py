@@ -8,7 +8,7 @@ from typing import Any
 
 from httpx import AsyncClient
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
 
@@ -23,7 +23,9 @@ def _reply(project: dict[str, Any], changes: list[dict[str, Any]] | None = None)
 
 async def _seed(client: AsyncClient, tree: tuple[Path, Path], reply: str) -> tuple[str, str]:
     """Create a project + scoped session, run one message, return (project_id, proposal_id)."""
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(reply=reply, session_id="cli")
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
+        reply=reply, session_id="cli"
+    )
     app.dependency_overrides[get_providers] = lambda: providers_for(tree)
     pid = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
     sid = (await client.post("/api/v1/chat/sessions", json={"project_id": pid})).json()["id"]

@@ -96,6 +96,8 @@ class JsonHooksIntegration:
     # before a background POST lands. Everything else runs async.
     sync_events: ClassVar[frozenset[str]] = frozenset({"SessionEnd"})
     hook_timeout: ClassVar[int] = 5
+    # Shown with every status; see IntegrationStatus.note.
+    note: ClassVar[str | None] = None
 
     def __init__(
         self,
@@ -315,4 +317,5 @@ class JsonHooksIntegration:
             config_path=str(self._settings_path),
             script_path=str(self._installed_script()),
             backup_path=str(backup) if backup.exists() else None,
+            note=self.note,
         )

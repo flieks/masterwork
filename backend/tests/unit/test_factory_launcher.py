@@ -3,6 +3,7 @@ argv is a list (never a shell string), no mode flag, detached."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -154,7 +155,9 @@ def test_workflow_is_appended_only_when_asked_for(monkeypatch: pytest.MonkeyPatc
     """A plain launch's argv must stay byte-for-byte what it always was."""
     seen: list[list[str]] = []
 
-    def fake_spawn(argv: list[str], project_path: Path, log_path: Path) -> int:
+    def fake_spawn(
+        argv: list[str], project_path: Path, log_path: Path, agent_bins: object = ()
+    ) -> int:
         seen.append(argv)
         return 1
 
@@ -173,6 +176,56 @@ def test_workflow_is_appended_only_when_asked_for(monkeypatch: pytest.MonkeyPatc
 
     factory_launcher.spawn_factory_run(**common, workflow="scout")
     assert seen[1][-3:] == ["--workflow", "scout", "do it"]
+
+
+def test_agent_is_appended_before_the_request_and_resume_never_passes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[list[str]] = []
+
+    def fake_spawn(
+        argv: list[str], project_path: Path, log_path: Path, agent_bins: object = ()
+    ) -> int:
+        seen.append(argv)
+        return 1
+
+    monkeypatch.setattr(factory_launcher, "_spawn", fake_spawn)
+    common = {
+        "repo_root": Path("/repo"),
+        "python_bin": "python3",
+        "project_path": Path("/proj"),
+        "log_path": Path("/tmp/x.log"),
+    }
+
+    factory_launcher.spawn_factory_run(**common, request_text="do it", agent="codex")
+    assert seen[0][-3:] == ["--agent", "codex", "do it"]
+
+    # The run record remembers its agent, so a resume must not restate it.
+    factory_launcher.spawn_factory_resume(**common, run_id="abc123")
+    assert "--agent" not in seen[1]
+
+
+def test_the_child_path_gains_each_resolved_agent_binary_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(factory_launcher.subprocess, "Popen", _FakePopen)
+    bundle = tmp_path / "Codex.app" / "Contents" / "Resources"
+    bundle.mkdir(parents=True)
+    project_path = tmp_path / "projects" / "alpha"
+    project_path.mkdir(parents=True)
+
+    factory_launcher.spawn_factory_run(
+        repo_root=tmp_path,
+        python_bin="python3",
+        project_path=project_path,
+        request_text="x",
+        log_path=tmp_path / "launches" / "4.log",
+        agent="codex",
+        agent_bins=[str(bundle / "codex")],
+    )
+
+    path_dirs = _FakePopen.calls[0]["env"]["PATH"].split(os.pathsep)
+    assert str(bundle) in path_dirs
 
 
 def test_the_injected_spawner_takes_every_argument_the_service_passes(
@@ -199,9 +252,12 @@ def test_the_injected_spawner_takes_every_argument_the_service_passes(
         run_id="abc123",
         interview=True,
         workflow="scout",
+        agent="codex",
     )
 
     assert pid == 7
     assert seen["workflow"] == "scout"
+    assert seen["agent"] == "codex"
+    assert seen["agent_bins"] == ["/usr/local/bin/claude"]  # conftest's installed set
     assert seen["run_id"] == "abc123"
     assert seen["interview"] is True

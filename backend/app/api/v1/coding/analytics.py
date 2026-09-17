@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.coding import schemas, serializers
-from app.api.v1.coding.service import INSPECTION_CWD
+from app.api.v1.coding.service import INSPECTION_CWDS
 from app.db.models.coding import STATUS_SUCCESS
 from app.repositories import coding as coding_repo
 from app.repositories import coding_analytics as analytics_repo
@@ -48,13 +48,15 @@ def scope_for(
     workflow: str | None,
     include_inspection: bool,
     include_children: bool,
+    source: str | None = None,
 ) -> Scope:
-    """Turn the four query parameters every endpoint takes into one scope."""
+    """Turn the query parameters every endpoint takes into one scope."""
     return Scope(
         since=since,
         workflow=workflow,
-        exclude_cwd=None if include_inspection else INSPECTION_CWD,
+        exclude_cwds=() if include_inspection else INSPECTION_CWDS,
         include_children=include_children,
+        source=source,
     )
 
 

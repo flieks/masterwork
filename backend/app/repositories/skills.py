@@ -31,6 +31,7 @@ async def upsert_installed(
     installed_sha: str | None,
     installed_tree_hash: str | None,
     root_path: str | None,
+    target: str = "claude",
 ) -> InstalledSkill:
     """Insert on first install, update in place on a re-install with overwrite.
     Either way the drift baseline is this install's, and the cached check is
@@ -49,6 +50,7 @@ async def upsert_installed(
     existing.installed_sha = installed_sha
     existing.installed_tree_hash = installed_tree_hash
     existing.root_path = root_path
+    existing.target = target
     existing.last_checked_at = None
     existing.upstream_sha = None
     existing.drift_status = None

@@ -6,9 +6,13 @@ folder parked under `<skills_root>/.disabled/` is invisible to every one of
 them while staying editable, diffable and one rename away from coming back.
 
 A skill in one agent's own folder is a single rename. A generic skill is the
-real folder under `~/.agents/skills` plus a symlink in each agent's folder, so
-all of them move together: the real folder into the generic `.disabled/`, each
-link into its agent's `.disabled/`, re-pointed at the folder's new home. Enable
+real folder under `~/.agents/skills` plus whatever links agent folders hold to
+it (Claude's; Codex loads the generic folder itself, though an older link may
+remain), so all of them move together: the real folder into the generic
+`.disabled/`, each link into its agent's `.disabled/`, re-pointed at the
+folder's new home. Parking the folder is what turns it off for Codex, so a
+generic skill always goes off for every agent at once; Codex alone would take a
+`[[skills.config]]` entry, and config.toml is never written here. Enable
 reverses it, restoring exactly the links found parked — an agent that never
 linked the skill does not gain a link on the way back.
 """

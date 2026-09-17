@@ -31,12 +31,22 @@ EVENTS = [
 ]
 
 
+# Static on purpose: where Codex keeps its trust record is not verified, so the
+# state cannot be read back — only the requirement stated.
+TRUST_NOTE = (
+    "Codex runs a hook you configured only after you trust it: after connecting (and "
+    "after every repair, since trust is tied to the hook definition), open /hooks in "
+    "Codex and trust masterwork's entries, or no session is recorded."
+)
+
+
 class CodexIntegration(JsonHooksIntegration):
     """Wires Codex's hooks to the ingest endpoint."""
 
     id = "codex"
     label = "Codex"
     events = EVENTS
+    note = TRUST_NOTE
 
     def __init__(
         self,

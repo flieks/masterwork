@@ -277,3 +277,28 @@ async def test_a_config_toml_that_will_not_parse_is_codexs_problem_not_ours(
     assert r.json()["state"] == "connected"
     # Only hooks.json was ever written.
     assert (codex_home / "config.toml").read_text(encoding="utf-8") == "[features\nhooks = false\n"
+
+
+async def test_an_older_forwarder_copy_reads_as_outdated_so_connect_ships_the_new_one(
+    client: AsyncClient, wire: Path
+) -> None:
+    """v1.49 changed the Codex forwarder (factory attribution): an install that
+    still runs the previous copy must say so, not claim to be connected."""
+    r = await client.post(f"{URL}/codex/connect")
+    script = Path(r.json()["script_path"])
+    script.write_text(script.read_text(encoding="utf-8").replace("factory_stage", "old"))
+
+    assert (await client.get(URL)).json()[0]["state"] == "outdated"
+    r = await client.post(f"{URL}/codex/connect")
+    assert r.json()["state"] == "connected"
+    assert "MASTERWORK_FACTORY_RUN_ID" in script.read_text(encoding="utf-8")
+
+
+async def test_every_codex_state_carries_the_hook_trust_note(
+    client: AsyncClient, wire: Path
+) -> None:
+    before = (await client.get(URL)).json()[0]
+    after = (await client.post(f"{URL}/codex/connect")).json()
+    for status in (before, after):
+        assert "/hooks" in status["note"]
+        assert "trust" in status["note"]

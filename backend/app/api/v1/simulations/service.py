@@ -1,6 +1,6 @@
 """Simulation business logic.
 
-A run is asynchronous: POST creates a `running` row and schedules the claude -p
+A run is asynchronous: POST creates a `running` row and schedules the agent CLI
 call as a background task (own DB session — the request session is gone by the
 time the CLI returns); the frontend polls the list until it completes. Applying
 a suggestion reuses the proposal machinery: paths re-validated against the
@@ -18,9 +18,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.v1.assets import service as asset_service
 from app.api.v1.simulations import schemas, serializers
 from app.core.exceptions import (
     AutopilotNotFoundError,
+    InvalidAssetContentError,
     NoLinkedAssetsError,
     ProjectNotFoundError,
     ScenarioGenerationError,
@@ -34,8 +36,8 @@ from app.db.models.simulation import Simulation
 from app.providers.base import Provider, resolve_within_roots
 from app.repositories import projects as project_repo
 from app.repositories import simulations as simulation_repo
+from app.services.agent_runner import AgentRunner, AgentRunnerError
 from app.services.asset_history import prepare_snapshots, snapshot_writes
-from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
 from app.services.file_changes import apply_change
 from app.services.redact import redact
 from app.services.scenario_parser import extract_scenario
@@ -247,6 +249,8 @@ def build_prompt(
     previous: PreviousRun | None = None,
     shared_notes: dict[str, str] | None = None,
     control_run: bool = False,
+    *,
+    agent_name: str,
 ) -> str:
     asset_lines = _asset_lines(providers, list(project.asset_ids), shared_notes)
     assets_text = "\n".join(asset_lines) if asset_lines else "(no assets linked)"
@@ -261,7 +265,8 @@ def build_prompt(
     memory = _previous_memory_block(previous, control_run)
     return f"""\
 You are running a SIMULATION to evaluate whether a project's configured AI-coding \
-assets (Claude Code skills and subagents) achieve the project goal.
+assets (skills and subagents for coding agents such as Claude Code and Codex) \
+achieve the project goal.
 
 PROJECT
 - name: {project.name}
@@ -281,10 +286,10 @@ SCENARIO TO SIMULATE:
 {scenario_text}
 
 {memory}INSTRUCTIONS
-1. Read EVERY linked asset file listed above with your Read tool. Ground every \
+1. Read EVERY linked asset file listed above. Ground every \
 judgement in what the files actually say — trigger descriptions, steps, examples — \
 not in what their names imply.
-2. Simulate executing the scenario end-to-end the way Claude Code would: for each \
+2. Simulate executing the scenario end-to-end the way {agent_name} would: for each \
 step decide which skill or agent (if any) would trigger given its actual trigger \
 text, what it would do, and what could go wrong. Flag every point where no asset \
 covers a needed step, where two assets overlap or conflict, and where an asset's \
@@ -414,7 +419,7 @@ from the agent to each skill it uses: agentId -. "uses" .-> skillId.
 
 
 def build_scenario_prompt(
-    project: Project, providers: list[Provider], previous_scenario: str = ""
+    project: Project, providers: list[Provider], previous_scenario: str = "", *, agent_name: str
 ) -> str:
     asset_lines = _asset_lines(providers, list(project.asset_ids))
     assets_text = "\n".join(asset_lines) if asset_lines else "(no assets linked)"
@@ -437,7 +442,8 @@ PREVIOUS SCENARIO (already used — do NOT rewrite or resemble it):
     )
     return f"""\
 You are writing ONE concrete simulation scenario for a project whose configured \
-AI-coding assets (Claude Code skills and subagents) are meant to achieve a goal.
+AI-coding assets (skills and subagents for coding agents such as Claude Code and \
+Codex) are meant to achieve a goal.
 
 PROJECT
 - name: {project.name}
@@ -451,7 +457,7 @@ LINKED ASSETS (the toolkit the scenario must exercise):
 {previous_block}
 TASK
 Write ONE concrete simulation scenario for this project — a realistic first-person \
-request a user would type to Claude Code, phrased so the linked assets' trigger \
+request a user would type to {agent_name}, phrased so the linked assets' trigger \
 descriptions would have to match it. 2-5 sentences. It must exercise the toolkit \
 end-to-end for the goal, name concrete specifics (tech, endpoints, pages — invented \
 but plausible), and include at least one realistic complication or edge case (a \
@@ -511,10 +517,10 @@ def _suggestion_to_row(providers: list[Provider], parsed: ParsedSimulation) -> l
     ]
 
 
-async def _run_claude(
-    runner: ClaudeRunner, simulation_id: uuid.UUID, prompt: str
+async def _run_agent(
+    runner: AgentRunner, simulation_id: uuid.UUID, prompt: str
 ) -> tuple[ParsedSimulation | None, str | None, dict[str, Any] | None]:
-    """Shell out to claude and parse the reply; never raises."""
+    """Shell out to the agent CLI and parse the reply; never raises."""
     try:
         result = await runner.run(prompt)
         stats = result.stats or None
@@ -522,7 +528,7 @@ async def _run_claude(
         if parsed is None:
             return None, "the model did not return a valid `simulation` block", stats
         return parsed, None, stats
-    except ClaudeRunnerError as exc:
+    except AgentRunnerError as exc:
         return None, str(exc), None
     except Exception:  # never lose the row to an unexpected bug — mark it failed
         logger.exception("simulation %s crashed", simulation_id)
@@ -556,12 +562,12 @@ def _finish_simulation(
 async def _run_simulation(
     session_factory: async_sessionmaker[AsyncSession],
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     simulation_id: uuid.UUID,
     prompt: str,
 ) -> None:
-    """Background task: shell out to claude, then persist the outcome."""
-    parsed, error, stats = await _run_claude(runner, simulation_id, prompt)
+    """Background task: shell out to the agent CLI, then persist the outcome."""
+    parsed, error, stats = await _run_agent(runner, simulation_id, prompt)
     async with session_factory() as db:
         simulation = await simulation_repo.get_simulation(db, simulation_id)
         if simulation is None:  # deleted while running
@@ -574,7 +580,7 @@ async def start_simulation(
     db: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     schedule: Any,  # BackgroundTasks.add_task-compatible callable holder
     project_id: str,
     body: schemas.SimulationCreateRequest,
@@ -597,7 +603,15 @@ async def start_simulation(
     )
     simulation.control_run = control
     shared = await shared_asset_notes(db, exclude_project_id=project.id)
-    prompt = build_prompt(project, providers, scenario, previous, shared, control_run=control)
+    prompt = build_prompt(
+        project,
+        providers,
+        scenario,
+        previous,
+        shared,
+        control_run=control,
+        agent_name=runner.display_name,
+    )
     # Mirror the last-used scenario onto the project (including empty), so the
     # Simulation tab can prefill it and the next run reuses it.
     if project.scenario != scenario:
@@ -651,19 +665,24 @@ async def _apply_all_suggestions(
 async def _rotate_scenario(
     session_factory: async_sessionmaker[AsyncSession],
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     project_id: uuid.UUID,
     next_simulation_id: uuid.UUID,
 ) -> str:
     """Generate a fresh scenario mid-chain and pin it to the project and to the
-    already-created next row. Raises ScenarioGenerationError. The claude call
+    already-created next row. Raises ScenarioGenerationError. The agent call
     runs between two short sessions so no DB session is held across it.
     """
     async with session_factory() as db:
         project = await project_repo.get_project(db, project_id)
         if project is None:
             raise ScenarioGenerationError("the project was deleted")
-        prompt = build_scenario_prompt(project, providers, previous_scenario=project.scenario)
+        prompt = build_scenario_prompt(
+            project,
+            providers,
+            previous_scenario=project.scenario,
+            agent_name=runner.display_name,
+        )
 
     generated = await _run_scenario_prompt(runner, prompt)
 
@@ -682,7 +701,7 @@ async def _rotate_scenario(
 async def _run_autopilot(
     session_factory: async_sessionmaker[AsyncSession],
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     project_id: uuid.UUID,
     run_id: uuid.UUID,
     scenario: str,
@@ -728,14 +747,20 @@ async def _run_autopilot(
                 )
                 shared = await shared_asset_notes(db, exclude_project_id=project_id)
                 prompt = build_prompt(
-                    project, providers, scenario, previous, shared, control_run=control
+                    project,
+                    providers,
+                    scenario,
+                    previous,
+                    shared,
+                    control_run=control,
+                    agent_name=runner.display_name,
                 )
                 simulation = await simulation_repo.get_simulation(db, simulation_id)
                 if simulation is not None and simulation.control_run != control:
                     simulation.control_run = control
                     await db.commit()
 
-            parsed, error, stats = await _run_claude(runner, simulation_id, prompt)
+            parsed, error, stats = await _run_agent(runner, simulation_id, prompt)
 
             next_id: uuid.UUID | None = None
             perfect = False
@@ -806,7 +831,7 @@ async def start_autopilot(
     db: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     schedule: Any,
     project_id: str,
     body: schemas.AutopilotCreateRequest,
@@ -854,12 +879,14 @@ async def stop_autopilot(db: AsyncSession, run_id: str) -> None:
     _cancelled_autopilots.add(parsed)
 
 
-async def _run_scenario_prompt(runner: ClaudeRunner, prompt: str) -> str:
-    """One claude call for a scenario; raises ScenarioGenerationError."""
+async def _run_scenario_prompt(runner: AgentRunner, prompt: str) -> str:
+    """One agent call for a scenario; raises ScenarioGenerationError."""
     try:
         reply = await runner.run_once(prompt)
-    except ClaudeRunnerError as exc:
-        raise ScenarioGenerationError(f"claude failed to generate a scenario: {exc}") from exc
+    except AgentRunnerError as exc:
+        raise ScenarioGenerationError(
+            f"{runner.display_name} failed to generate a scenario: {exc}"
+        ) from exc
 
     # Prefer the fenced block; fall back to the whole reply if the model skipped it.
     generated = extract_scenario(reply) or reply.strip()
@@ -871,13 +898,15 @@ async def _run_scenario_prompt(runner: ClaudeRunner, prompt: str) -> str:
 async def generate_scenario(
     db: AsyncSession,
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     project_id: str,
 ) -> schemas.ScenarioGenerateResponse:
     """Synchronously generate and persist one simulation scenario for a project."""
     project = await _get_project_or_404(db, project_id)
     _require_linked_assets(project)
-    prompt = build_scenario_prompt(project, providers, previous_scenario=project.scenario)
+    prompt = build_scenario_prompt(
+        project, providers, previous_scenario=project.scenario, agent_name=runner.display_name
+    )
     generated = await _run_scenario_prompt(runner, prompt)
 
     project.scenario = generated
@@ -971,6 +1000,13 @@ async def apply_suggestion(
         if resolved is None:
             failure = f"path outside allowed roots: {change.get('path')}"
             break
+        new_content = change.get("new_content")
+        if change.get("action") != "delete" and isinstance(new_content, str):
+            try:
+                asset_service.validate_asset_content(providers, resolved, new_content)
+            except InvalidAssetContentError as exc:
+                failure = f"{change.get('path')}: {exc.detail}"
+                break
         resolved_paths.append(resolved)
 
     written = [path for path in resolved_paths if path is not None]

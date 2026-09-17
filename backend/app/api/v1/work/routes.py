@@ -9,11 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import (
     DevOpsClientFactory,
     LaunchSpawner,
+    get_agent_bins,
     get_db,
     get_devops_client_factory,
     get_launch_spawner,
 )
 from app.api.v1.work import schemas, service
+from app.services.agent_cli import AgentBins
 
 router = APIRouter(tags=["work"])
 
@@ -118,8 +120,9 @@ async def delegate_pull_request(
     db: AsyncSession = Depends(get_db),
     client_factory: DevOpsClientFactory = Depends(get_devops_client_factory),
     spawner: LaunchSpawner = Depends(get_launch_spawner),
+    bins: AgentBins = Depends(get_agent_bins),
 ) -> schemas.PullRequestDelegateResponse:
-    return await service.delegate_pull_request(db, pr_id, client_factory, spawner)
+    return await service.delegate_pull_request(db, pr_id, client_factory, spawner, bins)
 
 
 @router.post(

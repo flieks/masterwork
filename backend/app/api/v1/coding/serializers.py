@@ -31,9 +31,9 @@ from app.db.models.coding import (
     CodingGateCheck,
     CodingPhase,
     CodingSession,
-    asset_id_for,
     idle_window,
 )
+from app.services.asset_ids import AssetIdResolver
 
 
 def derived_status(session: CodingSession, *, now: datetime) -> str:
@@ -82,7 +82,11 @@ def active_ms_for(session: CodingSession, phases: list[CodingPhase], from_events
 
 
 def asset_uses(
-    assets: list[CodingAsset], child_assets: list[tuple[str, str, int]]
+    assets: list[CodingAsset],
+    child_assets: list[tuple[str, str, int]],
+    *,
+    resolver: AssetIdResolver,
+    source: str | None,
 ) -> list[schemas.AssetUse]:
     """This run's assets, with what the runs it launched used folded in.
 
@@ -99,16 +103,18 @@ def asset_uses(
     order: list[tuple[str, str, str | None]] = []
     for asset in assets:
         key = (asset.kind, asset.name, asset.lane)
-        rows[key] = coding_asset_to_use(asset)
+        rows[key] = coding_asset_to_use(asset, resolver=resolver, source=source)
         order.append(key)
     for kind, name, uses in child_assets:
         key = (kind, name, None)
         existing = rows.get(key)
         if existing is None:
+            resolved = resolver.resolve(kind, name, source)
             rows[key] = schemas.AssetUse(
                 kind=kind,
                 name=name,
-                asset_id=asset_id_for(kind, name),
+                asset_id=resolved.asset_id,
+                asset_found=resolved.found,
                 lane=None,
                 uses=uses,
                 via_children=uses,
@@ -139,6 +145,7 @@ def _session_fields(
     child_count: int,
     active_ms: int,
     now: datetime,
+    resolver: AssetIdResolver,
 ) -> dict[str, Any]:
     """Everything a card and a detail view share, phases apart."""
     # Duration is computed here, not in SQL: SQLite has no interval arithmetic
@@ -175,7 +182,7 @@ def _session_fields(
         "wall_ms": int(duration * 1000),
         "active_ms": active_ms_for(session, phases, active_ms),
         "agents": [coding_agent_to_lane(a) for a in agents],
-        "assets": asset_uses(assets, child_assets),
+        "assets": asset_uses(assets, child_assets, resolver=resolver, source=session.source),
     }
 
 
@@ -191,6 +198,7 @@ def coding_session_to_schema(
     child_count: int,
     active_ms: int,
     now: datetime,
+    resolver: AssetIdResolver,
 ) -> schemas.CodingSession:
     return schemas.CodingSession(
         **_session_fields(
@@ -204,6 +212,7 @@ def coding_session_to_schema(
             child_count=child_count,
             active_ms=active_ms,
             now=now,
+            resolver=resolver,
         ),
         phases=[coding_phase_to_summary(p) for p in phases],
     )
@@ -223,6 +232,7 @@ def coding_session_to_detail(
     envelopes: list[CodingEnvelope],
     gate_checks: list[CodingGateCheck],
     now: datetime,
+    resolver: AssetIdResolver,
 ) -> schemas.CodingSessionDetail:
     return schemas.CodingSessionDetail(
         **_session_fields(
@@ -236,6 +246,7 @@ def coding_session_to_detail(
             child_count=child_count,
             active_ms=active_ms,
             now=now,
+            resolver=resolver,
         ),
         phases=[coding_phase_to_schema(p) for p in phases],
         envelopes=[envelope_to_schema(e) for e in envelopes],
@@ -275,23 +286,31 @@ def gate_check_to_schema(check: CodingGateCheck) -> schemas.GateCheckItem:
     )
 
 
-def coding_asset_to_use(asset: CodingAsset) -> schemas.AssetUse:
+def coding_asset_to_use(
+    asset: CodingAsset, *, resolver: AssetIdResolver, source: str | None
+) -> schemas.AssetUse:
+    resolved = resolver.resolve(asset.kind, asset.name, source)
     return schemas.AssetUse(
         kind=asset.kind,
         name=asset.name,
-        asset_id=asset_id_for(asset.kind, asset.name),
+        asset_id=resolved.asset_id,
+        asset_found=resolved.found,
         lane=asset.lane,
         uses=asset.uses,
         via_children=0,
     )
 
 
-def asset_usage_to_schema(row: tuple[str, str, int, int, datetime]) -> schemas.CodingAssetUsage:
+def asset_usage_to_schema(
+    row: tuple[str, str, int, int, datetime], *, resolver: AssetIdResolver, source: str | None
+) -> schemas.CodingAssetUsage:
     kind, name, sessions, uses, last_used_at = row
+    resolved = resolver.resolve(kind, name, source)
     return schemas.CodingAssetUsage(
         kind=kind,
         name=name,
-        asset_id=asset_id_for(kind, name),
+        asset_id=resolved.asset_id,
+        asset_found=resolved.found,
         sessions=sessions,
         uses=uses,
         last_used_at=last_used_at,

@@ -160,7 +160,7 @@ def test_simulation_prompt_redacts_asset_description() -> None:
     asset = _asset(description=f"Deploys using {AWS_KEY} to S3.")
     providers: list[Provider] = [_StubProvider(asset)]
     project = Project(name="p", goal="ship it", flow_mermaid=None, asset_ids=[asset.id])
-    prompt = build_prompt(project, providers, "run the deploy")
+    prompt = build_prompt(project, providers, "run the deploy", agent_name="Claude Code")
     assert AWS_KEY not in prompt
     assert "[REDACTED:aws-access-key]" in prompt
 

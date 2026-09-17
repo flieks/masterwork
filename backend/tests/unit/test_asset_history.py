@@ -1,7 +1,8 @@
 """Best-effort git snapshots: which tree owns a write, and when a repo is made.
 
 The role store is masterwork's own, so the snapshot repo is created for it; the
-user's ~/.claude is not, so it is only ever committed to when they made it a repo.
+user's ~/.claude (and ~/.codex, ~/.agents) is not, so it is only ever committed to
+when they made it a repo — and then only the written asset, by pathspec.
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ import subprocess
 from pathlib import Path
 
 from app.providers.claude import ClaudeProvider
+from app.providers.codex import CodexProvider
+from app.providers.generic import GenericSkillProvider
 from app.providers.masterwork_roles import MasterworkRoleProvider
 from app.services.asset_history import (
     commit_snapshot,
@@ -218,3 +221,92 @@ async def test_out_of_band_changes_are_baselined_not_folded_into_the_write(
     ]
     # The recorded write touches exactly the file the API wrote.
     assert _git(store, "show", "--format=", "--name-only", "HEAD") == "plan/system.md"
+
+
+# --- user homes are committed by pathspec (v1.49) ----------------------------
+
+
+def _codex_home_repo(tmp_path: Path) -> tuple[CodexProvider, Path]:
+    """A ~/.codex lookalike the user made a repo, with the secrets it really holds."""
+    home = tmp_path / "codex-home"
+    (home / "skills" / "deploy").mkdir(parents=True)
+    (home / "agents").mkdir()
+    (home / "skills" / "deploy" / "SKILL.md").write_text("v1", encoding="utf-8")
+    (home / "skills" / "other").mkdir()
+    (home / "skills" / "other" / "SKILL.md").write_text("untouched", encoding="utf-8")
+    _git(home, "init", "-q")
+    _git(home, "config", "user.email", "t@t")
+    _git(home, "config", "user.name", "t")
+    (home / "auth.json").write_text('{"token": "secret"}', encoding="utf-8")
+    (home / "logs_2.sqlite").write_bytes(b"SQLite format 3\x00")
+    provider = CodexProvider(skills_root=home / "skills", agents_root=home / "agents")
+    return provider, home
+
+
+async def test_a_codex_home_repo_only_ever_gets_the_written_asset(tmp_path: Path) -> None:
+    provider, home = _codex_home_repo(tmp_path)
+    target = home / "skills" / "deploy" / "SKILL.md"
+
+    await prepare_snapshots([provider], [target])
+    target.write_text("v2", encoding="utf-8")
+    await snapshot_writes([provider], [target], "masterwork: edit asset: codex:skill:deploy")
+
+    assert _git(home, "ls-files").splitlines() == ["skills/deploy/SKILL.md"]
+    # Nothing else was even staged: auth.json, the sqlite and the other skill stay untracked.
+    status = _git(home, "status", "--porcelain").splitlines()
+    assert sorted(status) == ["?? auth.json", "?? logs_2.sqlite", "?? skills/other/"]
+
+
+async def test_a_new_agent_file_and_a_deletion_are_committed(tmp_path: Path) -> None:
+    provider, home = _codex_home_repo(tmp_path)
+    agent = home / "agents" / "reviewer.toml"
+
+    await prepare_snapshots([provider], [agent])  # nothing there yet: no commit, no error
+    agent.write_text('name = "reviewer"\n', encoding="utf-8")
+    await snapshot_writes([provider], [agent], "masterwork: accept proposal: add reviewer")
+    assert _git(home, "show", "--format=", "--name-only", "HEAD") == "agents/reviewer.toml"
+
+    agent.unlink()
+    await snapshot_writes([provider], [agent], "masterwork: accept proposal: drop reviewer")
+    assert _subjects(home)[0] == "masterwork: accept proposal: drop reviewer"
+    assert _git(home, "ls-files") == ""
+
+
+async def test_what_the_user_staged_is_left_staged_not_committed(tmp_path: Path) -> None:
+    provider, home = _codex_home_repo(tmp_path)
+    _git(home, "add", "auth.json")
+    target = home / "skills" / "deploy" / "SKILL.md"
+
+    await snapshot_writes([provider], [target], "masterwork: edit")
+
+    assert "auth.json" not in _git(home, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    assert "A  auth.json" in _git(home, "status", "--porcelain").splitlines()
+
+
+async def test_a_skill_link_change_is_committed_in_both_trees(tmp_path: Path) -> None:
+    """A generic skill's link lives in ~/.claude, its folder in ~/.agents: a scoped
+    commit must still see both halves of a toggle."""
+    claude, home = _claude_tree(tmp_path)
+    generic_home = tmp_path / "agents-home"
+    folder = generic_home / "skills" / "shared"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text("v1", encoding="utf-8")
+    link = home / "skills" / "shared"
+    link.symlink_to(folder, target_is_directory=True)
+    for repo in (home, generic_home):
+        _git(repo, "init", "-q")
+        _git(repo, "config", "user.email", "t@t")
+        _git(repo, "config", "user.name", "t")
+    generic = GenericSkillProvider(
+        skills_root=generic_home / "skills", agent_roots={"claude": home / "skills"}
+    )
+    providers = [claude, generic]
+    touched = [link / "SKILL.md"]
+
+    await snapshot_writes(providers, touched, "masterwork: baseline")
+    assert _git(home, "ls-files") == "skills/shared"
+    assert _git(generic_home, "ls-files") == "skills/shared/SKILL.md"
+
+    link.unlink()
+    await snapshot_writes(providers, touched, "masterwork: unlink")
+    assert _git(home, "ls-files") == ""

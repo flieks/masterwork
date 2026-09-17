@@ -323,3 +323,28 @@ def test_ingest_url_comes_from_the_sidecar_connect_wrote(
     monkeypatch.delenv("MASTERWORK_INGEST_URL", raising=False)
     monkeypatch.setattr(forwarder, "__file__", str(tmp_path / "codex.py"))
     assert forwarder.ingest_url() == "http://localhost:9/x"
+
+
+def test_session_start_states_the_factory_run_it_belongs_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(forwarder, "ancestry", lambda: [])
+    monkeypatch.setenv("MASTERWORK_FACTORY_RUN_ID", "  3f5a20b0 ")
+    monkeypatch.setenv("MASTERWORK_FACTORY_STAGE", "build")
+    body = forwarder.build_body(_event("SessionStart", source="exec"))
+    assert body is not None
+    assert body["payload"]["factory_run_id"] == "3f5a20b0"
+    assert body["payload"]["factory_stage"] == "build"
+    # Only SessionStart carries provenance.
+    other = forwarder.build_body(_event("Stop", transcript_path=""))
+    assert other is not None and "factory_run_id" not in other.get("payload", {})
+
+
+def test_an_ordinary_session_states_no_factory_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(forwarder, "ancestry", lambda: [])
+    monkeypatch.delenv("MASTERWORK_FACTORY_RUN_ID", raising=False)
+    monkeypatch.setenv("MASTERWORK_FACTORY_STAGE", "build")  # a stage without a run is nothing
+    body = forwarder.build_body(_event("SessionStart", source="startup"))
+    assert body is not None
+    assert "factory_run_id" not in body["payload"]
+    assert "factory_stage" not in body["payload"]

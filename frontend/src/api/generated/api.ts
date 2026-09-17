@@ -24,6 +24,20 @@ import type { RequestArgs } from './base';
 import { BASE_PATH, COLLECTION_FORMATS, BaseAPI, RequiredError, operationServerMap } from './base';
 
 /**
+ * 
+ * @export
+ * @enum {string}
+ */
+
+export const AgentId = {
+    Claude: 'claude',
+    Codex: 'codex'
+} as const;
+
+export type AgentId = typeof AgentId[keyof typeof AgentId];
+
+
+/**
  * One lane of the run as a hook reports it; same partial-update rules.
  * @export
  * @interface AgentIn
@@ -78,6 +92,39 @@ export interface AgentIn {
      */
     'tokens_out'?: number | null;
 }
+/**
+ * 
+ * @export
+ * @interface AgentInfo
+ */
+export interface AgentInfo {
+    /**
+     * 
+     * @type {AgentId}
+     * @memberof AgentInfo
+     */
+    'id': AgentId;
+    /**
+     * \"Claude Code\" or \"Codex\".
+     * @type {string}
+     * @memberof AgentInfo
+     */
+    'label': string;
+    /**
+     * True when its CLI was found on this machine.
+     * @type {boolean}
+     * @memberof AgentInfo
+     */
+    'installed': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentInfo
+     */
+    'bin_path'?: string | null;
+}
+
+
 /**
  * One horizontal lane of the run\'s timeline.
  * @export
@@ -151,7 +198,21 @@ export interface AppSettings {
      * @memberof AppSettings
      */
     'projects_root': string;
+    /**
+     * The agent every assistant feature runs on: the stored choice, else the first installed of claude, codex, else claude.
+     * @type {AgentId}
+     * @memberof AppSettings
+     */
+    'assistant_agent': AgentId;
+    /**
+     * Every supported agent, claude first.
+     * @type {Array<AgentInfo>}
+     * @memberof AppSettings
+     */
+    'agents': Array<AgentInfo>;
 }
+
+
 /**
  * 
  * @export
@@ -164,7 +225,15 @@ export interface AppSettingsUpdateRequest {
      * @memberof AppSettingsUpdateRequest
      */
     'projects_root'?: string | null;
+    /**
+     * 
+     * @type {AgentId}
+     * @memberof AppSettingsUpdateRequest
+     */
+    'assistant_agent'?: AgentId | null;
 }
+
+
 /**
  * One recorded call of an asset, and what the caller handed it.
  * @export
@@ -184,7 +253,7 @@ export interface AssetCall {
      */
     'lane': string | null;
     /**
-     * Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read — a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing).
+     * Which signal named it: skill_call (an explicit Skill call, carries args) | spawn_call (a Task/Agent call, carries the brief; a Codex SubagentStart, carries the agent type and id) | skill_read (a SKILL.md read — a Read, a Glob, or a Codex shell command that prints it; carries only the path) | subagent_stop (a finished subagent, carries nothing) | skill_mention (a Codex prompt naming an installed skill as `$name`; carries the mention).
      * @type {string}
      * @memberof AssetCall
      */
@@ -215,13 +284,13 @@ export interface AssetDetail {
      */
     'kind': AssetKind;
     /**
-     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\" (skills and ~/.codex/agents/_*.toml custom agents), \"codex-plugin\" (read-only), \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetDetail
      */
     'provider': string;
     /**
-     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none.
+     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists \"codex\" (it loads ~/.agents/skills itself) unless switched off in ~/.codex/config.toml, plus each other agent whose skills dir links to it (Claude); a factory role lists none.
      * @type {Array<string>}
      * @memberof AssetDetail
      */
@@ -275,7 +344,7 @@ export interface AssetDetail {
      */
     'read_only': boolean;
     /**
-     * True when the skill is parked under its folder\'s `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty.
+     * True when no coding agent loads the skill: parked under its folder\'s `.disabled/`, or switched off in ~/.codex/config.toml. Still readable; `agents` is empty.
      * @type {boolean}
      * @memberof AssetDetail
      */
@@ -285,15 +354,27 @@ export interface AssetDetail {
      * @type {string}
      * @memberof AssetDetail
      */
+    'disabled_by'?: AssetDetailDisabledByEnum | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetDetail
+     */
     'generic_twin'?: AssetDetailGenericTwinEnum | null;
     /**
-     * Full markdown, including frontmatter.
+     * Full file content: markdown with frontmatter, or TOML for a Codex custom agent.
      * @type {string}
      * @memberof AssetDetail
      */
     'content': string;
 }
 
+export const AssetDetailDisabledByEnum = {
+    Folder: 'folder',
+    CodexConfig: 'codex-config'
+} as const;
+
+export type AssetDetailDisabledByEnum = typeof AssetDetailDisabledByEnum[keyof typeof AssetDetailDisabledByEnum];
 export const AssetDetailGenericTwinEnum = {
     Identical: 'identical',
     Differs: 'differs'
@@ -339,7 +420,7 @@ export interface AssetDiagram {
  */
 export interface AssetEnabledRequest {
     /**
-     * False parks the skill under `.disabled/` so no agent loads it; true brings it back. Setting the state it already has is a no-op.
+     * False parks the skill under `.disabled/` so no agent loads it; true brings it back. A generic skill parks as one folder, so it goes off for every agent at once (Codex loads ~/.agents/skills itself, so no per-agent link can switch it off for Codex alone). Setting the state it already has is a no-op.
      * @type {boolean}
      * @memberof AssetEnabledRequest
      */
@@ -391,13 +472,13 @@ export interface AssetMigrationResult {
      */
     'previous_id': string;
     /**
-     * Agents whose skills dir now links to the generic copy.
+     * Agents whose skills dir holds a link to the generic copy (made now, or already there). Claude only for a fresh move: Codex loads ~/.agents/skills itself and gets no new link. Who loads the skill is `asset.agents`.
      * @type {Array<string>}
      * @memberof AssetMigrationResult
      */
     'linked_agents': Array<string>;
     /**
-     * Agents that already had an unrelated skill of this name; left alone.
+     * Agents that already had an unrelated skill of this name; left alone. A skipped Codex loads both copies.
      * @type {Array<string>}
      * @memberof AssetMigrationResult
      */
@@ -421,7 +502,7 @@ export interface AssetMigrationResult {
      */
     'relinked_projects': number;
     /**
-     * The generic folder already held an identical copy: nothing was copied, the source just became a link to it.
+     * The generic folder already held an identical copy: nothing was copied, the source just became a link to it (a Codex source is removed instead).
      * @type {boolean}
      * @memberof AssetMigrationResult
      */
@@ -519,13 +600,13 @@ export interface AssetSummary {
      */
     'kind': AssetKind;
     /**
-     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\", \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
+     * Owning store: \"claude\", \"claude-plugin\" (read-only), \"codex\" (skills and ~/.codex/agents/_*.toml custom agents), \"codex-plugin\" (read-only), \"generic\" (the cross-agent ~/.agents/skills folder), or \"masterwork\" (the factory role store).
      * @type {string}
      * @memberof AssetSummary
      */
     'provider': string;
     /**
-     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists every agent whose skills dir links to it; a factory role lists none.
+     * Coding agents that load this asset (\"claude\", \"codex\"). A generic skill lists \"codex\" (it loads ~/.agents/skills itself) unless switched off in ~/.codex/config.toml, plus each other agent whose skills dir links to it (Claude); a factory role lists none.
      * @type {Array<string>}
      * @memberof AssetSummary
      */
@@ -579,7 +660,7 @@ export interface AssetSummary {
      */
     'read_only': boolean;
     /**
-     * True when the skill is parked under its folder\'s `.disabled/`, where no coding agent loads it. Still readable and editable; `agents` is empty.
+     * True when no coding agent loads the skill: parked under its folder\'s `.disabled/`, or switched off in ~/.codex/config.toml. Still readable; `agents` is empty.
      * @type {boolean}
      * @memberof AssetSummary
      */
@@ -589,9 +670,21 @@ export interface AssetSummary {
      * @type {string}
      * @memberof AssetSummary
      */
+    'disabled_by'?: AssetSummaryDisabledByEnum | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AssetSummary
+     */
     'generic_twin'?: AssetSummaryGenericTwinEnum | null;
 }
 
+export const AssetSummaryDisabledByEnum = {
+    Folder: 'folder',
+    CodexConfig: 'codex-config'
+} as const;
+
+export type AssetSummaryDisabledByEnum = typeof AssetSummaryDisabledByEnum[keyof typeof AssetSummaryDisabledByEnum];
 export const AssetSummaryGenericTwinEnum = {
     Identical: 'identical',
     Differs: 'differs'
@@ -606,7 +699,7 @@ export type AssetSummaryGenericTwinEnum = typeof AssetSummaryGenericTwinEnum[key
  */
 export interface AssetUpdateRequest {
     /**
-     * Full new file content to write.
+     * Full new file content to write. A Codex custom agent must parse as TOML with string `name`, `description` and `developer_instructions` (else 400).
      * @type {string}
      * @memberof AssetUpdateRequest
      */
@@ -631,11 +724,17 @@ export interface AssetUse {
      */
     'name': string;
     /**
-     * \"claude:skill:<name>\" / \"claude:agent:<name>\" — links to the asset page.
+     * The asset on disk this use resolves to, preferring the stores the session\'s agent loads from (\"codex:skill:x\", \"generic:skill:x\", \"codex-plugin:skill:p:x\", \"claude:agent:x\", …) — links to the asset page. Resolved when read, so it follows a skill made generic. Unresolvable: the agent\'s own form (\"claude:…\" / \"codex:…\") with `asset_found` false.
      * @type {string}
      * @memberof AssetUse
      */
     'asset_id': string;
+    /**
+     * False when no installed asset has this kind and name.
+     * @type {boolean}
+     * @memberof AssetUse
+     */
+    'asset_found': boolean;
     /**
      * 
      * @type {string}
@@ -879,11 +978,17 @@ export interface CatalogSkill {
      */
     'url': string;
     /**
-     * A skill directory with this slug already exists on disk.
+     * A skill with this slug exists in ~/.claude/skills, ~/.codex/skills or ~/.agents/skills (live or switched off).
      * @type {boolean}
      * @memberof CatalogSkill
      */
     'installed': boolean;
+    /**
+     * Which of those folders hold a copy, generic first. An agent folder that only links to the generic copy is not listed separately.
+     * @type {Array<SkillTarget>}
+     * @memberof CatalogSkill
+     */
+    'installed_in'?: Array<SkillTarget>;
 }
 
 
@@ -978,11 +1083,17 @@ export interface CatalogSkillDetail {
      */
     'differs_from_installed'?: boolean | null;
     /**
-     * A skill directory with this slug already exists on disk.
+     * A skill with this slug exists in any of the three skills folders.
      * @type {boolean}
      * @memberof CatalogSkillDetail
      */
     'installed': boolean;
+    /**
+     * Which folders hold a copy, generic first.
+     * @type {Array<SkillTarget>}
+     * @memberof CatalogSkillDetail
+     */
+    'installed_in'?: Array<SkillTarget>;
     /**
      * True only when masterwork wrote it; a hand-installed one is not removable.
      * @type {boolean}
@@ -1152,6 +1263,12 @@ export interface ChatSession {
      * @type {string}
      * @memberof ChatSession
      */
+    'agent'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ChatSession
+     */
     'created_at': string;
     /**
      * 
@@ -1217,11 +1334,17 @@ export interface CodingAssetUsage {
      */
     'name': string;
     /**
-     * 
+     * Resolved like AssetUse.asset_id, preferring the stores of the `source` filter\'s agent (Claude Code\'s when unfiltered).
      * @type {string}
      * @memberof CodingAssetUsage
      */
     'asset_id': string;
+    /**
+     * False when no installed asset has this kind and name.
+     * @type {boolean}
+     * @memberof CodingAssetUsage
+     */
+    'asset_found': boolean;
     /**
      * Distinct runs that used it.
      * @type {number}
@@ -2739,7 +2862,7 @@ export interface HTTPValidationError {
     'detail'?: Array<ValidationError>;
 }
 /**
- * One hook firing. Deliberately permissive: everything but `session_id` and `event_type` is optional, over-long values are truncated rather than rejected, and an optional field whose value will not validate is dropped rather than answered with a 422 — a hook never fails a Claude Code run, including when the backend has moved on and it has not.
+ * One hook firing. Deliberately permissive: everything but `session_id` and `event_type` is optional, over-long values are truncated rather than rejected, and an optional field whose value will not validate is dropped rather than answered with a 422 — a hook never fails an agent\'s run, including when the backend has moved on and it has not.
  * @export
  * @interface HookEventRequest
  */
@@ -2874,11 +2997,23 @@ export type HookEventRequestSourceEnum = typeof HookEventRequestSourceEnum[keyof
  */
 export interface InstalledSkill {
     /**
-     * \"claude:skill:<name>\", the id the assets API also uses.
+     * \"<location>:skill:<name>\" (\"claude\", \"codex\" or \"generic\"), the id the assets API also uses; from `target` when the skill is gone from disk.
      * @type {string}
      * @memberof InstalledSkill
      */
     'asset_id': string;
+    /**
+     * The folder masterwork last wrote the skill into.
+     * @type {SkillTarget}
+     * @memberof InstalledSkill
+     */
+    'target'?: SkillTarget;
+    /**
+     * 
+     * @type {SkillTarget}
+     * @memberof InstalledSkill
+     */
+    'location'?: SkillTarget | null;
     /**
      * 
      * @type {string}
@@ -2961,7 +3096,19 @@ export interface InstalledSkill {
  */
 export interface InstructionsDoc {
     /**
-     * Absolute path to the global CLAUDE.md.
+     * Whose global instructions these are.
+     * @type {AgentId}
+     * @memberof InstructionsDoc
+     */
+    'agent': AgentId;
+    /**
+     * \"CLAUDE.md\" for Claude Code, \"AGENTS.md\" for Codex.
+     * @type {string}
+     * @memberof InstructionsDoc
+     */
+    'file_name': string;
+    /**
+     * Absolute path to the agent\'s global instructions file.
      * @type {string}
      * @memberof InstructionsDoc
      */
@@ -2984,7 +3131,21 @@ export interface InstructionsDoc {
      * @memberof InstructionsDoc
      */
     'updated_at'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstructionsDoc
+     */
+    'shadowed_by'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstructionsDoc
+     */
+    'same_file_as'?: string | null;
 }
+
+
 /**
  * 
  * @export
@@ -3442,6 +3603,12 @@ export interface ObservabilityIntegration {
      * @memberof ObservabilityIntegration
      */
     'backup_path'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ObservabilityIntegration
+     */
+    'note'?: string | null;
 }
 
 export const ObservabilityIntegrationStateEnum = {
@@ -4450,6 +4617,20 @@ export interface SessionLaunchRead {
 
 
 /**
+ * Which agent\'s hooks recorded a session — the `source` filter\'s values.
+ * @export
+ * @enum {string}
+ */
+
+export const SessionSource = {
+    ClaudeCode: 'claude-code',
+    Codex: 'codex'
+} as const;
+
+export type SessionSource = typeof SessionSource[keyof typeof SessionSource];
+
+
+/**
  * 
  * @export
  * @interface Simulation
@@ -4839,12 +5020,20 @@ export interface SkillInstallRequest {
      */
     'skill': string;
     /**
-     * Replace an existing directory at this slug.
+     * Replace the existing copy at this slug — where it already lives, whatever `target` says.
      * @type {boolean}
      * @memberof SkillInstallRequest
      */
     'overwrite'?: boolean;
+    /**
+     * Skills folder for a new install: \"claude\" (~/.claude/skills), \"codex\" (~/.codex/skills) or \"generic\" (~/.agents/skills, which Codex loads itself, then linked into ~/.claude/skills when that has no entry of that name).
+     * @type {SkillTarget}
+     * @memberof SkillInstallRequest
+     */
+    'target'?: SkillTarget;
 }
+
+
 /**
  * 
  * @export
@@ -4902,6 +5091,21 @@ export const SkillRegistry = {
 } as const;
 
 export type SkillRegistry = typeof SkillRegistry[keyof typeof SkillRegistry];
+
+
+/**
+ * The three skills folders masterwork installs into; each value is also the provider name in the skill\'s asset id.
+ * @export
+ * @enum {string}
+ */
+
+export const SkillTarget = {
+    Claude: 'claude',
+    Codex: 'codex',
+    Generic: 'generic'
+} as const;
+
+export type SkillTarget = typeof SkillTarget[keyof typeof SkillTarget];
 
 
 /**
@@ -6790,15 +6994,16 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
-         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too; where two installed copies share the name, only runs whose agent resolves it to this id.
          * @summary The runs that used one asset, with the arguments each call carried
          * @param {string} assetId 
          * @param {number} [limit] 
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listAssetSessionUses: async (assetId: string, limit?: number, includeInspection?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listAssetSessionUses: async (assetId: string, limit?: number, includeInspection?: boolean, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'assetId' is not null or undefined
             assertParamExists('listAssetSessionUses', 'assetId', assetId)
             const localVarPath = `/api/v1/coding-assets/{asset_id}/sessions`
@@ -6822,6 +7027,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 localVarQueryParameter['include_inspection'] = includeInspection;
             }
 
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -6839,10 +7048,11 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
          * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listCodingAssetUsage: async (since?: string | null, kind?: string | null, includeInspection?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listCodingAssetUsage: async (since?: string | null, kind?: string | null, includeInspection?: boolean, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-assets`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -6867,6 +7077,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
 
             if (includeInspection !== undefined) {
                 localVarQueryParameter['include_inspection'] = includeInspection;
+            }
+
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
             }
 
 
@@ -6930,15 +7144,16 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * @param {number} [limit] 
          * @param {number} [offset] 
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
-         * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeAutomated] Include sessions a headless one-shot (&#x60;claude -p&#x60;, &#x60;codex exec&#x60;) started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listCodingSessions: async (limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listCodingSessions: async (limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-sessions`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -6983,6 +7198,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 localVarQueryParameter['parent_session_id'] = parentSessionId;
             }
 
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -6998,13 +7217,14 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
          * @summary Which gates fail, how often, and on which role
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listGateStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listGateStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-analytics/gates`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -7035,6 +7255,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 localVarQueryParameter['include_children'] = includeChildren;
             }
 
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -7050,13 +7274,14 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * 
          * @summary Cost, corrections and acceptance per model, from the agent lanes
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listModelStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listModelStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-analytics/models`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -7087,6 +7312,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 localVarQueryParameter['include_children'] = includeChildren;
             }
 
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -7102,13 +7331,14 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * 
          * @summary What each role costs: corrections, gate failures, duration, parse failures
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRoleStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRoleStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-analytics/roles`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -7139,6 +7369,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
                 localVarQueryParameter['include_children'] = includeChildren;
             }
 
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -7154,14 +7388,15 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
          * Oldest first, so a client plots them left to right without re-sorting.
          * @summary Cost, tokens, duration and outcome per run — the trend line
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
          * @param {number} [limit] The most recent runs to return. They come back oldest first.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRunStats: async (since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, source?: SessionSource | null, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/coding-analytics/runs`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -7194,6 +7429,10 @@ export const CodingApiAxiosParamCreator = function (configuration?: Configuratio
 
             if (limit !== undefined) {
                 localVarQueryParameter['limit'] = limit;
+            }
+
+            if (source !== undefined) {
+                localVarQueryParameter['source'] = source;
             }
 
 
@@ -7304,16 +7543,17 @@ export const CodingApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too; where two installed copies share the name, only runs whose agent resolves it to this id.
          * @summary The runs that used one asset, with the arguments each call carried
          * @param {string} assetId 
          * @param {number} [limit] 
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<AssetSessionUse>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listAssetSessionUses(assetId, limit, includeInspection, options);
+        async listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<AssetSessionUse>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listAssetSessionUses(assetId, limit, includeInspection, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listAssetSessionUses']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7324,11 +7564,12 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
          * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingAssetUsage>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingAssetUsage(since, kind, includeInspection, options);
+        async listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingAssetUsage>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingAssetUsage(since, kind, includeInspection, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingAssetUsage']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7354,16 +7595,17 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * @param {number} [limit] 
          * @param {number} [offset] 
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
-         * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeAutomated] Include sessions a headless one-shot (&#x60;claude -p&#x60;, &#x60;codex exec&#x60;) started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingSession>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options);
+        async listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CodingSession>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listCodingSessions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7372,14 +7614,15 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
          * @summary Which gates fail, how often, and on which role
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<GateStat>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listGateStats(since, workflow, includeInspection, includeChildren, options);
+        async listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<GateStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listGateStats(since, workflow, includeInspection, includeChildren, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listGateStats']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7388,14 +7631,15 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * 
          * @summary Cost, corrections and acceptance per model, from the agent lanes
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ModelStat>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listModelStats(since, workflow, includeInspection, includeChildren, options);
+        async listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<ModelStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listModelStats(since, workflow, includeInspection, includeChildren, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listModelStats']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7404,14 +7648,15 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * 
          * @summary What each role costs: corrections, gate failures, duration, parse failures
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RoleStat>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRoleStats(since, workflow, includeInspection, includeChildren, options);
+        async listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RoleStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRoleStats(since, workflow, includeInspection, includeChildren, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listRoleStats']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7420,15 +7665,16 @@ export const CodingApiFp = function(configuration?: Configuration) {
          * Oldest first, so a client plots them left to right without re-sorting.
          * @summary Cost, tokens, duration and outcome per run — the trend line
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
          * @param {number} [limit] The most recent runs to return. They come back oldest first.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RunStat>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStats(since, workflow, includeInspection, includeChildren, limit, options);
+        async listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, source?: SessionSource | null, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<RunStat>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunStats(since, workflow, includeInspection, includeChildren, limit, source, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CodingApi.listRunStats']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -7497,16 +7743,17 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.getCodingSessionMedia(sessionId, mediaId, options).then((request) => request(axios, basePath));
         },
         /**
-         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+         * Matched on the id\'s kind and name, so a plugin asset\'s own id works too; where two installed copies share the name, only runs whose agent resolves it to this id.
          * @summary The runs that used one asset, with the arguments each call carried
          * @param {string} assetId 
          * @param {number} [limit] 
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<AssetSessionUse>> {
-            return localVarFp.listAssetSessionUses(assetId, limit, includeInspection, options).then((request) => request(axios, basePath));
+        listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<AssetSessionUse>> {
+            return localVarFp.listAssetSessionUses(assetId, limit, includeInspection, source, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -7514,11 +7761,12 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
          * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingAssetUsage>> {
-            return localVarFp.listCodingAssetUsage(since, kind, includeInspection, options).then((request) => request(axios, basePath));
+        listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingAssetUsage>> {
+            return localVarFp.listCodingAssetUsage(since, kind, includeInspection, source, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -7538,69 +7786,74 @@ export const CodingApiFactory = function (configuration?: Configuration, basePat
          * @param {number} [limit] 
          * @param {number} [offset] 
          * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
-         * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {boolean} [includeAutomated] Include sessions a headless one-shot (&#x60;claude -p&#x60;, &#x60;codex exec&#x60;) started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
          * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
          * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingSession>> {
-            return localVarFp.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options).then((request) => request(axios, basePath));
+        listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<CodingSession>> {
+            return localVarFp.listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, source, options).then((request) => request(axios, basePath));
         },
         /**
          * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
          * @summary Which gates fail, how often, and on which role
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<GateStat>> {
-            return localVarFp.listGateStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(axios, basePath));
+        listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<GateStat>> {
+            return localVarFp.listGateStats(since, workflow, includeInspection, includeChildren, source, options).then((request) => request(axios, basePath));
         },
         /**
          * 
          * @summary Cost, corrections and acceptance per model, from the agent lanes
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<ModelStat>> {
-            return localVarFp.listModelStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(axios, basePath));
+        listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<ModelStat>> {
+            return localVarFp.listModelStats(since, workflow, includeInspection, includeChildren, source, options).then((request) => request(axios, basePath));
         },
         /**
          * 
          * @summary What each role costs: corrections, gate failures, duration, parse failures
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Array<RoleStat>> {
-            return localVarFp.listRoleStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(axios, basePath));
+        listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<RoleStat>> {
+            return localVarFp.listRoleStats(since, workflow, includeInspection, includeChildren, source, options).then((request) => request(axios, basePath));
         },
         /**
          * Oldest first, so a client plots them left to right without re-sorting.
          * @summary Cost, tokens, duration and outcome per run — the trend line
          * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+         * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
          * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
          * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
          * @param {number} [limit] The most recent runs to return. They come back oldest first.
+         * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunStat>> {
-            return localVarFp.listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(axios, basePath));
+        listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, source?: SessionSource | null, options?: RawAxiosRequestConfig): AxiosPromise<Array<RunStat>> {
+            return localVarFp.listRunStats(since, workflow, includeInspection, includeChildren, limit, source, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -7671,17 +7924,18 @@ export class CodingApi extends BaseAPI {
     }
 
     /**
-     * Matched on the id\'s kind and name, so a plugin asset\'s own id works too.
+     * Matched on the id\'s kind and name, so a plugin asset\'s own id works too; where two installed copies share the name, only runs whose agent resolves it to this id.
      * @summary The runs that used one asset, with the arguments each call carried
      * @param {string} assetId 
      * @param {number} [limit] 
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md — see the same flag on /coding-assets.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listAssetSessionUses(assetId, limit, includeInspection, options).then((request) => request(this.axios, this.basePath));
+    public listAssetSessionUses(assetId: string, limit?: number, includeInspection?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listAssetSessionUses(assetId, limit, includeInspection, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -7690,12 +7944,13 @@ export class CodingApi extends BaseAPI {
      * @param {string | null} [since] Count only the calls made at or after this instant, from the per-call log — so &#x60;uses&#x60; is what happened inside the window, not an asset\&#39;s whole history. Omit it for the all-time totals.
      * @param {string | null} [kind] Keep only \&quot;skill\&quot; or only \&quot;agent\&quot;.
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listCodingAssetUsage(since, kind, includeInspection, options).then((request) => request(this.axios, this.basePath));
+    public listCodingAssetUsage(since?: string | null, kind?: string | null, includeInspection?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listCodingAssetUsage(since, kind, includeInspection, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -7718,78 +7973,83 @@ export class CodingApi extends BaseAPI {
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {boolean} [includeEmpty] Include sessions that ended without running a tool — mostly the desktop app\&#39;s discarded startup processes, hidden by default.
-     * @param {boolean} [includeAutomated] Include sessions a &#x60;claude -p&#x60; one-shot started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
-     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {boolean} [includeAutomated] Include sessions a headless one-shot (&#x60;claude -p&#x60;, &#x60;codex exec&#x60;) started — wrapper scripts, hooks, schedulers — rather than a person. Hidden by default.
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
      * @param {string | null} [status] Keep only runs with this status: running | waiting_input | success | failed | interrupted | abandoned. Matched against the derived status, not the stored one. &#x60;interrupted&#x60; is reported by a producer and never derived by masterwork, so it matches nothing until one reports it.
      * @param {boolean} [rootsOnly] Hide runs that another run launched — a pipeline\&#39;s five headless stages collapse into their parent instead of showing as five orphan cards.
      * @param {string | null} [parentSessionId] Keep only the runs this one launched — the complement of &#x60;roots_only&#x60;, and the way to list a pipeline\&#39;s stages. Children are headless by construction, so this scope ignores &#x60;include_empty&#x60;/&#x60;include_automated&#x60; and returns exactly the population the parent\&#39;s &#x60;child_count&#x60; counts.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, options).then((request) => request(this.axios, this.basePath));
+    public listCodingSessions(limit?: number, offset?: number, includeEmpty?: boolean, includeAutomated?: boolean, workflow?: string | null, status?: string | null, rootsOnly?: boolean, parentSessionId?: string | null, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listCodingSessions(limit, offset, includeEmpty, includeAutomated, workflow, status, rootsOnly, parentSessionId, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * Reads the v1.19 evidence rows, so it sees only the runs that reported or replayed them — `/coding-analytics/roles` covers the rest from the counters.
      * @summary Which gates fail, how often, and on which role
      * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted by the check\&#39;s own clock.
-     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
      * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listGateStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(this.axios, this.basePath));
+    public listGateStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listGateStats(since, workflow, includeInspection, includeChildren, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * 
      * @summary Cost, corrections and acceptance per model, from the agent lanes
      * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
      * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listModelStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(this.axios, this.basePath));
+    public listModelStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listModelStats(since, workflow, includeInspection, includeChildren, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * 
      * @summary What each role costs: corrections, gate failures, duration, parse failures
      * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the stages that STARTED inside the window.
-     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
      * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listRoleStats(since, workflow, includeInspection, includeChildren, options).then((request) => request(this.axios, this.basePath));
+    public listRoleStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listRoleStats(since, workflow, includeInspection, includeChildren, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * Oldest first, so a client plots them left to right without re-sorting.
      * @summary Cost, tokens, duration and outcome per run — the trend line
      * @param {string | null} [since] Count only what happened at or after this instant. Omit for all time. Counted over the runs that STARTED inside the window.
-     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain Claude Code sessions (which also matches the ones that never named one).
+     * @param {string | null} [workflow] Keep only runs of this workflow — \&quot;factory\&quot; for pipeline runs, \&quot;chat\&quot; for plain agent sessions (which also matches the ones that never named one).
      * @param {boolean} [includeInspection] Include masterwork\&#39;s own analysis runs, which Read every linked asset\&#39;s SKILL.md and would otherwise rank assets by inspection rather than use.
      * @param {boolean} [includeChildren] Include runs that another run launched. Off by default: a pipeline\&#39;s headless stage child is the inside view of a stage already counted on its parent, so counting both reports the same work twice.
      * @param {number} [limit] The most recent runs to return. They come back oldest first.
+     * @param {SessionSource | null} [source] Keep only runs recorded by this agent\&#39;s hooks: \&quot;claude-code\&quot; or \&quot;codex\&quot;. Omit for both.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CodingApi
      */
-    public listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, options?: RawAxiosRequestConfig) {
-        return CodingApiFp(this.configuration).listRunStats(since, workflow, includeInspection, includeChildren, limit, options).then((request) => request(this.axios, this.basePath));
+    public listRunStats(since?: string | null, workflow?: string | null, includeInspection?: boolean, includeChildren?: boolean, limit?: number, source?: SessionSource | null, options?: RawAxiosRequestConfig) {
+        return CodingApiFp(this.configuration).listRunStats(since, workflow, includeInspection, includeChildren, limit, source, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -8027,10 +8287,11 @@ export const InstructionsApiAxiosParamCreator = function (configuration?: Config
         /**
          * 
          * @summary Get Instructions
+         * @param {AgentId} [agent] Whose instructions file; defaults to claude.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getInstructions: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        getInstructions: async (agent?: AgentId, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/instructions`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -8042,6 +8303,10 @@ export const InstructionsApiAxiosParamCreator = function (configuration?: Config
             const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
+
+            if (agent !== undefined) {
+                localVarQueryParameter['agent'] = agent;
+            }
 
 
     
@@ -8058,10 +8323,11 @@ export const InstructionsApiAxiosParamCreator = function (configuration?: Config
          * 
          * @summary Update Instructions
          * @param {InstructionsUpdateRequest} instructionsUpdateRequest 
+         * @param {AgentId} [agent] Whose instructions file; defaults to claude.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        updateInstructions: async (instructionsUpdateRequest: InstructionsUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        updateInstructions: async (instructionsUpdateRequest: InstructionsUpdateRequest, agent?: AgentId, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'instructionsUpdateRequest' is not null or undefined
             assertParamExists('updateInstructions', 'instructionsUpdateRequest', instructionsUpdateRequest)
             const localVarPath = `/api/v1/instructions`;
@@ -8075,6 +8341,10 @@ export const InstructionsApiAxiosParamCreator = function (configuration?: Config
             const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
+
+            if (agent !== undefined) {
+                localVarQueryParameter['agent'] = agent;
+            }
 
 
     
@@ -8103,11 +8373,12 @@ export const InstructionsApiFp = function(configuration?: Configuration) {
         /**
          * 
          * @summary Get Instructions
+         * @param {AgentId} [agent] Whose instructions file; defaults to claude.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async getInstructions(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstructionsDoc>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getInstructions(options);
+        async getInstructions(agent?: AgentId, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstructionsDoc>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getInstructions(agent, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['InstructionsApi.getInstructions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -8116,11 +8387,12 @@ export const InstructionsApiFp = function(configuration?: Configuration) {
          * 
          * @summary Update Instructions
          * @param {InstructionsUpdateRequest} instructionsUpdateRequest 
+         * @param {AgentId} [agent] Whose instructions file; defaults to claude.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstructionsDoc>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.updateInstructions(instructionsUpdateRequest, options);
+        async updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, agent?: AgentId, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<InstructionsDoc>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateInstructions(instructionsUpdateRequest, agent, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['InstructionsApi.updateInstructions']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -8138,21 +8410,23 @@ export const InstructionsApiFactory = function (configuration?: Configuration, b
         /**
          * 
          * @summary Get Instructions
+         * @param {AgentId} [agent] Whose instructions file; defaults to claude.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getInstructions(options?: RawAxiosRequestConfig): AxiosPromise<InstructionsDoc> {
-            return localVarFp.getInstructions(options).then((request) => request(axios, basePath));
+        getInstructions(agent?: AgentId, options?: RawAxiosRequestConfig): AxiosPromise<InstructionsDoc> {
+            return localVarFp.getInstructions(agent, options).then((request) => request(axios, basePath));
         },
         /**
          * 
          * @summary Update Instructions
          * @param {InstructionsUpdateRequest} instructionsUpdateRequest 
+         * @param {AgentId} [agent] Whose instructions file; defaults to claude.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<InstructionsDoc> {
-            return localVarFp.updateInstructions(instructionsUpdateRequest, options).then((request) => request(axios, basePath));
+        updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, agent?: AgentId, options?: RawAxiosRequestConfig): AxiosPromise<InstructionsDoc> {
+            return localVarFp.updateInstructions(instructionsUpdateRequest, agent, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -8167,24 +8441,26 @@ export class InstructionsApi extends BaseAPI {
     /**
      * 
      * @summary Get Instructions
+     * @param {AgentId} [agent] Whose instructions file; defaults to claude.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof InstructionsApi
      */
-    public getInstructions(options?: RawAxiosRequestConfig) {
-        return InstructionsApiFp(this.configuration).getInstructions(options).then((request) => request(this.axios, this.basePath));
+    public getInstructions(agent?: AgentId, options?: RawAxiosRequestConfig) {
+        return InstructionsApiFp(this.configuration).getInstructions(agent, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * 
      * @summary Update Instructions
      * @param {InstructionsUpdateRequest} instructionsUpdateRequest 
+     * @param {AgentId} [agent] Whose instructions file; defaults to claude.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof InstructionsApi
      */
-    public updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, options?: RawAxiosRequestConfig) {
-        return InstructionsApiFp(this.configuration).updateInstructions(instructionsUpdateRequest, options).then((request) => request(this.axios, this.basePath));
+    public updateInstructions(instructionsUpdateRequest: InstructionsUpdateRequest, agent?: AgentId, options?: RawAxiosRequestConfig) {
+        return InstructionsApiFp(this.configuration).updateInstructions(instructionsUpdateRequest, agent, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
@@ -11220,7 +11496,7 @@ export const SkillsApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
-         * 
+         * Removes the copy masterwork installed: for a skill made generic since, its ~/.agents/skills folder plus the links the agent folders hold to it.
          * @summary Uninstall Skill
          * @param {string} name 
          * @param {*} [options] Override http request option.
@@ -11384,7 +11660,7 @@ export const SkillsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * 
+         * Removes the copy masterwork installed: for a skill made generic since, its ~/.agents/skills folder plus the links the agent folders hold to it.
          * @summary Uninstall Skill
          * @param {string} name 
          * @param {*} [options] Override http request option.
@@ -11483,7 +11759,7 @@ export const SkillsApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.searchSkillCatalog(q, limit, options).then((request) => request(axios, basePath));
         },
         /**
-         * 
+         * Removes the copy masterwork installed: for a skill made generic since, its ~/.agents/skills folder plus the links the agent folders hold to it.
          * @summary Uninstall Skill
          * @param {string} name 
          * @param {*} [options] Override http request option.
@@ -11588,7 +11864,7 @@ export class SkillsApi extends BaseAPI {
     }
 
     /**
-     * 
+     * Removes the copy masterwork installed: for a skill made generic since, its ~/.agents/skills folder plus the links the agent folders hold to it.
      * @summary Uninstall Skill
      * @param {string} name 
      * @param {*} [options] Override http request option.

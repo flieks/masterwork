@@ -1,7 +1,7 @@
 """Change-summary generation.
 
 Collects every APPLIED asset change a project has accumulated — chat proposals
-and simulation suggestions — groups them per asset, and asks claude for one
+and simulation suggestions — groups them per asset, and asks the agent for one
 markdown digest: a global overview plus a per-asset breakdown. The result is
 persisted on the project so the Summary tab survives reloads.
 """
@@ -19,7 +19,7 @@ from app.api.v1.projects import schemas, service
 from app.core.exceptions import SummaryGenerationError
 from app.repositories import proposals as proposal_repo
 from app.repositories import simulations as simulation_repo
-from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
+from app.services.agent_runner import AgentRunner, AgentRunnerError
 from app.services.redact import redact
 from app.services.summary_parser import extract_summary
 
@@ -110,8 +110,9 @@ def build_summary_prompt(
     changes_text = redact("\n\n".join(sections))
     return f"""\
 You are summarizing every change that has been applied to a project's AI-coding \
-assets (Claude Code skills and subagents) through the Masterwork app — via \
-accepted chat proposals and applied simulation suggestions.
+assets (skills and subagents for coding agents such as Claude Code and Codex) \
+through the Masterwork app — via accepted chat proposals and applied simulation \
+suggestions.
 
 PROJECT
 - name: {project_name}
@@ -142,7 +143,7 @@ the markdown — no prose before or after.
 
 async def generate_summary(
     db: AsyncSession,
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     project_id: str,
 ) -> schemas.ProjectSummaryResponse:
     """Synchronously generate and persist the change summary for a project."""
@@ -155,8 +156,10 @@ async def generate_summary(
         prompt = build_summary_prompt(project.name, project.goal, grouped)
         try:
             reply = await runner.run_once(prompt)
-        except ClaudeRunnerError as exc:
-            raise SummaryGenerationError(f"claude failed to generate a summary: {exc}") from exc
+        except AgentRunnerError as exc:
+            raise SummaryGenerationError(
+                f"{runner.display_name} failed to generate a summary: {exc}"
+            ) from exc
         summary = extract_summary(reply) or reply.strip()
         if not summary:
             raise SummaryGenerationError("the assistant returned an empty summary")

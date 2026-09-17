@@ -1,6 +1,6 @@
 """Generality audit.
 
-One-shot claude -p that READS every linked asset file and checks whether the
+One-shot agent CLI call that READS every linked asset file and checks whether the
 shared, reusable skills/agents stayed general — or whether a past scenario's
 domain leaked into them. The counterpart to the anti-overfitting guard in the
 simulation prompt (build_prompt): that guard stops FUTURE runs from baking one
@@ -18,7 +18,7 @@ from app.api.v1.projects import schemas, service
 from app.core.exceptions import GeneralityGenerationError
 from app.db.models.project import Project
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
+from app.services.agent_runner import AgentRunner, AgentRunnerError
 from app.services.generality_parser import extract_generality
 from app.services.redact import redact
 from app.services.shared_assets import shared_asset_notes
@@ -59,9 +59,10 @@ def build_generality_prompt(
 ) -> str:
     assets_text = "\n".join(_asset_lines(providers, list(project.asset_ids), shared_notes))
     return f"""\
-You are auditing a project's AI-coding assets (Claude Code skills and subagents) \
-for GENERALITY. These assets are SHARED and reusable — the whole point is that \
-they work for ANY tool the user builds, not one specific app. A past series of \
+You are auditing a project's AI-coding assets (skills and subagents for coding \
+agents such as Claude Code and Codex) for GENERALITY. These assets are SHARED \
+and reusable — the whole point is that they work for ANY tool the user builds, \
+not one specific app. A past series of \
 simulations may have ground repeatedly on ONE scenario's domain and leaked its \
 specifics into these shared assets, quietly overfitting them.
 
@@ -74,7 +75,7 @@ LINKED ASSETS (the shared toolkit under audit):
 {assets_text}
 
 INSTRUCTIONS
-1. Read EVERY linked asset file above with your Read tool. Ground every finding \
+1. Read EVERY linked asset file above. Ground every finding \
 in what the file actually says — quote the exact offending line.
 2. For each asset, decide whether it stayed GENERAL or leaked a specific \
 scenario's domain. Judge by these rules:
@@ -124,7 +125,7 @@ the markdown — no prose before or after.
 async def generate_generality_report(
     db: AsyncSession,
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     project_id: str,
 ) -> schemas.ProjectGeneralityResponse:
     """Synchronously generate and persist the generality audit for a project."""
@@ -137,8 +138,10 @@ async def generate_generality_report(
         prompt = build_generality_prompt(project, providers, shared)
         try:
             reply = await runner.run_once(prompt)
-        except ClaudeRunnerError as exc:
-            raise GeneralityGenerationError(f"claude failed to audit generality: {exc}") from exc
+        except AgentRunnerError as exc:
+            raise GeneralityGenerationError(
+                f"{runner.display_name} failed to audit generality: {exc}"
+            ) from exc
         report = extract_generality(reply) or reply.strip()
         if not report:
             raise GeneralityGenerationError("the assistant returned an empty report")

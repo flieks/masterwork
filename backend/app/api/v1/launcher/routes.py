@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import (
     LaunchSpawner,
     ResumeSpawner,
+    get_agent_bins,
     get_db,
     get_launch_spawner,
     get_resume_spawner,
 )
 from app.api.v1.launcher import schemas, service
+from app.services.agent_cli import AgentBins
 
 router = APIRouter(tags=["launcher"])
 
@@ -66,8 +68,9 @@ async def launch_session(
     body: schemas.LaunchRequest,
     db: AsyncSession = Depends(get_db),
     spawner: LaunchSpawner = Depends(get_launch_spawner),
+    bins: AgentBins = Depends(get_agent_bins),
 ) -> schemas.SessionLaunchRead:
-    return await service.launch(db, body, spawner)
+    return await service.launch(db, body, spawner, bins)
 
 
 @router.get(
@@ -104,8 +107,9 @@ async def resume_factory_run(
     body: schemas.FactoryRunResumeRequest,
     db: AsyncSession = Depends(get_db),
     resume_spawner: ResumeSpawner = Depends(get_resume_spawner),
+    bins: AgentBins = Depends(get_agent_bins),
 ) -> schemas.FactoryRunResumeRead:
-    return await service.resume_run(db, body, resume_spawner)
+    return await service.resume_run(db, body, resume_spawner, bins)
 
 
 @router.post(

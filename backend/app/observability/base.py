@@ -43,6 +43,8 @@ class IntegrationStatus:
     config_path: str | None = None
     script_path: str | None = None
     backup_path: str | None = None
+    # A standing caveat about the agent itself, true whatever the state.
+    note: str | None = None
 
 
 @runtime_checkable

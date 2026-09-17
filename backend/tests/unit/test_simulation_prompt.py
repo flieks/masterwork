@@ -13,7 +13,9 @@ from app.db.models.project import Project
 
 def _prompt(previous: PreviousRun | None = None, *, control_run: bool = False) -> str:
     project = Project(name="p", goal="ship it", flow_mermaid=None, asset_ids=[])
-    return build_prompt(project, [], "run the scenario", previous, control_run=control_run)
+    return build_prompt(
+        project, [], "run the scenario", previous, control_run=control_run, agent_name="Codex"
+    )
 
 
 def _previous(score: int = 95) -> PreviousRun:

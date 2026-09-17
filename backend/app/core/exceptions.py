@@ -24,6 +24,13 @@ class AssetNotFoundError(DomainError):
     status_code = 404
 
 
+class InvalidAssetContentError(DomainError):
+    """The new content would leave the asset unloadable by its agent — e.g. a
+    Codex custom agent that is not TOML or lacks a required key."""
+
+    status_code = 400
+
+
 class ReadOnlyAssetError(DomainError):
     """The asset is provided by a plugin and cannot be edited here."""
 
@@ -31,7 +38,7 @@ class ReadOnlyAssetError(DomainError):
 
 
 class InstructionsIOError(DomainError):
-    """The global CLAUDE.md could not be read or written."""
+    """An agent's global instructions file could not be read or written."""
 
     status_code = 500
 
@@ -75,7 +82,7 @@ class DiagramNotFoundError(DomainError):
 
 
 class CodingSessionNotFoundError(DomainError):
-    """No Claude Code session with this id has sent an event."""
+    """No coding-agent session with this id has sent an event."""
 
     status_code = 404
 
@@ -297,6 +304,13 @@ class InstalledSkillNotFoundError(DomainError):
     status_code = 404
 
 
+class SkillNotManagedError(DomainError):
+    """The installed entry is a link to a folder outside the three skills folders
+    masterwork writes to, so updating or removing it would reach somewhere else."""
+
+    status_code = 409
+
+
 class SkillLocallyEditedError(DomainError):
     """The installed copy differs from what was installed; an update would
     overwrite the user's edits, so it needs an explicit force."""
@@ -320,7 +334,8 @@ class GenericSkillExistsError(DomainError):
 
 class AssetNotToggleableError(DomainError):
     """Only a skill in a writable folder can be switched off: an agent file has
-    no `.disabled` convention yet, and a plugin asset belongs to its marketplace."""
+    no `.disabled` convention yet, a plugin asset belongs to its marketplace, and
+    a skill switched off in ~/.codex/config.toml is the user's to switch back."""
 
     status_code = 409
 

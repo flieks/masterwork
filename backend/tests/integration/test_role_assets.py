@@ -9,7 +9,7 @@ from urllib.parse import quote
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
 
@@ -135,7 +135,9 @@ async def test_proposal_can_write_a_role_prompt(
         )
         + "\n```"
     )
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(reply=reply, session_id="cli")
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
+        reply=reply, session_id="cli"
+    )
     app.dependency_overrides[get_providers] = lambda: providers_for(
         claude_tree, roles_root=role_tree
     )
@@ -170,7 +172,9 @@ async def test_proposal_outside_the_store_still_fails(
         )
         + "\n```"
     )
-    app.dependency_overrides[get_claude_runner] = lambda: FakeRunner(reply=reply, session_id="cli")
+    app.dependency_overrides[get_authoring_runner] = lambda: FakeRunner(
+        reply=reply, session_id="cli"
+    )
     app.dependency_overrides[get_providers] = lambda: providers_for(
         claude_tree, roles_root=role_tree
     )

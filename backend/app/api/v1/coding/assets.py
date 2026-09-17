@@ -10,7 +10,11 @@ sidecar is opened to learn the agent's type.
 Codex has neither a Skill tool nor a Read: it loads a skill by shelling out to
 print the file (`sed -n '1,240p' ~/.agents/skills/<name>/SKILL.md`), and names
 its subagents on `SubagentStart`/`SubagentStop` directly. Both are the same two
-signals in different clothes, and are read as such.
+signals in different clothes, and are read as such. Codex also loads skills
+from its bundled `~/.codex/skills/.system/` and from plugin caches, and a user
+can force one by writing `$skill-name` in the prompt — the one signal that
+names an asset without touching a file, so it counts only for a name that is
+actually installed.
 
 Reading that sidecar is the one filesystem touch outside a session's first
 event. It is legitimate — this is a single-user local tool that already reads
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +40,7 @@ from app.db.models.coding import (
     SPAWN_TOOLS,
     UNKNOWN_AGENT,
     USE_SKILL_CALL,
+    USE_SKILL_MENTION,
     USE_SKILL_READ,
     USE_SPAWN_CALL,
     USE_SUBAGENT_STOP,
@@ -42,16 +48,27 @@ from app.db.models.coding import (
 
 # `<root>/skills/<name>/SKILL.md` under any agent's skills folder — Claude Code's
 # `~/.claude/skills` (and the project-local `.claude/skills`), Codex's
-# `~/.codex/skills`, and the shared `~/.agents/skills` both reach through links.
-# Group 1 is the whole path, group 2 the skill's directory name, which is also
-# its asset id. The lookahead lets the same pattern read a path out of a shell
-# command, where it ends at a space or a quote rather than at the line's end.
+# `~/.codex/skills` and its bundled `~/.codex/skills/.system`, and the shared
+# `~/.agents/skills` (Codex loads it directly, Claude Code through links). Group
+# 1 is the whole path, group 2 the skill's directory name, also its asset name.
+# The lookahead lets the same pattern read a path out of a shell command, where
+# it ends at a space or a quote rather than at the line's end.
 SKILL_ROOTS = ("claude", "codex", "agents")
+_SEGMENT = r"[^/\s'\"]+"
+_PATH_END = r"(?=$|[\s'\";|&)>])"
 SKILL_PATH = re.compile(
     r"((?:[^\s'\"]*/)?\.(?:"
     + "|".join(SKILL_ROOTS)
-    + r")/skills/([^/\s'\"]+)/SKILL\.md)(?=$|[\s'\";|&)>])"
+    + rf")/skills/(?:\.system/)?({_SEGMENT})/SKILL\.md){_PATH_END}"
 )
+# A plugin's skill: `<agent home>/plugins/cache/<marketplace>/<plugin>/<version>/
+# skills/<name>/SKILL.md`. Named `<plugin>:<name>`, as both plugin providers name it.
+PLUGIN_SKILL_PATH = re.compile(
+    r"((?:[^\s'\"]*/)?\.(?:claude|codex)/plugins/cache/"
+    + rf"{_SEGMENT}/({_SEGMENT})/{_SEGMENT}/skills/({_SEGMENT})/SKILL\.md){_PATH_END}"
+)
+# `$skill-name` (or `$plugin:skill`) in a Codex prompt, not glued to a word or a `$`.
+SKILL_MENTION = re.compile(r"(?<![\w$])\$([A-Za-z0-9][\w-]*(?::[A-Za-z0-9][\w-]*)?)")
 
 # Tool inputs that carry a path. Glob names its target in `pattern`, Read in
 # `file_path`; the rest are cheap to check and cost nothing when absent.
@@ -112,8 +129,16 @@ def from_event(
     payload: dict[str, Any] | None,
     *,
     lane: str | None,
+    mentionable: Callable[[], frozenset[str]] | None = None,
 ) -> list[AssetUse]:
-    """Every asset this one event says the run used. Usually none."""
+    """Every asset this one event says the run used. Usually none.
+
+    `mentionable` returns the installed skill names a `$name` in the prompt may
+    name; the caller passes it only for a Codex run, and it is not called unless
+    the prompt holds a `$` at all.
+    """
+    if event_type == "UserPromptSubmit":
+        return _mentions(payload, lane, mentionable)
     if event_type == "SubagentStop":
         return [AssetUse(ASSET_AGENT, subagent_name(payload), lane, USE_SUBAGENT_STOP)]
     if event_type == "SubagentStart":
@@ -144,22 +169,51 @@ def from_event(
         args = _inputs(tool_input, USE_SPAWN_CALL)
         return [AssetUse(ASSET_AGENT, subagent, lane, USE_SPAWN_CALL, args)]
     if tool_name in SKILL_PATH_TOOLS:
-        skill = _skill_from_paths(tool_input)
-        if not skill:
+        found = _skill_from_paths(tool_input)
+        if found is None:
             return []
         # No arguments exist — a read is how a skill loads, not how it is called.
         # The path is kept so the log can still say where the use was seen.
         path = next((p for key in PATH_KEYS if (p := _text(tool_input.get(key)))), None)
         args = {"path": path} if path else None
-        return [AssetUse(ASSET_SKILL, skill, lane, USE_SKILL_READ, args)]
+        return [AssetUse(ASSET_SKILL, found[0], lane, USE_SKILL_READ, args)]
     if tool_name in SHELL_TOOLS:
         command = command_text(tool_input)
-        match = SKILL_PATH.search(command) if command else None
-        if match is None:
+        found = skill_in(command) if command else None
+        if found is None:
             return []
-        skill, path = match.group(2), match.group(1)
+        skill, path = found
         return [AssetUse(ASSET_SKILL, skill, lane, USE_SKILL_READ, {"path": path})]
     return []
+
+
+def skill_in(text: str) -> tuple[str, str] | None:
+    """(skill name, the path as written) for the first SKILL.md path in `text`."""
+    matches = [m for m in (SKILL_PATH.search(text), PLUGIN_SKILL_PATH.search(text)) if m]
+    if not matches:
+        return None
+    first = min(matches, key=lambda m: m.start())
+    if first.re is PLUGIN_SKILL_PATH:
+        return f"{first.group(2)}:{first.group(3)}", first.group(1)
+    return first.group(2), first.group(1)
+
+
+def _mentions(
+    payload: dict[str, Any] | None,
+    lane: str | None,
+    mentionable: Callable[[], frozenset[str]] | None,
+) -> list[AssetUse]:
+    """One use per distinct installed skill the prompt names as `$name`."""
+    prompt = _text((payload or {}).get("prompt"))
+    if mentionable is None or prompt is None or "$" not in prompt:
+        return []
+    names = mentionable()
+    uses: list[AssetUse] = []
+    for name in dict.fromkeys(m.group(1) for m in SKILL_MENTION.finditer(prompt)):
+        if name in names:
+            mention = {"mention": f"${name}"}
+            uses.append(AssetUse(ASSET_SKILL, name, lane, USE_SKILL_MENTION, mention))
+    return uses
 
 
 def command_text(tool_input: dict[str, Any]) -> str | None:
@@ -187,12 +241,12 @@ def _inputs(tool_input: dict[str, Any], source: str) -> dict[str, str] | None:
     return found or None
 
 
-def _skill_from_paths(tool_input: dict[str, Any]) -> str | None:
+def _skill_from_paths(tool_input: dict[str, Any]) -> tuple[str, str] | None:
     for key in PATH_KEYS:
         value = _text(tool_input.get(key))
-        match = SKILL_PATH.search(value) if value else None
-        if match is not None:
-            return match.group(2)
+        found = skill_in(value) if value else None
+        if found is not None:
+            return found
     return None
 
 

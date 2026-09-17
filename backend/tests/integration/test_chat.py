@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.api.deps import get_claude_runner, get_providers
+from app.api.deps import get_authoring_runner, get_providers
 from app.db.models.chat import ChatMessage, Proposal
 from app.main import app
 from tests.helpers import FakeRunner, providers_for
@@ -38,7 +38,7 @@ def _proposal_reply(skills_root: Path) -> str:
 
 
 def _use(runner: FakeRunner, tree: tuple[Path, Path]) -> None:
-    app.dependency_overrides[get_claude_runner] = lambda: runner
+    app.dependency_overrides[get_authoring_runner] = lambda: runner
     app.dependency_overrides[get_providers] = lambda: providers_for(tree)
 
 
@@ -164,7 +164,10 @@ async def test_second_message_resumes_session(
     assert runner.calls[0]["resume"] is None
     assert runner.calls[0]["system_prompt"] is not None
     assert runner.calls[1]["resume"] == "cli-3"
-    assert runner.calls[1]["system_prompt"] is None
+    # A resumed CLI session drops its original system prompt, so every turn sends it.
+    assert runner.calls[1]["system_prompt"] == runner.calls[0]["system_prompt"]
+    # Resuming carries the context itself: no transcript is prepended.
+    assert runner.calls[1]["prompt"] == "second"
 
 
 async def test_list_messages_returns_asc_with_proposal(
@@ -204,3 +207,68 @@ async def test_delete_session_cascades_messages_and_proposals(
     async with session_factory() as db:
         assert (await db.execute(select(func.count()).select_from(ChatMessage))).scalar() == 0
         assert (await db.execute(select(func.count()).select_from(Proposal))).scalar() == 0
+
+
+# --- switching agents mid-chat ------------------------------------------------
+
+
+def _session_row(sessions: list[dict[str, object]], sid: str) -> dict[str, object]:
+    return next(s for s in sessions if s["id"] == sid)
+
+
+async def test_switching_agent_starts_a_fresh_session_carrying_the_transcript(
+    client: AsyncClient, claude_tree: tuple[Path, Path], session_factory: async_sessionmaker
+) -> None:
+    claude = FakeRunner(reply="Claude's answer about skills.", session_id="claude-s1")
+    _use(claude, claude_tree)
+    sid = await _new_session(client)
+    assert _session_row((await client.get("/api/v1/chat/sessions")).json(), sid)["agent"] is None
+
+    await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "first question"})
+    assert _session_row((await client.get("/api/v1/chat/sessions")).json(), sid)["agent"] == (
+        "claude"
+    )
+
+    codex = FakeRunner(
+        reply="Codex continues.", session_id="thread-9", agent_id="codex", display_name="Codex"
+    )
+    _use(codex, claude_tree)
+    r = await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "follow up"})
+    assert r.status_code == 200
+
+    call = codex.calls[0]
+    assert call["resume"] is None  # never Claude's session id on the Codex CLI
+    assert "running on Codex" in call["system_prompt"]
+    prompt = call["prompt"]
+    assert "User: first question" in prompt
+    assert "Assistant: Claude's answer about skills." in prompt
+    assert prompt.endswith("follow up")
+    assert _session_row((await client.get("/api/v1/chat/sessions")).json(), sid)["agent"] == "codex"
+
+    # Same agent again: resume its own thread, no transcript.
+    await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "third"})
+    assert codex.calls[1]["resume"] == "thread-9"
+    assert codex.calls[1]["prompt"] == "third"
+
+    # And back: Claude's old session is stale, so it starts over with everything.
+    _use(claude, claude_tree)
+    await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "back again"})
+    back = claude.calls[1]
+    assert back["resume"] is None
+    assert "Assistant: Codex continues." in back["prompt"]
+    assert "User: third" in back["prompt"]
+
+
+async def test_a_chat_that_never_got_a_reply_carries_no_transcript(
+    client: AsyncClient, claude_tree: tuple[Path, Path]
+) -> None:
+    _use(FakeRunner(error="claude timed out after 300s"), claude_tree)
+    sid = await _new_session(client)
+    await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "lost"})
+
+    codex = FakeRunner(reply="hi", session_id="t", agent_id="codex", display_name="Codex")
+    _use(codex, claude_tree)
+    await client.post(f"/api/v1/chat/sessions/{sid}/messages", json={"content": "retry"})
+
+    assert codex.calls[0]["prompt"] == "retry"
+    assert codex.calls[0]["resume"] is None

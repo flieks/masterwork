@@ -1,4 +1,4 @@
-"""Claude Code observability: hook ingest and the read side of the Sessions screen.
+"""Coding-agent observability: hook ingest and the read side of the Sessions screen.
 
 Ingest sits in the critical path of every hook firing, so it stays small: an
 upsert of the session, an insert of the event, and — only when the event says
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +38,7 @@ from app.db.models.coding import (
     PHASE_ABANDONED,
     PHASE_PASSED,
     PHASE_RUNNING,
+    SOURCE_CODEX,
     STATUS_RUNNING,
     STATUS_SUCCESS,
     TERMINAL_PHASE_STATUSES,
@@ -53,6 +55,11 @@ from app.db.models.coding import (
 )
 from app.repositories import coding as coding_repo
 from app.repositories import coding_analytics as analytics_repo
+from app.services.agent_runner import assistant_cwd_candidates
+from app.services.asset_ids import AssetIdResolver
+
+# Installed skill names a Codex prompt's `$name` may mention; see assets.from_event.
+MentionableSkills = Callable[[], frozenset[str]]
 
 # A runaway hook must not be able to bloat the database; anything past this is
 # replaced by a marker that keeps the head of the payload for debugging.
@@ -674,6 +681,7 @@ async def _apply_derived(
     payload: dict[str, Any] | None,
     reported: evidence.Evidence | None = None,
     replayed: frozenset[int] | None = None,
+    mentionable: MentionableSkills | None = None,
 ) -> None:
     """Write down what the event implied, and point the event at it.
 
@@ -718,7 +726,15 @@ async def _apply_derived(
     # event's own timestamp is when it ended and the span starts before it.
     event.ended_at = event.created_at if derived.duration_ms is not None else None
 
-    for use in assets.from_event(event.event_type, event.tool_name, payload, lane=derived.lane):
+    # `$name` mentions are Codex's, and masterwork's own runs mention what they inspect.
+    mentions = (
+        mentionable
+        if session.source == SOURCE_CODEX and session.cwd not in INSPECTION_CWDS
+        else None
+    )
+    for use in assets.from_event(
+        event.event_type, event.tool_name, payload, lane=derived.lane, mentionable=mentions
+    ):
         await _count_asset(db, session.id, use, now)
 
     await _record_evidence(
@@ -790,7 +806,9 @@ async def _record_context_samples(
         previous[row.is_sidechain] = row.total_tokens
 
 
-async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
+async def _apply(
+    db: AsyncSession, body: schemas.HookEventRequest, mentionable: MentionableSkills | None
+) -> None:
     now = _utcnow()
     session_id = body.session_id[:MAX_SESSION_ID]
     session = await coding_repo.get_session(db, session_id)
@@ -848,24 +866,32 @@ async def _apply(db: AsyncSession, body: schemas.HookEventRequest) -> None:
         now,
         payload=body.payload,
         reported=evidence.from_body(body, lane=derived.lane),
+        mentionable=mentionable,
     )
     if body.context_samples:
         await _record_context_samples(db, session_id, body.context_samples, now)
 
 
-async def ingest_event(db: AsyncSession, body: schemas.HookEventRequest) -> None:
+async def ingest_event(
+    db: AsyncSession,
+    body: schemas.HookEventRequest,
+    *,
+    mentionable: MentionableSkills | None = None,
+) -> None:
     try:
-        await _apply(db, body)
+        await _apply(db, body, mentionable)
         await db.commit()
     except IntegrityError:
         # Parallel tool calls fire hooks concurrently; the loser of the race to
         # create the session row retries against the row the winner inserted.
         await db.rollback()
-        await _apply(db, body)
+        await _apply(db, body, mentionable)
         await db.commit()
 
 
-async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
+async def backfill_session(
+    db: AsyncSession, session_id: str, *, mentionable: MentionableSkills | None = None
+) -> BackfillResult:
     """Rebuild one session's stages and lanes from the events already stored.
 
     Sessions recorded before v1.13 kept phase, agent, cost and tokens inside
@@ -934,6 +960,7 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
             event.created_at,
             payload=event.payload,
             replayed=replayed,
+            mentionable=mentionable,
         )
 
     if resumed:
@@ -962,7 +989,9 @@ async def backfill_session(db: AsyncSession, session_id: str) -> BackfillResult:
     )
 
 
-async def backfill_all(db: AsyncSession) -> BackfillTotals:
+async def backfill_all(
+    db: AsyncSession, *, mentionable: MentionableSkills | None = None
+) -> BackfillTotals:
     """Replay every stored session, oldest first.
 
     Oldest first so a pipeline run's stages exist by the time its headless
@@ -971,7 +1000,7 @@ async def backfill_all(db: AsyncSession) -> BackfillTotals:
     """
     totals = BackfillTotals()
     for session_id in await coding_repo.all_session_ids(db):
-        result = await backfill_session(db, session_id)
+        result = await backfill_session(db, session_id, mentionable=mentionable)
         totals.sessions += 1
         totals.events += result.events
         totals.phases += result.phases
@@ -1000,6 +1029,8 @@ async def list_sessions(
     status: str | None = None,
     roots_only: bool = False,
     parent_session_id: str | None = None,
+    source: str | None = None,
+    resolver: AssetIdResolver | None = None,
 ) -> list[schemas.CodingSession]:
     sessions = await coding_repo.list_sessions(
         db,
@@ -1011,7 +1042,9 @@ async def list_sessions(
         status=status,
         roots_only=roots_only,
         parent_session_id=parent_session_id,
+        source=source,
     )
+    resolver = resolver or AssetIdResolver([])
     ids = [s.id for s in sessions]
     counts = await coding_repo.event_counts(db, ids)
     phases = await coding_repo.phases_by_session(db, ids)
@@ -1033,6 +1066,7 @@ async def list_sessions(
             child_count=children.get(s.id, 0),
             active_ms=active.get(s.id, 0),
             now=now,
+            resolver=resolver,
         )
         for s in sessions
     ]
@@ -1045,7 +1079,9 @@ MAX_DETAIL_ENVELOPES = 100
 MAX_DETAIL_GATE_CHECKS = 500
 
 
-async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessionDetail:
+async def get_session(
+    db: AsyncSession, session_id: str, *, resolver: AssetIdResolver | None = None
+) -> schemas.CodingSessionDetail:
     session = await get_session_or_404(db, session_id)
     counts = await coding_repo.event_counts(db, [session_id])
     events, tool_calls = counts.get(session_id, (0, 0))
@@ -1072,15 +1108,17 @@ async def get_session(db: AsyncSession, session_id: str) -> schemas.CodingSessio
         envelopes=envelopes,
         gate_checks=gate_checks,
         now=_utcnow(),
+        resolver=resolver or AssetIdResolver([]),
     )
 
 
 # masterwork runs its own analysis passes — simulations, diagrams, trigger guides —
-# as `claude -p` with ~/.claude as the working directory, and each one Reads every
-# linked asset's SKILL.md. Those reads look exactly like a skill being used, so
-# counting them would rank assets by how often masterwork inspected them: 14 of the
-# first 22 recorded skill uses came from here. The rollup leaves them out by default.
-INSPECTION_CWD = str(settings.claude_skills_root.parent)
+# as `claude -p` or `codex exec` in ~/.claude (or ~/.masterwork when that is
+# missing), and each one reads every linked asset's SKILL.md. Those reads look
+# exactly like a skill being used, so counting them would rank assets by how often
+# masterwork inspected them: 14 of the first 22 recorded skill uses came from here.
+# The rollup leaves both candidate directories out by default.
+INSPECTION_CWDS: tuple[str, ...] = tuple(str(d) for d in assistant_cwd_candidates(settings))
 
 
 async def list_asset_usage(
@@ -1089,14 +1127,20 @@ async def list_asset_usage(
     kind: str | None = None,
     since: datetime | None = None,
     include_inspection: bool = False,
+    source: str | None = None,
+    resolver: AssetIdResolver | None = None,
 ) -> list[schemas.CodingAssetUsage]:
     rows = await coding_repo.asset_usage(
         db,
         kind=kind,
         since=since,
-        exclude_cwd=None if include_inspection else INSPECTION_CWD,
+        exclude_cwds=() if include_inspection else INSPECTION_CWDS,
+        source=source,
     )
-    return [serializers.asset_usage_to_schema(row) for row in rows]
+    resolver = resolver or AssetIdResolver([])
+    return [
+        serializers.asset_usage_to_schema(row, resolver=resolver, source=source) for row in rows
+    ]
 
 
 # One expanded row shows a handful of calls, so the log is fetched for the whole
@@ -1111,20 +1155,28 @@ async def list_asset_sessions(
     *,
     limit: int = 50,
     include_inspection: bool = False,
+    source: str | None = None,
+    resolver: AssetIdResolver | None = None,
 ) -> list[schemas.AssetSessionUse]:
     """The runs that used one asset, newest first, each with its calls.
 
     Matched on (kind, name) rather than the whole id: a plugin skill is recorded
     under the name Claude Code calls it by ("vercel:bootstrap") while its asset
-    id names the provider that installed it ("claude-plugin:skill:…").
+    id names the provider that installed it ("claude-plugin:skill:…"). When two
+    installed copies share that name — a Claude skill and a Codex one — only the
+    runs whose agent resolves the name to THIS id are kept.
     """
     _, kind, name = parse_asset_id(asset_id)
+    sources = (resolver or AssetIdResolver([])).sources_for(asset_id, kind, name)
+    if source is not None:
+        sources = (source,) if sources is None or source in sources else ()
     rows = await coding_repo.asset_sessions(
         db,
         kind=kind,
         name=name,
         limit=limit,
-        exclude_cwd=None if include_inspection else INSPECTION_CWD,
+        exclude_cwds=() if include_inspection else INSPECTION_CWDS,
+        sources=sources,
     )
     if not rows:
         return []

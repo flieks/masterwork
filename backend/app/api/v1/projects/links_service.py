@@ -1,7 +1,7 @@
 """Asset-link suggestions — the automated answer to "which assets should this
 project use?".
 
-One-shot claude -p over the FULL on-disk catalog (skills + agents, linked or
+One-shot agent CLI call over the FULL on-disk catalog (skills + agents, linked or
 not). Returns the complete recommended toolkit with a one-line reason per
 asset; nothing is persisted — the user reviews and saves the links themselves.
 """
@@ -14,7 +14,7 @@ from app.api.v1.projects import schemas, service
 from app.core.exceptions import LinkSuggestionError
 from app.db.models.project import Project
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner, ClaudeRunnerError
+from app.services.agent_runner import AgentRunner, AgentRunnerError
 from app.services.links_parser import extract_links
 from app.services.redact import redact
 
@@ -37,8 +37,9 @@ def build_links_prompt(project: Project, providers: list[Provider]) -> str:
     flow = project.flow_mermaid or "(none)"
     return f"""\
 You are choosing the TOOLKIT for a project: which of the AI-coding assets \
-(Claude Code skills and subagents) already on this machine should be linked to \
-it. Linked assets become the toolkit that simulations evaluate against the goal.
+(skills and subagents for coding agents such as Claude Code and Codex) already \
+on this machine should be linked to it. Linked assets become the toolkit that \
+simulations evaluate against the goal.
 
 PROJECT
 - name: {project.name}
@@ -52,7 +53,7 @@ ASSET CATALOG (everything on disk):
 
 INSTRUCTIONS
 1. From the catalog, shortlist the assets whose descriptions plausibly serve \
-the goal. Read each shortlisted file with your Read tool and confirm against \
+the goal. Read each shortlisted file and confirm against \
 its ACTUAL trigger text and steps — not what its name implies.
 2. Select the complete recommended toolkit. Be lean: an asset earns its place \
 only if the goal exercises it — a kitchen-sink list dilutes every simulation. \
@@ -78,7 +79,9 @@ JSON of this shape (valid JSON, highest confidence first):
 {{
   "links": [
     {{"asset_id": "claude:skill:example", "confidence": 90, \
-"reason": "one line: why the goal needs it — or why it is borderline"}}
+"reason": "one line: why the goal needs it — or why it is borderline"}},
+    {{"asset_id": "codex:skill:other-example", "confidence": 55, \
+"reason": "ids are <provider>:<kind>:<name>, copied exactly from the catalog"}}
   ]
 }}
 ```
@@ -88,7 +91,7 @@ JSON of this shape (valid JSON, highest confidence first):
 async def suggest_links(
     db: AsyncSession,
     providers: list[Provider],
-    runner: ClaudeRunner,
+    runner: AgentRunner,
     project_id: str,
 ) -> schemas.ProjectSuggestLinksResponse:
     """Recommend the complete asset set for a project; persists nothing."""
@@ -97,8 +100,8 @@ async def suggest_links(
     prompt = build_links_prompt(project, providers)
     try:
         reply = await runner.run_once(prompt)
-    except ClaudeRunnerError as exc:
-        raise LinkSuggestionError(f"claude failed to suggest links: {exc}") from exc
+    except AgentRunnerError as exc:
+        raise LinkSuggestionError(f"{runner.display_name} failed to suggest links: {exc}") from exc
 
     parsed = extract_links(reply)
     if parsed is None:

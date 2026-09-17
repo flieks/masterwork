@@ -7,11 +7,17 @@ import httpx
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_light_runner, get_providers, get_skill_catalog_transport
+from app.api.deps import (
+    get_db,
+    get_light_runner,
+    get_providers,
+    get_skill_catalog_transport,
+    get_skill_roots,
+)
 from app.api.v1.skills import match_service, schemas, service
-from app.config import settings
 from app.providers.base import Provider
-from app.services.claude_runner import ClaudeRunner
+from app.services.agent_runner import AgentRunner
+from app.services.skill_install import SkillRoots
 
 router = APIRouter(tags=["skills"])
 
@@ -24,11 +30,10 @@ router = APIRouter(tags=["skills"])
 async def search_skill_catalog(
     q: str = Query(..., min_length=1, description="Search text."),
     limit: int = Query(25, ge=1, le=100),
+    roots: SkillRoots = Depends(get_skill_roots),
     transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
 ) -> schemas.CatalogSearchResponse:
-    return await service.search_catalog(
-        q, limit, skills_root=settings.claude_skills_root, transport=transport
-    )
+    return await service.search_catalog(q, limit, roots=roots, transport=transport)
 
 
 @router.get(
@@ -41,11 +46,10 @@ async def get_catalog_skill(
     repo: str,
     skill: str,
     db: AsyncSession = Depends(get_db),
+    roots: SkillRoots = Depends(get_skill_roots),
     transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
 ) -> schemas.CatalogSkillDetail:
-    return await service.get_catalog_skill(
-        db, owner, repo, skill, skills_root=settings.claude_skills_root, transport=transport
-    )
+    return await service.get_catalog_skill(db, owner, repo, skill, roots=roots, transport=transport)
 
 
 @router.post(
@@ -56,6 +60,7 @@ async def get_catalog_skill(
 async def install_skill(
     body: schemas.SkillInstallRequest,
     db: AsyncSession = Depends(get_db),
+    roots: SkillRoots = Depends(get_skill_roots),
     transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
 ) -> schemas.InstalledSkill:
     return await service.install_skill(
@@ -64,7 +69,8 @@ async def install_skill(
         body.repo,
         body.skill,
         overwrite=body.overwrite,
-        skills_root=settings.claude_skills_root,
+        target=body.target,
+        roots=roots,
         transport=transport,
     )
 
@@ -74,8 +80,10 @@ async def install_skill(
     response_model=list[schemas.InstalledSkill],
     operation_id="listInstalledSkills",
 )
-async def list_installed_skills(db: AsyncSession = Depends(get_db)) -> list[schemas.InstalledSkill]:
-    return await service.list_installed(db)
+async def list_installed_skills(
+    db: AsyncSession = Depends(get_db), roots: SkillRoots = Depends(get_skill_roots)
+) -> list[schemas.InstalledSkill]:
+    return await service.list_installed(db, roots)
 
 
 @router.post(
@@ -86,7 +94,7 @@ async def list_installed_skills(db: AsyncSession = Depends(get_db)) -> list[sche
 async def match_installed_skills(
     body: schemas.SkillMatchRequest,
     providers: list[Provider] = Depends(get_providers),
-    runner: ClaudeRunner = Depends(get_light_runner),
+    runner: AgentRunner = Depends(get_light_runner),
 ) -> schemas.SkillMatchResponse:
     return await match_service.match_installed(providers, runner, body.query)
 
@@ -99,11 +107,10 @@ async def match_installed_skills(
 async def check_skill_upstream(
     name: str,
     db: AsyncSession = Depends(get_db),
+    roots: SkillRoots = Depends(get_skill_roots),
     transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
 ) -> schemas.UpstreamCheckResult:
-    return await service.check_upstream(
-        db, name, skills_root=settings.claude_skills_root, transport=transport
-    )
+    return await service.check_upstream(db, name, roots=roots, transport=transport)
 
 
 @router.post(
@@ -116,6 +123,7 @@ async def update_skill_from_upstream(
     body: schemas.SkillUpdateRequest,
     db: AsyncSession = Depends(get_db),
     providers: list[Provider] = Depends(get_providers),
+    roots: SkillRoots = Depends(get_skill_roots),
     transport: httpx.AsyncBaseTransport | None = Depends(get_skill_catalog_transport),
 ) -> schemas.InstalledSkill:
     return await service.update_from_upstream(
@@ -123,7 +131,7 @@ async def update_skill_from_upstream(
         providers,
         name,
         force=body.force,
-        skills_root=settings.claude_skills_root,
+        roots=roots,
         transport=transport,
     )
 
@@ -134,5 +142,11 @@ async def update_skill_from_upstream(
     status_code=status.HTTP_204_NO_CONTENT,
     operation_id="uninstallSkill",
 )
-async def uninstall_skill(name: str, db: AsyncSession = Depends(get_db)) -> None:
-    await service.uninstall_skill(db, name, skills_root=settings.claude_skills_root)
+async def uninstall_skill(
+    name: str,
+    db: AsyncSession = Depends(get_db),
+    roots: SkillRoots = Depends(get_skill_roots),
+) -> None:
+    """Removes the copy masterwork installed: for a skill made generic since, its
+    ~/.agents/skills folder plus the links the agent folders hold to it."""
+    await service.uninstall_skill(db, name, roots=roots)
