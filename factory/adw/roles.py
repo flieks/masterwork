@@ -211,11 +211,12 @@ Read the repo, then write an implementation plan to `plan.md`: the change in one
 paragraph, the files to add or change with why, the data/contract impact, the
 test strategy, and the risks. Be concrete about paths. Do not implement anything.
 
-Before you write the plan, load the house skill for the stack you are touching, with
-the Skill tool — a Python/FastAPI change → `backend-dev`, a React change →
-`frontend-dev`, an Expo/React Native change → `mobile-dev`. Only a skill listed as
-available to you, and only one that matches: a mobile skill on a Python backend is a
-wasted turn, and none matching means you load none. Plan to what the skill says.
+Before you write the plan, load the house skill for the stack you are touching — via
+the Skill tool on Claude Code, or by reading its SKILL.md / mentioning $skill-name on
+Codex: a Python/FastAPI change → `backend-dev`, a React change → `frontend-dev`, an
+Expo/React Native change → `mobile-dev`. Only a skill listed as available to you, and
+only one that matches: a mobile skill on a Python backend is a wasted turn, and none
+matching means you load none. Plan to what the skill says.
 
 {{output_contract}}
 """,
@@ -224,8 +225,9 @@ Implement the plan in the repo, tests included. You have no shell: the runner
 executes the repo's own test and lint commands after you finish, so make the code
 correct rather than claiming it is. Keep the change minimal and in the repo's style.
 
-Before you edit, load the house skill for the stack you are changing, with the Skill
-tool — `backend-dev` for Python/FastAPI, `frontend-dev` for React, `mobile-dev` for
+Before you edit, load the house skill for the stack you are changing — via the
+Skill tool on Claude Code, or by reading its SKILL.md / mentioning $skill-name on
+Codex: `backend-dev` for Python/FastAPI, `frontend-dev` for React, `mobile-dev` for
 Expo/React Native, plus `tdd` when you write the tests and `concise-comments` when
 you write comments. Only skills listed as available to you, and only ones that match:
 a mobile skill on a Python backend is a wasted turn. Build to what the skill says.
@@ -267,8 +269,9 @@ status: however wrong the work is, say so with `approved: false` and the reasons
 `blocking`, and let the runner loop it back to the builder. `status: "blocked"` says
 only that you could not review at all.
 
-Before you judge, load the house skill for the stack under review, with the Skill
-tool — `backend-dev` for Python/FastAPI, `frontend-dev` for React, `mobile-dev` for
+Before you judge, load the house skill for the stack under review — via the Skill tool
+on Claude Code, or by reading its SKILL.md / mentioning $skill-name on Codex:
+`backend-dev` for Python/FastAPI, `frontend-dev` for React, `mobile-dev` for
 Expo/React Native, plus `architecture-review` when the change crosses the
 frontend/backend boundary. Only skills listed as available to you, and only ones that
 match: a mobile skill on a Python backend is a wasted turn. Not `code-review` — its
@@ -377,7 +380,9 @@ One directory per role: {", ".join(ROLES)}. Each holds three files.
 - `{USER_FILE}` — the per-turn task, sent as the user prompt.
 - `{CONFIG_FILE}` — `model`, `disallowed_tools`, `writes` (the boundary globs;
   `null` unrestricted, `[]` read-only), a one-line `purpose`, and an optional
-  `requires` (see below).
+  `requires` (see below). `model` and `disallowed_tools` are Claude Code settings: a
+  Codex run takes its models from `codex_models` in `factory.config.json` and its
+  sandbox from `writes` (`[]` runs read-only).
 
 A role directory's name must match `{ROLE_NAME_PATTERN}`: masterwork indexes each
 file as `masterwork:agent:<role>:<part>`, and a name it cannot represent is a role

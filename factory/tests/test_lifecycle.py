@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import run as cli
 from adw import agent, gitwork, runs
-from adw.agent import RUN_ID_ENV, STAGE_ENV, AgentSession
+from adw.agent import RUN_ID_ENV, STAGE_ENV, ClaudeSession
 from adw.config import load_config
 from adw.pipeline import REUSED, Pipeline, RunResult, format_summary
 from adw.telemetry import Telemetry
@@ -561,7 +561,7 @@ def test_a_turn_that_never_comes_back_is_still_stoppable(tmp_path: Path, fake_cl
     """A hung run is hung inside an agent subprocess — SIGTERM must reach that too,
     or `--kill` just orphans a live `claude` behind the runner it terminated."""
     fake_cli.script([{"session_id": "s", "envelope": envelope(), "sleep_seconds": 60}])
-    session = AgentSession(stage="build", model="haiku", cwd=tmp_path)
+    session = ClaudeSession(stage="build", model="haiku", cwd=tmp_path)
     turn: dict = {}
     sending = threading.Thread(target=lambda: turn.update(result=session.send("go")))
     sending.start()

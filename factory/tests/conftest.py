@@ -1,4 +1,4 @@
-"""Shared fixtures: a real temp git repo and a fake `claude` on PATH."""
+"""Shared fixtures: a real temp git repo and fake `claude` / `codex` CLIs on PATH."""
 
 from __future__ import annotations
 
@@ -82,6 +82,30 @@ def fake_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeCLI:
     monkeypatch.setenv("FACTORY_FAKE_SCRIPT", str(script_path))
     monkeypatch.setenv("FACTORY_FAKE_LOG", str(log_path))
     monkeypatch.setenv("FACTORY_FAKE_STATE", str(state_path))
+    cli = FakeCLI(bin_dir, script_path, log_path, state_path)
+    cli.script([])
+    return cli
+
+
+FAKE_CODEX_SOURCE = Path(__file__).resolve().parent / "fake_codex.py"
+
+
+@pytest.fixture
+def fake_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeCLI:
+    """A fake `codex` on PATH, with its own script, log and counter."""
+    bin_dir = tmp_path / "codex-bin"
+    bin_dir.mkdir()
+    target = bin_dir / "codex"
+    shutil.copy(FAKE_CODEX_SOURCE, target)
+    target.chmod(0o755)
+
+    script_path = tmp_path / "fake_codex_script.json"
+    log_path = tmp_path / "fake_codex_calls.jsonl"
+    state_path = tmp_path / "fake_codex_state"
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FACTORY_FAKE_CODEX_SCRIPT", str(script_path))
+    monkeypatch.setenv("FACTORY_FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FACTORY_FAKE_CODEX_STATE", str(state_path))
     cli = FakeCLI(bin_dir, script_path, log_path, state_path)
     cli.script([])
     return cli

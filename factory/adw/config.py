@@ -1,4 +1,12 @@
-"""Resolved run configuration: built-in defaults overlaid with the repo's factory.config.json."""
+"""Resolved run configuration: built-in defaults overlaid with the repo's factory.config.json.
+
+Which CLI runs the agent stages is `"agent"`: `claude` (default) or `codex`, and
+`--agent` wins over the file. Models are per agent, each keyed by stage: `"models"`
+names Claude models (role.json `model` is their fallback), `"codex_models"` names
+Codex ones, and a Codex stage with none omits `-m` so ~/.codex/config.toml decides.
+`"codex_reasoning_effort"` is one string or a stage → string map. `"claude_bin"` and
+`"codex_bin"` pin the binaries. `--model` overrides every stage on either agent.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from adw import workflows
+from adw.agent import AGENTS, CODEX, DEFAULT_AGENT
 from adw.roles import READ_ONLY_ROLES, ROLES, ResolvedRole, RoleError, RoleStore
 from adw.telemetry import DEFAULT_CONTEXT_WINDOW
 from adw.workflows import CHECKS, WorkflowError
@@ -88,6 +97,7 @@ class Stage:
     model: str | None  # None for `checks`, which runs no agent
     boundary: list[str] | None  # None = unrestricted, [] = read-only
     disallowed_tools: tuple[str, ...] = ()
+    reasoning_effort: str | None = None  # Codex only
 
     @property
     def read_only(self) -> bool:
@@ -122,9 +132,12 @@ class FactoryConfig:
     telemetry_url: str | None
     artifact_max_bytes: int
     timeout_seconds: int
-    context_window: int
+    # None when nothing is known about the window (a Codex model nobody configured).
+    context_window: int | None
     claude_bin: str
     warnings: tuple[str, ...] = field(default=())
+    agent: str = DEFAULT_AGENT
+    codex_bin: str = "codex"
     # The resolved role store: one entry per agent stage, `checks` has none.
     roles: dict[str, ResolvedRole] = field(default_factory=dict)
     roles_dir: Path | None = None
@@ -278,6 +291,63 @@ def _agent_stage(
     )
 
 
+def _codex_stage(
+    name: str,
+    role: ResolvedRole,
+    models: dict[str, str],
+    boundaries: dict[str, list[str] | None],
+    model_override: str | None,
+    efforts: dict[str, str],
+) -> Stage:
+    """Claude's model aliases and tool names mean nothing to Codex: the model comes from
+    the flag or `codex_models` (else the CLI's own default), the policy from the boundary."""
+    return Stage(
+        name=name,
+        model=model_override or models.get(name),
+        boundary=(
+            boundaries[name]
+            if name in boundaries
+            else (role.config.writes if role.config.writes_set else DEFAULT_BOUNDARIES[name])
+        ),
+        reasoning_effort=efforts.get(name),
+    )
+
+
+def _agent(override: object, configured: object) -> str:
+    for candidate, source in ((override, "--agent"), (configured, f'{CONFIG_FILENAME} "agent"')):
+        if candidate is None:
+            continue
+        if candidate not in AGENTS:
+            raise ConfigError(f"{source} must be one of {', '.join(AGENTS)}, not {candidate!r}")
+        return str(candidate)
+    return DEFAULT_AGENT
+
+
+def _stage_models(raw: object, key: str, warnings: list[str]) -> dict[str, str]:
+    """Only what the file actually said: absent is not the same as "set to the default"."""
+    if not isinstance(raw, dict):
+        raise ConfigError(f'"{key}" must be an object')
+    models: dict[str, str] = {}
+    for name, value in raw.items():
+        if name not in DEFAULT_MODELS:
+            warnings.append(f'{CONFIG_FILENAME}: unknown stage "{name}" in "{key}" — ignored')
+            continue
+        models[name] = str(value)
+    return models
+
+
+def _efforts(raw: object, warnings: list[str]) -> dict[str, str]:
+    """One effort for every stage, or a stage → effort map."""
+    key = "codex_reasoning_effort"
+    if raw is None:
+        return {}
+    if isinstance(raw, str) and raw.strip():
+        return dict.fromkeys(DEFAULT_MODELS, raw.strip())
+    if isinstance(raw, dict) and all(isinstance(v, str) and v.strip() for v in raw.values()):
+        return _stage_models(raw, key, warnings)
+    raise ConfigError(f'"{key}" must be a string or an object of stage → string')
+
+
 def runs_root(repo: Path, configured: object, override: object) -> Path:
     """The directory whose children are run dirs — what --list-runs and --resume read."""
     for candidate in (override, configured):
@@ -361,6 +431,7 @@ def load_config(
     no_branch: bool = False,
     max_cost_usd: float | None = None,
     max_tokens: int | None = None,
+    agent: str | None = None,
 ) -> FactoryConfig:
     """Role store, then factory.config.json, then CLI overrides (last wins)."""
     repo = repo.resolve()
@@ -381,16 +452,10 @@ def load_config(
         {name: roles[name] for name in workflow_stages if name in roles}
     )
 
-    # Only what the file actually said: absent is not the same as "set to the default".
-    models: dict[str, str] = {}
-    raw_models = data.get("models", {})
-    if not isinstance(raw_models, dict):
-        raise ConfigError('"models" must be an object')
-    for name, value in raw_models.items():
-        if name not in DEFAULT_MODELS:
-            warnings.append(f'{CONFIG_FILENAME}: unknown stage "{name}" in "models" — ignored')
-            continue
-        models[name] = str(value)
+    resolved_agent = _agent(agent, data.get("agent"))
+    models = _stage_models(data.get("models", {}), "models", warnings)
+    codex_models = _stage_models(data.get("codex_models", {}), "codex_models", warnings)
+    efforts = _efforts(data.get("codex_reasoning_effort"), warnings)
 
     boundaries: dict[str, list[str] | None] = {}
     raw_bounds = data.get("boundaries", {})
@@ -422,11 +487,18 @@ def load_config(
             f"{CHECKS} stage — {UNVERIFIED_WARNING}"
         )
 
+    def agent_stage(name: str) -> Stage:
+        if resolved_agent == CODEX:
+            return _codex_stage(
+                name, roles[name], codex_models, boundaries, model_override, efforts
+            )
+        return _agent_stage(name, roles[name], models, boundaries, model_override)
+
     stages = {
         name: (
             Stage(name=name, model=None, boundary=None, disallowed_tools=())
             if name == CHECKS
-            else _agent_stage(name, roles[name], models, boundaries, model_override)
+            else agent_stage(name)
         )
         for name in workflow_stages
     }
@@ -437,6 +509,19 @@ def load_config(
 
     resolved_run_id = run_id or new_run_id()
     token_cap = _cap(max_tokens, data.get("max_tokens"), "max_tokens", whole=True)
+    cost_cap = _cap(max_cost_usd, data.get("max_cost_usd"), "max_cost_usd", whole=False)
+    if resolved_agent == CODEX and cost_cap is not None:
+        warnings.append(
+            f"max_cost_usd ${cost_cap:g} cannot be enforced on codex — it reports tokens, "
+            "never a price — so "
+            + ("only max_tokens caps this run" if token_cap is not None else "this run is uncapped")
+        )
+    # Claude's window is a known display default; a Codex model's is not, so say nothing.
+    context_window = (
+        _positive(None, data.get("context_window"), DEFAULT_CONTEXT_WINDOW, "context_window")
+        if resolved_agent != CODEX or data.get("context_window") is not None
+        else None
+    )
     return FactoryConfig(
         repo=repo,
         run_id=resolved_run_id,
@@ -451,7 +536,7 @@ def load_config(
             max_review_rounds, data.get("max_review_rounds"), 2, "max_review_rounds"
         ),
         branch=_branch(resolved_run_id, data.get("branch"), branch, no_branch),
-        max_cost_usd=_cap(max_cost_usd, data.get("max_cost_usd"), "max_cost_usd", whole=False),
+        max_cost_usd=cost_cap,
         max_tokens=None if token_cap is None else int(token_cap),
         telemetry_url=telemetry_url or None,
         artifact_max_bytes=_positive(
@@ -460,11 +545,11 @@ def load_config(
         timeout_seconds=_positive(
             None, data.get("timeout_seconds"), DEFAULT_TIMEOUT_SECONDS, "timeout_seconds"
         ),
-        context_window=_positive(
-            None, data.get("context_window"), DEFAULT_CONTEXT_WINDOW, "context_window"
-        ),
+        context_window=context_window,
         claude_bin=str(data.get("claude_bin") or "claude"),
         warnings=tuple(warnings),
+        agent=resolved_agent,
+        codex_bin=str(data.get("codex_bin") or "codex"),
         roles=roles,
         roles_dir=store.global_dir,
         project_roles_dir=store.project_dir,

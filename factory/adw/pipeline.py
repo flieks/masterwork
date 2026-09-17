@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from adw import envelopes, gates, gitwork, interview, prompts, runs, workflows
-from adw.agent import AgentError, AgentSession, AgentTurn
+from adw.agent import CODEX, DEFAULT_AGENT, AgentError, AgentSession, AgentTurn, ClaudeSession
+from adw.codex import CodexSession
 from adw.config import FactoryConfig, Stage
 from adw.envelopes import Envelope
 from adw.gates import GateReport
-from adw.telemetry import Telemetry
+from adw.telemetry import Telemetry, source_for
 from adw.workflows import CHECKS
 
 PASSED = "passed"
@@ -80,6 +81,13 @@ class RunResult:
     paused: bool = False
     questions: list[interview.Question] = field(default_factory=list)
     questions_path: Path | None = None
+    agent: str = DEFAULT_AGENT
+    # False once any turn came back with no price: `cost_usd` is then a floor, not a total.
+    cost_known: bool = True
+
+    @property
+    def cost_text(self) -> str:
+        return f"${self.cost_usd:.4f}" if self.cost_known else f"cost not reported by {self.agent}"
 
     @property
     def exit_code(self) -> int:
@@ -138,6 +146,7 @@ class Pipeline:
         self.outcomes: list[StageOutcome] = []
         self.sessions: dict[str, AgentSession] = {}
         self.cost_usd = 0.0
+        self.cost_known = True
         self.corrections = 0
         self.turns = 0
         self.tokens = 0
@@ -147,6 +156,9 @@ class Pipeline:
         self.branch: gitwork.RunBranch | None = None
         self.budget_stop = ""
         self._session_factory = session_factory or self._make_session
+        # The session is filed under the CLI that runs it, with that CLI's known window.
+        self.tel.source = source_for(config.agent)
+        self.tel.context_window = config.context_window
 
     # --- entry point -------------------------------------------------------
 
@@ -182,15 +194,17 @@ class Pipeline:
             workflow_name=self.cfg.workflow_name,
             attempt=self.attempt,
             interview=self.interview,
+            agent=self.cfg.agent,
         )
         self.tel.emit(
             "phase_start",
             phase="run",
-            detail=f"pid {os.getpid()}, attempt {self.attempt}",
+            detail=f"pid {os.getpid()}, attempt {self.attempt}, agent {self.cfg.agent}",
             payload={
                 "pid": os.getpid(),
                 "attempt": self.attempt,
                 "run_dir": str(self.cfg.run_dir),
+                "agent": self.cfg.agent,
             },
         )
 
@@ -525,7 +539,7 @@ class Pipeline:
         outcome = StageOutcome(stage.name, FAILED)
         corrections = 0
         while True:
-            outcome.cost_usd += turn.cost_usd
+            outcome.cost_usd += turn.cost_usd or 0.0
             # Every agent turn in the run arrives here, so this is the one place a
             # cap has to be read — a single runaway turn is caught by the same check
             # as a slow drift across five stages.
@@ -713,7 +727,11 @@ class Pipeline:
         role = self.cfg.roles.get(stage.name)
         turn = session.send(prompt)
         self.turns += 1
-        self.cost_usd += turn.cost_usd
+        if turn.cost_usd is None:
+            # A cost cap cannot see this turn; max_tokens still does (warned at load).
+            self.cost_known = False
+        else:
+            self.cost_usd += turn.cost_usd
         self.tokens += turn.input_tokens + turn.output_tokens
         context_pct = self.tel.note_input_tokens(turn.input_tokens)
         self.tel.emit(
@@ -725,7 +743,7 @@ class Pipeline:
             duration_ms=turn.duration_ms,
             tokens_in=turn.input_tokens,
             tokens_out=turn.output_tokens,
-            cost_usd=turn.cost_usd,
+            cost_usd=turn.cost_usd or 0.0,
             context_pct=context_pct,
             detail=turn.error or f"{len(turn.tool_events)} tool event(s)",
             payload={
@@ -735,6 +753,8 @@ class Pipeline:
                 # Which layer each file came from: the prompt masterwork displays is
                 # the library copy, and a repo override wins over it silently.
                 "role_layers": dict(role.layers) if role is not None else {},
+                # The record's cost_usd is 0 by shape; this says it was never reported.
+                **({"cost_reported": False} if turn.cost_usd is None else {}),
             },
             context_tokens=turn.context_tokens,
         )
@@ -787,7 +807,19 @@ class Pipeline:
                 ok=(not errored) if errored is not None else None,
             )
 
-        return AgentSession(
+        if self.cfg.agent == CODEX:
+            return CodexSession(
+                stage=stage.name,
+                model=stage.model,
+                cwd=self.repo,
+                read_only=stage.read_only,
+                codex_bin=self.cfg.codex_bin,
+                reasoning_effort=stage.reasoning_effort,
+                timeout_seconds=self.cfg.timeout_seconds,
+                run_id=self.cfg.run_id,
+                on_event=on_event,
+            )
+        return ClaudeSession(
             stage=stage.name,
             model=stage.model or "sonnet",
             cwd=self.repo,
@@ -873,6 +905,8 @@ class Pipeline:
             paused=paused,
             questions=list(self._paused_questions),
             questions_path=self._questions_path,
+            agent=self.cfg.agent,
+            cost_known=self.cost_known,
         )
         if paused:
             # Waiting on answers, not stopped and not finished — `--resume` reads
@@ -920,13 +954,20 @@ def run_stats(result: RunResult) -> dict[str, Any]:
         entry["cost_usd"] = round(entry["cost_usd"] + outcome.cost_usd, 6)
         entry["duration_ms"] += outcome.duration_ms
         entry["runs"] += 1
+    if not result.cost_known:
+        # Null, not $0: nobody reported a price.
+        for entry in stages.values():
+            entry["cost_usd"] = None
     return {
         "accepted": result.accepted,
         "verified": result.verified,
         "reviewed": result.reviewed,
         "workflow": result.workflow_name,
         "workflow_stages": list(result.workflow),
-        "cost_usd": result.cost_usd,
+        "agent": result.agent,
+        "cost_usd": result.cost_usd if result.cost_known else None,
+        "cost_known": result.cost_known,
+        "tokens": result.tokens,
         "turns": result.turns,
         "corrections": result.corrections,
         "stages": stages,
@@ -1035,7 +1076,7 @@ def format_summary(result: RunResult) -> str:
                 outcome.status,
                 str(outcome.corrections),
                 (outcome.commit or "-")[:8],
-                f"${outcome.cost_usd:.4f}",
+                f"${outcome.cost_usd:.4f}" if result.cost_known else "n/a",
                 f"{outcome.duration_ms / 1000:.1f}s",
                 outcome.detail[:60],
             )
@@ -1066,10 +1107,13 @@ def format_summary(result: RunResult) -> str:
     caveats = [text for flag, text in done if not flag and not result.paused]
     if caveats:
         verdict += f" ({'; '.join(caveats)})"
+    spent = result.cost_text
+    if not result.cost_known:
+        spent = f"{result.tokens:,} tokens, {spent}"
     lines.append("")
     lines.append(
         f"{verdict} — {result.reason} "
-        f"({result.turns} turns, {result.corrections} corrections, ${result.cost_usd:.4f})"
+        f"({result.turns} turns, {result.corrections} corrections, {spent})"
     )
     if result.unresolved:
         lines.append("Unresolved blocking findings:")

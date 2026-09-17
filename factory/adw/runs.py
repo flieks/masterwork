@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from adw import gitwork
+from adw.agent import DEFAULT_AGENT
 
 RECORD_FILENAME = "run.json"
 STAGES_DIRNAME = "stages"
@@ -91,12 +92,14 @@ class RunRecord:
     # resumed process (which reads no CLI flag) still knows to look for
     # answers.json. Missing on an older run.json reads as False.
     interview: bool = False
+    # Which CLI ran the stages; --resume keeps it. Missing on an older run.json: claude.
+    agent: str = DEFAULT_AGENT
     run_dir: Path | None = None  # where it was read from; never serialized
 
     FIELDS = (
         "run_id", "repo", "request", "workflow", "workflow_name", "branch",
         "branch_origin", "base_sha", "pid", "cmdline", "state", "started",
-        "ended", "attempt", "accepted", "reason", "interview",
+        "ended", "attempt", "accepted", "reason", "interview", "agent",
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -157,6 +160,7 @@ def open_record(
     workflow_name: str,
     attempt: int = 1,
     interview: bool = False,
+    agent: str = DEFAULT_AGENT,
 ) -> RunRecord:
     """Claim the run dir for this process: the pid goes down before any agent runs,
     because the moment you need a hung run's pid is the moment it stops emitting."""
@@ -175,6 +179,7 @@ def open_record(
         started=previous.started if previous and previous.started else _now(),
         attempt=attempt,
         interview=interview,
+        agent=agent,
     )
     write(run_dir, record)
     return record

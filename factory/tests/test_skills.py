@@ -113,3 +113,11 @@ def test_the_guidance_rides_the_system_prompt_not_the_task(tmp_path: Path):
         prompt = compiled(tmp_path, role)
         assert "Skill tool" in flat(prompt.system)
         assert "Skill tool" not in flat(prompt.user)
+
+
+@pytest.mark.parametrize("role", ["plan", "build", "review"])
+def test_the_skill_guidance_names_a_way_in_for_codex_too(tmp_path: Path, role: str):
+    """Codex has no Skill tool: a skill is read from its SKILL.md or named as $skill-name."""
+    guidance = flat(skill_guidance(role))
+    assert "Skill tool on Claude Code" in guidance
+    assert "reading its SKILL.md" in guidance and "$skill-name on Codex" in guidance

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CLI entry point for the agent-factory pipeline runner.
 
-python3 factory/run.py [--repo PATH] [--config PATH] [--model X] [--dry-run] "request"
+python3 factory/run.py [--repo PATH] [--agent claude|codex] [--model X] [--dry-run] "request"
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adw import agent, gitwork, interview, runs, workflows  # noqa: E402
+from adw.codex import resolve_codex_bin, sandbox_for  # noqa: E402
 from adw.config import (  # noqa: E402
     NO_CHECKS_REFUSAL,
     STARTUP_ERRORS,
@@ -41,6 +42,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("request", nargs="?", help="What to build, in one paragraph.")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Target repo (default: cwd).")
     parser.add_argument("--config", type=Path, help="Path to factory.config.json.")
+    parser.add_argument(
+        "--agent",
+        choices=agent.AGENTS,
+        help=(
+            f'Which CLI runs the stages (default: "agent" in factory.config.json, else '
+            f"{agent.DEFAULT_AGENT}). A --resume keeps the agent the run recorded."
+        ),
+    )
     parser.add_argument("--model", help="Override the model for every stage.")
     parser.add_argument(
         "--workflow",
@@ -164,25 +173,39 @@ def branch_plan(config: FactoryConfig) -> str:
     return f"{config.branch} — would be created from {here} at run start"
 
 
+def agent_line(config: FactoryConfig) -> str:
+    """Which CLI, and for Codex where it was found — it is often not on PATH."""
+    if config.agent != agent.CODEX:
+        return f"{config.agent} ({config.claude_bin})"
+    try:
+        return f"{config.agent} ({resolve_codex_bin(config.codex_bin)})"
+    except agent.AgentError as exc:
+        return f"{config.agent} — NOT RUNNABLE: {exc}"
+
+
 def stage_table(config: FactoryConfig, request: str) -> str:
+    codex = config.agent == agent.CODEX
     lines = [
         f"run {config.run_id} — dry run, no agent will be called",
         f"repo:     {config.repo}",
         f"request:  {request or '(none given)'}",
         f"workflow: {config.workflow_name} — {config.workflow_text}",
+        f"agent:    {agent_line(config)}",
         "",
     ]
-    rows = [("STAGE", "MODEL", "BOUNDARY", "DISALLOWED TOOLS")]
+    rows = [("STAGE", "MODEL", "BOUNDARY", "SANDBOX" if codex else "DISALLOWED TOOLS")]
     for name in config.workflow:
         stage = config.stages[name]
-        rows.append(
-            (
-                name,
-                stage.model or "— (runner-executed)",
-                stage.boundary_text if name != workflows.CHECKS else "(no agent)",
-                ", ".join(stage.disallowed_tools) or "—",
-            )
-        )
+        checks = name == workflows.CHECKS
+        if codex and not checks:
+            model = stage.model or "(codex default)"
+            if stage.reasoning_effort:
+                model += f", effort {stage.reasoning_effort}"
+            policy = sandbox_for(stage.read_only)
+        else:
+            model = stage.model or "— (runner-executed)"
+            policy = ", ".join(stage.disallowed_tools) or "—"
+        rows.append((name, model, stage.boundary_text if not checks else "(no agent)", policy))
     widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
     lines += [
         "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip() for row in rows
@@ -291,7 +314,7 @@ def format_runs(root: Path, records: list[runs.RunRecord]) -> str:
     write: a run whose process is gone is stopped, however it died."""
     if not records:
         return f"no runs recorded under {root}"
-    rows = [("RUN", "STATE", "PID", "TRY", "STARTED", "BRANCH", "REQUEST")]
+    rows = [("RUN", "STATE", "PID", "TRY", "AGENT", "STARTED", "BRANCH", "REQUEST")]
     for record in records:
         state = runs.live_state(record)
         live = state == runs.RUNNING and record.pid
@@ -301,6 +324,7 @@ def format_runs(root: Path, records: list[runs.RunRecord]) -> str:
                 state,
                 str(record.pid) if live else "-",
                 str(record.attempt),
+                record.agent,
                 record.started[:19],
                 record.branch or "-",
                 (record.reason or record.request)[:48],
@@ -447,6 +471,14 @@ def main(argv: list[str] | None = None) -> int:
         except (runs.RunError, gitwork.GitError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+        if args.agent and args.agent != resume.record.agent:
+            print(
+                f"error: --resume continues run {args.resume} on the agent it recorded "
+                f"({resume.record.agent}); --agent {args.agent} cannot switch it — start a "
+                "new run to use a different agent",
+                file=sys.stderr,
+            )
+            return 2
         # answers.json outlives the first resume that read it: a *second*
         # resume (e.g. a later budget stop mid-build) must still fold the
         # same answers in, not silently fall back to the planner's guesses.
@@ -485,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
             no_branch=(record.branch is None) if record else args.no_branch,
             max_cost_usd=args.max_cost_usd,
             max_tokens=args.max_tokens,
+            agent=record.agent if record else args.agent,
         )
 
     try:
@@ -540,6 +573,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(stage_table(config, request))
         return 0
+    if config.agent == agent.CODEX:
+        try:
+            resolve_codex_bin(config.codex_bin)
+        except agent.AgentError as exc:
+            # Before the run branch exists: a missing CLI must not leave one behind.
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
 
     telemetry = Telemetry(
         run_id=config.run_id,

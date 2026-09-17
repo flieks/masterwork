@@ -5,15 +5,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from adw.agent import RUN_ID_ENV, STAGE_ENV, AgentSession
+from adw.agent import RUN_ID_ENV, STAGE_ENV, ClaudeSession
 from adw.config import load_config
 from conftest import FakeCLI, envelope
 
 
-def session(repo: Path, stage: str = "build", run_id: str = "a1b2c3d4", **kwargs) -> AgentSession:
+def session(repo: Path, stage: str = "build", run_id: str = "a1b2c3d4", **kwargs) -> ClaudeSession:
     cfg = load_config(repo)
     resolved = cfg.stages[stage]
-    return AgentSession(
+    return ClaudeSession(
         stage=stage,
         model=resolved.model or "sonnet",
         cwd=repo,

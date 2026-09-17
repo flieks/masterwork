@@ -124,7 +124,7 @@ def test_the_builtin_defaults_reproduce_the_hardcoded_prompts(tmp_path: Path, ro
       6 attempts where build/review/document failed 0 of 11, and all three failures
       were correction attempts of one turn: a correction resends only the one-line
       `ENVELOPE_REMINDER`, so the field list and the status enum were last seen many
-      tool results earlier. The system prompt is the one text `AgentSession` re-sends
+      tool results earlier. The system prompt is the one text `ClaudeSession` re-sends
       on every `--resume`, so that is where the restatement goes — for the one role
       measured needing it, since it costs tokens on every turn of every run.
 
@@ -133,6 +133,10 @@ def test_the_builtin_defaults_reproduce_the_hardcoded_prompts(tmp_path: Path, ro
     what is mandatory and why. It is lifted from the user's `code-review` skill, which
     this role can never run (that skill spawns sub-agents over `git diff`, and every role
     disallows `Task` and `Bash`), so the method travels and the machinery does not.
+
+    SIXTH divergence (2026-09-17), plan/build/review: the skill sentence no longer
+    assumes Claude Code. The same stages run on Codex, which has no Skill tool, so it
+    names both ways in — the Skill tool, or reading SKILL.md / mentioning $skill-name.
     """
     repo = golden_repo(tmp_path)
     cfg = load_config(repo)

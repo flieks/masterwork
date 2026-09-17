@@ -33,6 +33,10 @@ DEFAULT_CONTEXT_WINDOW = 200_000
 MAX_TITLE_CHARS = 300
 MAX_DESCRIPTION_CHARS = 500
 
+# The masterwork hook contract's name for the CLI a session ran on.
+SOURCES = {"claude": "claude-code", "codex": "codex"}
+DEFAULT_SOURCE = SOURCES["claude"]
+
 # Display aid for the per-agent context bar, NOT a hard limit — the CLI owns the
 # real window. Matched as a substring of the model name, longest key first.
 MODEL_CONTEXT_WINDOWS = {
@@ -69,13 +73,19 @@ OK_EVENTS = frozenset({"phase_end", "run_end", "gate_pass", "gate_fail", "agent_
 PHASE_EVENTS = frozenset({"phase_start", "phase_end"})
 
 
-def context_window_for(model: str | None, default: int = DEFAULT_CONTEXT_WINDOW) -> int:
-    """The window a context percentage is drawn against — display only."""
+def context_window_for(
+    model: str | None, default: int | None = DEFAULT_CONTEXT_WINDOW
+) -> int | None:
+    """The window a context percentage is drawn against — display only; None is unknown."""
     text = (model or "").lower()
     for key in sorted(MODEL_CONTEXT_WINDOWS, key=len, reverse=True):
         if key in text:
             return MODEL_CONTEXT_WINDOWS[key]
     return default
+
+
+def source_for(agent: str) -> str:
+    return SOURCES.get(agent, DEFAULT_SOURCE)
 
 
 def agent_color(name: str) -> str:
@@ -105,8 +115,9 @@ class Telemetry:
     repo: Path
     run_dir: Path
     url: str | None = None
-    context_window: int = DEFAULT_CONTEXT_WINDOW
+    context_window: int | None = DEFAULT_CONTEXT_WINDOW
     echo: bool = False
+    source: str = DEFAULT_SOURCE
     workflow: str = DEFAULT_WORKFLOW
     title: str = ""
     # A resumed run appends to the SAME session, so its phases must not re-use the
@@ -140,6 +151,8 @@ class Telemetry:
     def note_input_tokens(self, tokens: int) -> float:
         """Track context growth; returns the resulting context percentage."""
         self._cumulative_input += max(tokens, 0)
+        if not self.context_window:
+            return 0.0  # no known window, so no percentage worth drawing
         return round(100.0 * self._cumulative_input / self.context_window, 2)
 
     def emit(
@@ -232,6 +245,7 @@ class Telemetry:
         body: dict[str, Any] = {
             "session_id": self.session_id,
             "event_type": event_type,
+            "source": self.source,
             "cwd": str(self.repo),
             "model": model,
             "tool_name": tool_name,
@@ -405,17 +419,13 @@ class Telemetry:
         name = str(record["agent"])
         if not name:
             return {}
-        lane = self._lanes.setdefault(
-            name,
-            {
-                "name": name,
-                "color": agent_color(name),
-                "context_window": context_window_for(model, self.context_window),
-            },
-        )
+        lane = self._lanes.setdefault(name, {"name": name, "color": agent_color(name)})
+        if model or "context_window" not in lane:
+            window = context_window_for(model, self.context_window)
+            if window is not None:
+                lane["context_window"] = window
         if model:
             lane["model"] = model
-            lane["context_window"] = context_window_for(model, self.context_window)
         if event_type == "agent_turn":
             lane["cost_usd"] = round(lane.get("cost_usd", 0.0) + float(record["cost_usd"]), 6)
             lane["tokens_in"] = lane.get("tokens_in", 0) + int(record["tokens_in"])
