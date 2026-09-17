@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/experimental-ct-react';
-import type { AssetSessionUse } from '~/api/generated';
+import type { AssetSessionUse, CodingAssetUsage } from '~/api/generated';
 import { SessionsListPage } from '~/features/sessions/components/SessionsListPage';
 import { windowSince } from '~/features/sessions/runs';
 import { AssetScopeHarness } from './harness/AssetScopeHarness';
@@ -16,7 +16,10 @@ const CORS = {
 };
 
 /** One handler for both endpoints; records every URL so filters can be asserted. */
-async function mockSessionsScreen(page: Page): Promise<{ urls: string[] }> {
+async function mockSessionsScreen(
+  page: Page,
+  usageRows: CodingAssetUsage[] = assetUsageRows(),
+): Promise<{ urls: string[] }> {
   const urls: string[] = [];
   await page.route('**/api/v1/**', async (route) => {
     if (route.request().method() === 'OPTIONS') {
@@ -25,7 +28,12 @@ async function mockSessionsScreen(page: Page): Promise<{ urls: string[] }> {
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the asset rollup.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const url = route.request().url();
@@ -40,13 +48,18 @@ async function mockSessionsScreen(page: Page): Promise<{ urls: string[] }> {
     }
     if (url.includes('status=waiting_input')) {
       // The WaitingRuns banner — nothing is blocked in these fixtures.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     urls.push(url);
     const assets = url.includes('/coding-assets');
     const kind = new URL(url).searchParams.get('kind');
-    const rows = assetUsageRows().filter((r) => !kind || r.kind === kind);
+    const rows = usageRows.filter((r) => !kind || r.kind === kind);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -107,6 +120,63 @@ test('the unresolved bucket is ranked but labelled, and links nowhere', async ({
   await expect(subagent.getByTitle(/Claude Code deletes subagent transcripts/)).toBeVisible();
 });
 
+test('a Codex use links to its Codex page; one not installed now links nowhere', async ({
+  mount,
+  page,
+}) => {
+  await mockSessionsScreen(page, [
+    ...assetUsageRows(),
+    {
+      ...assetUsageRows()[1],
+      name: 'figma:implement',
+      asset_id: 'codex-plugin:skill:figma:implement',
+    },
+    {
+      ...assetUsageRows()[3],
+      name: 'explorer',
+      asset_id: 'codex:agent:explorer',
+      asset_found: false,
+    },
+  ]);
+  await mount(
+    <TestProviders>
+      <SessionsListPage />
+    </TestProviders>,
+  );
+  await openAssets(page);
+
+  const plugin = page.getByRole('row').filter({ hasText: 'figma:implement' });
+  await expect(plugin.getByRole('link')).toHaveAttribute(
+    'href',
+    '/skills/figma%3Aimplement?p=codex-plugin',
+  );
+
+  const explorer = page.getByRole('row').filter({ hasText: 'explorer' });
+  await expect(explorer.getByRole('link')).toHaveCount(0);
+  await expect(explorer.getByTitle('Not installed on this machine now')).toBeVisible();
+  await expect(explorer).not.toContainText('unresolved');
+});
+
+test('the agent filter reaches the rollup request', async ({ mount, page }) => {
+  const { urls } = await mockSessionsScreen(page);
+  await mount(
+    <TestProviders>
+      <SessionsListPage />
+    </TestProviders>,
+  );
+  await openAssets(page);
+
+  const rollup = () => urls.filter((u) => u.includes('/coding-assets'));
+  await expect.poll(() => rollup().length).toBeGreaterThan(0);
+  expect(rollup().at(-1)).not.toContain('source=');
+
+  await page.getByRole('group', { name: 'Agent' }).getByRole('button', { name: 'Codex' }).click();
+  await expect.poll(() => rollup().some((u) => u.includes('source=codex'))).toBe(true);
+
+  await page.getByRole('group', { name: 'Agent' }).getByRole('button', { name: 'All' }).click();
+  await expect.poll(() => rollup().at(-1)?.includes('source=') === false).toBe(true);
+});
+
 test('the kind filter and the since window reach the request', async ({ mount, page }) => {
   const { urls } = await mockSessionsScreen(page);
   await mount(
@@ -130,7 +200,7 @@ test('the kind filter and the since window reach the request', async ({ mount, p
 });
 
 /**
- * Masterwork analyses assets by running Claude over them, and those runs Read
+ * Masterwork analyses assets by running the assistant over them, and those runs read
  * every linked SKILL.md — so counting them ranks assets by inspection. The
  * backend leaves them out by default; these cover the way to look anyway.
  */
@@ -153,7 +223,12 @@ async function mockInspectionScope(page: Page): Promise<{ urls: string[] }> {
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the asset rollup.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const url = route.request().url();
@@ -168,7 +243,12 @@ async function mockInspectionScope(page: Page): Promise<{ urls: string[] }> {
     }
     if (url.includes('status=waiting_input')) {
       // The WaitingRuns banner — nothing is blocked in these fixtures.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     urls.push(url);
@@ -224,7 +304,7 @@ test('the toggle says what an inspection run is', async ({ mount, page }) => {
 
   const toggle = page.getByRole('button', { name: 'Include inspection runs' });
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await expect(toggle).toHaveAttribute('title', /Read every linked asset's SKILL\.md/);
+  await expect(toggle).toHaveAttribute('title', /read every linked asset's SKILL\.md/);
   await expect(toggle).toHaveAttribute('title', /rather than by the work they did/);
 });
 
@@ -249,7 +329,12 @@ test('the per-asset drill-in follows the same scope as the table', async ({ moun
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the asset rollup.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     const url = route.request().url();
@@ -338,12 +423,22 @@ test('the grid keeps the order the server chose, live first', async ({ mount, pa
     }
     if (route.request().url().includes('/launcher/')) {
       // The FactoryRunsCard poll — these tests are about the asset rollup.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     if (route.request().url().includes('status=waiting_input')) {
       // The WaitingRuns banner — none of these three is blocked on a person.
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS,
+        body: '[]',
+      });
       return;
     }
     await route.fulfill({

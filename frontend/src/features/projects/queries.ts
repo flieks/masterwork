@@ -55,7 +55,7 @@ export const suggestLinksMutationAtom = atomWithMutation(() => ({
 }));
 
 export const generateSummaryMutationAtom = atomWithMutation(() => ({
-  // One-shot claude -p over the change log — no client timeout, same as scenarios.
+  // One-shot agent CLI run over the change log — no client timeout, same as scenarios.
   mutationFn: (projectId: string): Promise<ProjectSummaryResponse> =>
     api.projects
       .generateProjectSummary(projectId, { timeout: GENERATE_TIMEOUT_MS })

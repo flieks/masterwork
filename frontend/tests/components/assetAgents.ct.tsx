@@ -114,10 +114,19 @@ test.describe('skills: which agents load them', () => {
           provider: 'generic',
           agents: ['claude', 'codex'],
         }),
+        // v1.50: Codex reads ~/.agents/skills itself, so an unlinked generic skill is Codex's.
         summary({
-          id: 'generic:skill:orphan',
-          name: 'orphan',
-          title: 'orphan',
+          id: 'generic:skill:codex-reads',
+          name: 'codex-reads',
+          title: 'codex-reads',
+          provider: 'generic',
+          agents: ['codex'],
+        }),
+        // Off for Codex in config.toml and not linked for Claude: nobody loads it.
+        summary({
+          id: 'generic:skill:nobody',
+          name: 'nobody',
+          title: 'nobody',
           provider: 'generic',
           agents: [],
         }),
@@ -132,7 +141,10 @@ test.describe('skills: which agents load them', () => {
     await expect(component.getByText('Claude only')).toBeVisible();
     await expect(component.getByText('Codex only')).toBeVisible();
     await expect(component.getByText('Generic · Claude, Codex')).toBeVisible();
-    await expect(component.getByText('Generic · unlinked')).toBeVisible();
+    await expect(component.getByText('Generic · Codex', { exact: true })).toBeVisible();
+    await expect(component.getByTitle(/loaded by Codex; Claude Code needs a link/)).toBeVisible();
+    await expect(component.getByText('Generic · no agent')).toBeVisible();
+    await expect(component.getByText(/unlinked/)).toHaveCount(0);
   });
 
   test('a Claude skill can be made generic and lands on its new id', async ({ mount, page }) => {
@@ -140,7 +152,8 @@ test.describe('skills: which agents load them', () => {
       migrate: {
         asset: GENERIC,
         previous_id: 'claude:skill:tdd',
-        linked_agents: ['claude', 'codex'],
+        // Literal since v1.50: Codex needs no link, so only Claude's folder holds one.
+        linked_agents: ['claude'],
         skipped_agents: [],
         claude_only_keys: ['disable-model-invocation'],
         name_rewritten: false,
@@ -160,6 +173,10 @@ test.describe('skills: which agents load them', () => {
 
     await expect(page.getByText('Made generic')).toBeVisible();
     await expect(page.getByText(/Kept Claude-only keys: disable-model-invocation/)).toBeVisible();
+    // Built from asset.agents: Codex loads it even though linked_agents does not name it.
+    await expect(
+      page.getByText(/now lives in ~\/\.agents\/skills; Claude Code and Codex load it\./),
+    ).toBeVisible();
     // Now on the generic id: the badge flips and the button is gone.
     await expect(component.getByText('Generic · Claude, Codex')).toBeVisible();
     await expect(component.getByRole('button', { name: 'Make generic' })).toHaveCount(0);

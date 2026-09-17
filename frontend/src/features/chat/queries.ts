@@ -53,7 +53,7 @@ export const deleteSessionMutationAtom = atomWithMutation(() => ({
 }));
 
 export const sendMessageMutationAtom = atomWithMutation(() => ({
-  // Long-running: a `claude -p` round trip can take minutes, so the client
+  // Long-running: an agent CLI round trip can take minutes, so the client
   // timeout is disabled for this one call.
   mutationFn: (vars: { sessionId: string; content: string }): Promise<ChatExchange> =>
     api.chat

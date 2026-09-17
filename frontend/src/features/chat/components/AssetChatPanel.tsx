@@ -7,6 +7,8 @@ import { Skeleton } from '~/components/ui/skeleton';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { cn } from '~/lib/utils';
+import { agentIdLabel } from '~/features/settings/agents';
+import { AgentBadge } from '~/features/sessions/components/AgentBadge';
 import {
   assetChatSessionsQueryAtom,
   createSessionMutationAtom,
@@ -22,7 +24,7 @@ interface AssetChatPanelProps {
 
 /**
  * Chat about one skill/agent, embedded in its detail page. Sessions are scoped
- * to the asset server-side, so the backend feeds Claude the file as context and
+ * to the asset server-side, so the backend feeds the assistant the file as context and
  * these chats never show up in the global chat list.
  */
 export function AssetChatPanel({ assetId, kindLabel }: AssetChatPanelProps) {
@@ -33,6 +35,7 @@ export function AssetChatPanel({ assetId, kindLabel }: AssetChatPanelProps) {
   const [{ mutateAsync: create, isPending: creating }] = useAtom(createSessionMutationAtom);
   const [{ mutateAsync: remove }] = useAtom(deleteSessionMutationAtom);
   const queryClient = useQueryClient();
+  const activeAgent = sessions?.find((s) => s.id === activeId)?.agent ?? null;
 
   function refreshSessions() {
     return queryClient.invalidateQueries({ queryKey: ['chatSessions'] });
@@ -108,6 +111,9 @@ export function AssetChatPanel({ assetId, kindLabel }: AssetChatPanelProps) {
                 </option>
               ))}
             </select>
+            {activeAgent ? (
+              <AgentBadge source={activeAgent} title={`Ran on ${agentIdLabel(activeAgent)}`} />
+            ) : null}
             <Button size="sm" variant="outline" onClick={newChat} disabled={creating}>
               <Plus /> New
             </Button>
@@ -124,7 +130,7 @@ export function AssetChatPanel({ assetId, kindLabel }: AssetChatPanelProps) {
 
           <div className="h-[32rem]">
             {activeId ? (
-              <MessagePane key={activeId} sessionId={activeId} />
+              <MessagePane key={activeId} sessionId={activeId} sessionAgent={activeAgent} />
             ) : (
               <div className="space-y-3 p-4">
                 <Skeleton className="h-16 w-2/3" />

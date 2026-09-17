@@ -18,8 +18,12 @@ function Hydrate({ children }: PropsWithChildren) {
 
 /** The detail page calls useBlocker, which needs a data router — not MemoryRouter. */
 export function SkillDetailApp({ path }: { path: string }) {
+  // Both detail routes, so an `/agents/...` path renders the agent page the same way.
   const router = createMemoryRouter(
-    [{ path: '/skills/:name', element: <AssetDetailPage kind="skill" /> }],
+    [
+      { path: '/skills/:name', element: <AssetDetailPage kind="skill" /> },
+      { path: '/agents/:name', element: <AssetDetailPage kind="agent" /> },
+    ],
     { initialEntries: [path] },
   );
   return (

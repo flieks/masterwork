@@ -110,9 +110,9 @@ function RunsView() {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {data ? (
-            <span className="font-mono text-sm text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap font-mono text-sm text-muted-foreground">
               {data.length} {data.length === 1 ? 'run' : 'runs'}
             </span>
           ) : null}

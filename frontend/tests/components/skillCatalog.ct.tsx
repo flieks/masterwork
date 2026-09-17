@@ -1,5 +1,12 @@
 import { test, expect, type Page, type Route } from '@playwright/experimental-ct-react';
-import type { CatalogSearchResponse, CatalogSkillDetail, InstalledSkill } from '~/api/generated';
+import type {
+  AgentId,
+  AppSettings,
+  CatalogSearchResponse,
+  CatalogSkillDetail,
+  InstalledSkill,
+  SkillInstallRequest,
+} from '~/api/generated';
 import { Toaster } from '~/components/ui/sonner';
 import { AssetListPage } from '~/features/assets/components/AssetListPage';
 import { TestProviders } from './harness/TestProviders';
@@ -32,6 +39,19 @@ function json(route: Route, body: unknown) {
 interface CatalogRoutes {
   /** Every non-preflight request, as "METHOD path". */
   calls: string[];
+  /** Every POST /skills/install body, in order. */
+  installs: SkillInstallRequest[];
+}
+
+function appSettings(active: AgentId): AppSettings {
+  return {
+    projects_root: '/home/dev/Projects',
+    assistant_agent: active,
+    agents: [
+      { id: 'claude', label: 'Claude Code', installed: true, bin_path: '/usr/local/bin/claude' },
+      { id: 'codex', label: 'Codex', installed: true, bin_path: '/usr/local/bin/codex' },
+    ],
+  };
 }
 
 async function mockCatalog(
@@ -42,6 +62,10 @@ async function mockCatalog(
     installed?: InstalledSkill;
     /** What GET /skills/installed answers — the cached drift statuses. */
     installedList?: InstalledSkill[];
+    /** GET /settings; omitted, it 404s and the picker falls back to Claude Code. */
+    settings?: AppSettings;
+    /** Refuse the install with this status and `detail`. */
+    installError?: { status: number; detail: string };
   } = {},
 ): Promise<CatalogRoutes> {
   const search = initial.search ?? catalogSearchResponse();
@@ -49,6 +73,7 @@ async function mockCatalog(
   const installed = initial.installed ?? installedSkill();
   const installedList = initial.installedList ?? [];
   const calls: string[] = [];
+  const installs: SkillInstallRequest[] = [];
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -64,7 +89,19 @@ async function mockCatalog(
     } else if (path.startsWith('/api/v1/skills/catalog/')) {
       await json(route, detail);
     } else if (path === '/api/v1/skills/install') {
-      await json(route, installed);
+      installs.push(request.postDataJSON() as SkillInstallRequest);
+      if (initial.installError) {
+        await route.fulfill({
+          status: initial.installError.status,
+          contentType: 'application/json',
+          headers: CORS,
+          body: JSON.stringify({ detail: initial.installError.detail }),
+        });
+      } else {
+        await json(route, installed);
+      }
+    } else if (path === '/api/v1/settings' && initial.settings) {
+      await json(route, initial.settings);
     } else if (path === '/api/v1/skills/installed') {
       await json(route, installedList);
     } else if (path === '/api/v1/assets') {
@@ -74,7 +111,7 @@ async function mockCatalog(
     }
   });
 
-  return { calls };
+  return { calls, installs };
 }
 
 async function mountCatalogTab(
@@ -293,4 +330,88 @@ test('a fuzzy search is captioned "Ranked by installs" instead', async ({ mount,
 
   await expect(page.getByText('Ranked by installs')).toBeVisible();
   await expect(page.getByText('Ranked by meaning')).toHaveCount(0);
+});
+
+test('the install target defaults to the assistant agent and travels in the request', async ({
+  mount,
+  page,
+}) => {
+  const routes = await mockCatalog(page, { settings: appSettings('codex') });
+  await mountCatalogTab(mount, page);
+
+  await page.getByRole('button', { name: /Frontend Dev/ }).click();
+  const dialog = page.getByRole('dialog');
+  const picker = dialog.getByRole('radiogroup', { name: 'Install into' });
+
+  await expect(picker.getByRole('radio', { name: 'Codex' })).toBeChecked();
+  await expect(picker.getByRole('radio', { name: 'Claude Code' })).not.toBeChecked();
+
+  await dialog.getByRole('button', { name: 'Install' }).click();
+
+  await expect(page.getByText('Installed Frontend Dev')).toBeVisible();
+  await expect(page.getByText('Into ~/.codex/skills')).toBeVisible();
+  expect(routes.installs).toHaveLength(1);
+  expect(routes.installs[0]).toMatchObject({
+    owner: 'acme',
+    repo: 'frontend-dev',
+    skill: 'frontend-dev',
+    overwrite: false,
+    target: 'codex',
+  });
+});
+
+test('without settings the target is Claude Code, and Shared can be picked instead', async ({
+  mount,
+  page,
+}) => {
+  const routes = await mockCatalog(page);
+  await mountCatalogTab(mount, page);
+
+  await page.getByRole('button', { name: /Frontend Dev/ }).click();
+  const dialog = page.getByRole('dialog');
+  const picker = dialog.getByRole('radiogroup', { name: 'Install into' });
+  await expect(picker.getByRole('radio', { name: 'Claude Code' })).toBeChecked();
+
+  await picker.getByText('Shared (~/.agents)').click();
+  await expect(picker.getByRole('radio', { name: 'Shared (~/.agents)' })).toBeChecked();
+  await dialog.getByRole('button', { name: 'Install' }).click();
+
+  await expect(page.getByText('Installed Frontend Dev')).toBeVisible();
+  expect(routes.installs.map((body) => body.target)).toEqual(['generic']);
+});
+
+test('an installed skill says which folders hold it, and a reinstall offers no target', async ({
+  mount,
+  page,
+}) => {
+  await mockCatalog(page, {
+    search: catalogSearchResponse({
+      skills: [catalogSkill({ installed: true, installed_in: ['generic', 'claude'] })],
+    }),
+    detail: installedCatalogSkillDetail({ installed_in: ['codex'] }),
+  });
+  await mountCatalogTab(mount, page);
+
+  const card = page.getByRole('button', { name: /Frontend Dev/ });
+  await expect(card).toContainText('Installed · ~/.agents/skills, ~/.claude/skills');
+
+  await card.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('in ~/.codex/skills');
+  // The backend replaces the copy where it lives, so there is nothing to choose.
+  await expect(dialog.getByRole('radiogroup', { name: 'Install into' })).toHaveCount(0);
+});
+
+test('a refused install shows the server reason in the toast', async ({ mount, page }) => {
+  const detail = 'frontend-dev is already in ~/.agents/skills; reinstall to replace that copy';
+  await mockCatalog(page, { installError: { status: 409, detail } });
+  await mountCatalogTab(mount, page);
+
+  await page.getByRole('button', { name: /Frontend Dev/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Install' }).click();
+
+  await expect(page.getByText('Could not install this skill')).toBeVisible();
+  await expect(page.getByText(detail)).toBeVisible();
+  // The dialog stays open so another target can be tried.
+  await expect(page.getByRole('dialog').getByRole('radiogroup')).toBeVisible();
 });

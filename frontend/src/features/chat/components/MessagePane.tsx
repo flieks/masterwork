@@ -4,9 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, AlertTriangle } from 'lucide-react';
 import type { ChatMessage } from '~/api/generated';
 import { EmptyState } from '~/components/EmptyState';
+import { useAssistantAgent } from '~/features/settings/hooks';
 import { Skeleton } from '~/components/ui/skeleton';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
+import { agentIdLabel } from '~/features/settings/agents';
+import { appSettingsQueryAtom } from '~/features/settings/queries';
 import { chatMessagesQueryAtom, sendMessageMutationAtom } from '../queries';
 import { dayLabelsFor } from '../separators';
 import { MessageBubble } from './MessageBubble';
@@ -15,10 +18,24 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import { AffectedAssets } from './AffectedAssets';
 import { Composer } from './Composer';
 
-export function MessagePane({ sessionId }: { sessionId: string }) {
+export function MessagePane({
+  sessionId,
+  sessionAgent = null,
+}: {
+  sessionId: string;
+  /** The agent whose CLI session this chat resumes; null until its first reply. */
+  sessionAgent?: string | null;
+}) {
   const [{ data: messages, isPending, isError, error }] = useAtom(chatMessagesQueryAtom(sessionId));
   const [{ mutateAsync: send }] = useAtom(sendMessageMutationAtom);
+  const [{ data: settings }] = useAtom(appSettingsQueryAtom);
+  const assistant = useAssistantAgent();
   const queryClient = useQueryClient();
+  // The backend starts a fresh CLI session on the new agent and carries the transcript over.
+  const switchedFrom =
+    sessionAgent && assistant.id && sessionAgent !== assistant.id
+      ? agentIdLabel(sessionAgent, settings?.agents)
+      : null;
 
   const [input, setInput] = useState('');
   const [optimistic, setOptimistic] = useState<ChatMessage | null>(null);
@@ -91,7 +108,7 @@ export function MessagePane({ sessionId }: { sessionId: string }) {
             <EmptyState
               icon={<MessageSquare className="size-8" />}
               title="Start the conversation"
-              description="Ask Claude about your installed skills and agents, or request a change."
+              description={`Ask ${assistant.label} about your installed skills and agents, or request a change.`}
             />
           ) : (
             <div className="space-y-3">
@@ -101,7 +118,7 @@ export function MessagePane({ sessionId }: { sessionId: string }) {
                   <MessageBubble message={message} sessionId={sessionId} />
                 </Fragment>
               ))}
-              {thinking ? <ThinkingIndicator /> : null}
+              {thinking ? <ThinkingIndicator agentLabel={assistant.label} /> : null}
             </div>
           )}
           <div ref={bottomRef} />
@@ -109,7 +126,19 @@ export function MessagePane({ sessionId }: { sessionId: string }) {
       </div>
 
       <AffectedAssets messages={messages ?? []} />
-      <Composer value={input} onChange={setInput} onSend={handleSend} disabled={thinking} />
+      {switchedFrom ? (
+        <p className="border-t bg-muted/40 px-4 py-1.5 text-center text-xs text-muted-foreground">
+          Started on {switchedFrom} — your next message goes to {assistant.label}, with the
+          conversation so far.
+        </p>
+      ) : null}
+      <Composer
+        value={input}
+        onChange={setInput}
+        onSend={handleSend}
+        disabled={thinking}
+        agentLabel={assistant.label}
+      />
     </div>
   );
 }

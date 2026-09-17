@@ -32,6 +32,8 @@ import {
 import { apiErrorMessage } from '~/api/client';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { cn } from '~/lib/utils';
+import { useAssistantAgent } from '~/features/settings/hooks';
+import { atSentenceStart } from '~/features/settings/agents';
 import {
   createSimulationMutationAtom,
   deleteSimulationMutationAtom,
@@ -113,6 +115,7 @@ function RunPanel({
     startAutopilotMutationAtom,
   );
   const [{ mutateAsync: stopAutopilot, isPending: stopping }] = useAtom(stopAutopilotMutationAtom);
+  const assistant = useAssistantAgent();
   const queryClient = useQueryClient();
   const [scenario, setScenario] = useState(project.scenario);
   const [controlRun, setControlRun] = useState(false);
@@ -141,7 +144,7 @@ function RunPanel({
       queryClient.invalidateQueries({ queryKey: ['project', project.id] });
       onStarted(simulation.id);
       toast.success('Simulation started', {
-        description: 'Claude is reading the linked assets and walking the scenario.',
+        description: `${atSentenceStart(assistant.label)} is reading the linked assets and walking the scenario.`,
       });
     } catch (err) {
       toast.error('Could not start the simulation', { description: apiErrorMessage(err) });
@@ -223,7 +226,7 @@ function RunPanel({
           value={scenario}
           onChange={(e) => setScenario(e.target.value)}
           aria-label="Scenario to simulate"
-          placeholder="Optional — write your own, press Generate to draft one, or leave empty to let Claude derive one silently."
+          placeholder={`Optional — write your own, press Generate to draft one, or leave empty to let ${assistant.label} derive one silently.`}
           className="mt-1 min-h-20 text-sm"
           disabled={busy || noAssets}
         />

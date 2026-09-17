@@ -18,19 +18,22 @@ import { AssetChatPanel } from '~/features/chat';
 import { ProviderBadge } from './ProviderBadge';
 import { AgentsBadge } from './AgentsBadge';
 import { GenericTwinBadge } from './GenericTwinBadge';
-import { DisabledBadge } from './DisabledBadge';
+import { CODEX_CONFIG_NOTE, DisabledBadge } from './DisabledBadge';
 import { MakeGenericDialog } from './MakeGenericDialog';
 import { ModelBadge } from './ModelBadge';
 import { AssetDatesInline } from './AssetDates';
 import { AssetDiagramSection } from './AssetDiagramSection';
 import { AgentSkillsUsed } from './AgentSkillsUsed';
 import { AssetUsageLog } from './AssetUsageLog';
+import { loadedByPhrase } from '../agents';
 import { UpstreamCard } from './UpstreamCard';
 import {
   assetDetailPath,
   assetDetailQueryAtom,
   assetListPath,
   buildAssetId,
+  isPluginProvider,
+  isTomlAsset,
   migrateAssetMutationAtom,
   setAssetEnabledMutationAtom,
   updateAssetMutationAtom,
@@ -43,7 +46,7 @@ const TOGGLEABLE_PROVIDERS = new Set(['claude', 'codex', 'generic']);
 export function AssetDetailPage({ kind }: { kind: AssetKind }) {
   const { name = '' } = useParams();
   const [searchParams] = useSearchParams();
-  // Plugin assets link here with ?p=claude-plugin; global assets omit it.
+  // Non-Claude assets link here with ?p=<provider> (codex, generic, a plugin); Claude's omit it.
   const assetId = buildAssetId(kind, name, searchParams.get('p') ?? undefined);
 
   const [{ data, isPending, isError, error }] = useAtom(assetDetailQueryAtom(assetId));
@@ -57,6 +60,8 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
 
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [draft, setDraft] = useState('');
+  // Kept beside the editor, not only in a toast: a TOML validation message is what the fix needs.
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dirty = mode === 'edit' && data != null && draft !== data.content;
 
@@ -74,15 +79,18 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
   function startEdit() {
     if (!data) return;
     setDraft(data.content);
+    setSaveError(null);
     setMode('edit');
   }
 
   function cancelEdit() {
     setMode('view');
     setDraft('');
+    setSaveError(null);
   }
 
   async function save() {
+    setSaveError(null);
     try {
       const updated = await mutateAsync({ assetId, content: draft });
       queryClient.setQueryData(['asset', assetId], updated);
@@ -91,7 +99,11 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
       setMode('view');
       setDraft('');
     } catch (err) {
-      toast.error('Save failed', { description: apiErrorMessage(err) });
+      // Nothing was written server-side, so the draft stays open for the fix.
+      setSaveError(apiErrorMessage(err));
+      toast.error('Save failed', {
+        description: 'Your draft is kept; the reason is above the editor.',
+      });
     }
   }
 
@@ -107,6 +119,9 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
       toast.error(enabled ? "Couldn't enable it" : "Couldn't disable it", {
         description: apiErrorMessage(err),
       });
+      // A 409 means the page is stale (e.g. config.toml switched it off since): show the lock.
+      if (isConflictError(err))
+        void queryClient.invalidateQueries({ queryKey: ['asset', assetId] });
     }
   }
 
@@ -120,7 +135,6 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
     try {
       const result = await migrate({ assetId, replaceGeneric: genericConflict });
       setConfirmGeneric(false);
-      const linked = result.linked_agents.join(', ') || 'no agent yet';
       const where = result.adopted
         ? 'was already in ~/.agents/skills; this copy became a link to it'
         : 'now lives in ~/.agents/skills';
@@ -128,7 +142,8 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
         ? ` Kept Claude-only keys: ${result.claude_only_keys.join(', ')}.`
         : '';
       toast.success('Made generic', {
-        description: `${result.asset.title} ${where}, linked into ${linked}.${kept}`,
+        // Built from who loads it: `linked_agents` never lists Codex, which reads ~/.agents/skills itself.
+        description: `${result.asset.title} ${where}; ${loadedByPhrase(result.asset.agents)}.${kept}`,
       });
       navigate(assetDetailPath(kind, result.asset.name, result.asset.provider), { replace: true });
     } catch (err) {
@@ -170,17 +185,21 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
     );
   }
 
-  const { frontmatter, body } = splitFrontmatter(data.content);
+  const toml = isTomlAsset(data.path);
+  const { frontmatter, body } = toml
+    ? { frontmatter: null, body: data.content }
+    : splitFrontmatter(data.content);
+  const plugin = isPluginProvider(data.provider);
+  // Masterwork never writes ~/.codex/config.toml, so a skill switched off there can't be switched on here.
+  const lockedByCodexConfig = data.disabled_by === 'codex-config';
   // Only a skill in one agent's own folder can move to the shared one.
   const canMakeGeneric =
     kind === 'skill' &&
     !data.read_only &&
     (data.provider === 'claude' || data.provider === 'codex');
   const canToggle = kind === 'skill' && !data.read_only && TOGGLEABLE_PROVIDERS.has(data.provider);
-  // Catalog installs land in ~/.claude/skills; a made-generic one still reaches
-  // that folder through its link, so both providers can carry an install row.
-  const mayHaveUpstream =
-    kind === 'skill' && (data.provider === 'claude' || data.provider === 'generic');
+  // Catalog installs target any of the three skills folders.
+  const mayHaveUpstream = kind === 'skill' && TOGGLEABLE_PROVIDERS.has(data.provider);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5 p-6">
@@ -199,25 +218,29 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
               <span
                 className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
                 title={
-                  data.provider === 'claude-plugin'
+                  plugin
                     ? "Plugin assets are managed by their marketplace and can't be edited here."
                     : 'Machine config, managed on disk — read-only here.'
                 }
               >
                 <Lock className="size-3.5" /> Read-only
-                {data.provider === 'claude-plugin' ? ' · plugin' : null}
+                {plugin ? ' · plugin' : null}
               </span>
             ) : mode === 'view' ? (
               <>
                 {canToggle ? (
                   <label
                     className="mr-2 inline-flex items-center gap-2 text-sm"
-                    title="Off parks the skill under .disabled/ in its folder, where no coding agent looks; nothing is deleted"
+                    title={
+                      lockedByCodexConfig
+                        ? CODEX_CONFIG_NOTE
+                        : 'Off parks the skill under .disabled/ in its folder, where no coding agent looks; nothing is deleted'
+                    }
                   >
                     <Switch
                       checked={!data.disabled}
                       onCheckedChange={toggleEnabled}
-                      disabled={isToggling}
+                      disabled={isToggling || lockedByCodexConfig}
                       aria-label="Enabled"
                     />
                     Enabled
@@ -250,14 +273,25 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-          <AgentsBadge provider={data.provider} agents={data.agents} disabled={data.disabled} />
+          <AgentsBadge
+            provider={data.provider}
+            agents={data.agents}
+            disabled={data.disabled}
+            disabledBy={data.disabled_by}
+          />
           {data.generic_twin ? <GenericTwinBadge twin={data.generic_twin} /> : null}
           <ProviderBadge provider={data.provider} />
-          {data.disabled ? <DisabledBadge /> : null}
+          {data.disabled ? <DisabledBadge disabledBy={data.disabled_by} /> : null}
           <ModelBadge model={data.model} showInherit={kind === 'agent'} />
           <code className="font-mono">{shortenPath(data.path)}</code>
           <AssetDatesInline created={data.created_at} updated={data.updated_at} />
         </div>
+        {lockedByCodexConfig ? (
+          <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <Lock className="size-3.5 shrink-0" aria-hidden="true" />
+            {CODEX_CONFIG_NOTE}.
+          </p>
+        ) : null}
         {kind === 'agent' ? <AgentSkillsUsed content={data.content} /> : null}
       </header>
 
@@ -278,15 +312,37 @@ export function AssetDetailPage({ kind }: { kind: AssetKind }) {
               </pre>
             </details>
           ) : null}
-          <MarkdownView content={body} />
+          {toml ? (
+            // No TOML renderer here, and markdown would mangle it: show the file as written.
+            <pre
+              aria-label="TOML source"
+              className="overflow-x-auto rounded-md border bg-muted/30 p-3 font-mono text-xs leading-relaxed"
+            >
+              <code>{data.content}</code>
+            </pre>
+          ) : (
+            <MarkdownView content={body} />
+          )}
         </div>
       ) : (
-        <CodeEditor
-          value={draft}
-          onChange={setDraft}
-          ariaLabel="Markdown editor"
-          minHeight="30rem"
-        />
+        <div className="space-y-2">
+          {saveError ? (
+            <p
+              role="alert"
+              className="flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            >
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>{saveError}</span>
+            </p>
+          ) : null}
+          <CodeEditor
+            value={draft}
+            onChange={setDraft}
+            language={toml ? 'plain' : 'markdown'}
+            ariaLabel={toml ? 'TOML editor' : 'Markdown editor'}
+            minHeight="30rem"
+          />
+        </div>
       )}
 
       <MakeGenericDialog

@@ -8,6 +8,8 @@ import { MarkdownView } from '~/components/MarkdownView';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
+import { useAssistantAgent } from '~/features/settings/hooks';
+import { atSentenceStart } from '~/features/settings/agents';
 import { generateSummaryMutationAtom } from '../queries';
 
 /** Summary tab: one generated digest of every applied asset change (chat
@@ -15,6 +17,7 @@ import { generateSummaryMutationAtom } from '../queries';
  * breakdown. Persisted on the project, so it survives reloads. */
 export function ProjectSummaryTab({ project }: { project: Project }) {
   const [{ mutateAsync: generate, isPending }] = useAtom(generateSummaryMutationAtom);
+  const assistant = useAssistantAgent();
   const queryClient = useQueryClient();
 
   async function handleGenerate() {
@@ -49,7 +52,8 @@ export function ProjectSummaryTab({ project }: { project: Project }) {
 
       {isPending && (
         <p className="mt-4 text-xs text-muted-foreground">
-          Claude is summarizing the change log — this takes up to a minute.
+          {atSentenceStart(assistant.label)} is summarizing the change log — this takes up to a
+          minute.
         </p>
       )}
 

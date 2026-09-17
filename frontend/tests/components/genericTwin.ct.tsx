@@ -1,13 +1,15 @@
 import { test, expect, type Page, type Route } from '@playwright/experimental-ct-react';
 import type { AssetSummary } from '~/api/generated';
+import { Toaster } from '~/components/ui/sonner';
 import { AssetListPage } from '~/features/assets/components/AssetListPage';
 import { hideMergedTwins } from '~/features/assets/duplicates';
 import { TestProviders } from './harness/TestProviders';
 
 /**
- * A skill installed per agent folder AND into ~/.agents/skills is one skill,
- * not two rows: the agent copy carries the twin badge and a Merge button, the
- * orphaned generic copy is hidden.
+ * A skill installed per agent folder AND into ~/.agents/skills: the agent copy
+ * carries the twin badge and a Merge button, and the generic copy is hidden only
+ * when its twins already cover every agent that loads it. Since v1.50 Codex
+ * loads ~/.agents/skills natively, so an enabled generic copy lists "codex".
  */
 
 const CORS = {
@@ -36,8 +38,9 @@ function summary(over: Partial<AssetSummary>): AssetSummary {
     title: name,
     description: 'Ultra-compressed communication.',
     model: null,
-    agents: provider === 'claude' ? ['claude'] : [],
-    path: `/Users/me/.${provider}/skills/${name}/SKILL.md`,
+    // Each agent loads its own folder; Codex also loads the generic one natively.
+    agents: provider === 'claude' ? ['claude'] : ['codex'],
+    path: `/Users/me/.${provider === 'generic' ? 'agents' : provider}/skills/${name}/SKILL.md`,
     created_at: '2026-08-01T10:00:00Z',
     updated_at: '2026-08-02T10:00:00Z',
     read_only: false,
@@ -48,13 +51,14 @@ function summary(over: Partial<AssetSummary>): AssetSummary {
 }
 
 const INSTALLED: AssetSummary[] = [
-  summary({ name: 'caveman', generic_twin: 'identical' }),
+  // A Codex twin: Codex loads both copies, and the twin row already says so.
+  summary({ name: 'caveman', provider: 'codex', generic_twin: 'identical' }),
   summary({ name: 'caveman', provider: 'generic' }),
-  summary({ name: 'tdd', generic_twin: 'differs' }),
+  summary({ name: 'tdd', provider: 'codex', generic_twin: 'differs' }),
   summary({ name: 'tdd', provider: 'generic' }),
-  // Linked into Codex: a real row in its own right, never hidden.
+  // A Claude twin: Codex loads only the generic copy, so that row is real and stays.
   summary({ name: 'grilling', generic_twin: 'identical' }),
-  summary({ name: 'grilling', provider: 'generic', agents: ['codex'] }),
+  summary({ name: 'grilling', provider: 'generic' }),
 ];
 
 async function mockAssets(page: Page): Promise<{ method: string; path: string; body: string }[]> {
@@ -69,14 +73,15 @@ async function mockAssets(page: Page): Promise<{ method: string; path: string; b
     calls.push({ method: request.method(), path, body: request.postData() ?? '' });
     if (path === '/api/v1/assets') return json(route, INSTALLED);
     if (path.endsWith('/migrate')) {
-      const name = path.split('/')[4].split(':')[2];
+      const [provider, , name] = path.split('/')[4].split(':');
       return json(route, {
         asset: {
           ...summary({ name, provider: 'generic', agents: ['claude', 'codex'] }),
           content: '',
         },
-        previous_id: `claude:skill:${name}`,
-        linked_agents: ['claude', 'codex'],
+        previous_id: `${provider}:skill:${name}`,
+        // v1.50: only link-holding folders — Codex loads the generic copy without one.
+        linked_agents: ['claude'],
         skipped_agents: [],
         claude_only_keys: [],
         name_rewritten: false,
@@ -90,13 +95,36 @@ async function mockAssets(page: Page): Promise<{ method: string; path: string; b
   return calls;
 }
 
-test('hideMergedTwins keeps one row per twinned skill and every linked generic', () => {
+test('hideMergedTwins hides a generic copy only when twins cover everyone who loads it', () => {
   const ids = hideMergedTwins(INSTALLED).map((a) => a.id);
   expect(ids).toEqual([
-    'claude:skill:caveman',
-    'claude:skill:tdd',
+    'codex:skill:caveman',
+    'codex:skill:tdd',
     'claude:skill:grilling',
     'generic:skill:grilling',
+  ]);
+
+  const edgeCases = [
+    // Twins in both agent folders: nothing left for the generic row to say.
+    summary({ name: 'vim', generic_twin: 'identical' }),
+    summary({ name: 'vim', provider: 'codex', generic_twin: 'identical' }),
+    summary({ name: 'vim', provider: 'generic' }),
+    // Loaded by nobody (config.toml switched it off for Codex, no Claude link).
+    summary({ name: 'orphan', generic_twin: 'differs' }),
+    summary({ name: 'orphan', provider: 'generic', agents: [] }),
+    // Claude links to the generic copy while a Codex twin exists: Claude's only copy stays.
+    summary({ name: 'linked', provider: 'codex', generic_twin: 'identical' }),
+    summary({ name: 'linked', provider: 'generic', agents: ['claude', 'codex'] }),
+    // No twin at all: a generic skill is never hidden.
+    summary({ name: 'solo', provider: 'generic' }),
+  ];
+  expect(hideMergedTwins(edgeCases).map((a) => a.id)).toEqual([
+    'claude:skill:vim',
+    'codex:skill:vim',
+    'claude:skill:orphan',
+    'codex:skill:linked',
+    'generic:skill:linked',
+    'generic:skill:solo',
   ]);
 });
 
@@ -128,6 +156,7 @@ test('Merge on an identical twin migrates at once without leaving the list', asy
   await mount(
     <TestProviders initialEntries={['/skills']}>
       <AssetListPage kind="skill" />
+      <Toaster />
     </TestProviders>,
   );
   await page.getByRole('button', { name: 'Table view' }).click();
@@ -142,10 +171,14 @@ test('Merge on an identical twin migrates at once without leaving the list', asy
     .toEqual([
       {
         method: 'POST',
-        path: '/api/v1/assets/claude:skill:caveman/migrate',
+        path: '/api/v1/assets/codex:skill:caveman/migrate',
         body: JSON.stringify({ replace_generic: false }),
       },
     ]);
+  // Who loads it comes from the asset, not linked_agents, which never names Codex.
+  await expect(
+    page.getByText('caveman is on disk once, in ~/.agents/skills; Claude Code and Codex load it.'),
+  ).toBeVisible();
   // The row click did not fire: still on the list.
   await expect(page.getByRole('heading', { name: 'Skills' })).toBeVisible();
 });

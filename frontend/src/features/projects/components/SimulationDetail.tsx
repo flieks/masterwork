@@ -26,6 +26,7 @@ import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { absoluteDate } from '~/lib/datetime';
 import { cn } from '~/lib/utils';
+import { useAssistantAgent } from '~/features/settings/hooks';
 import { applySuggestionMutationAtom } from '../simulationQueries';
 
 export function scoreColor(score: number): string {
@@ -43,12 +44,14 @@ export function SimulationDetail({
 }) {
   // Persists across run switches; falls back per-run when that tab has no content.
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const assistant = useAssistantAgent();
 
   if (simulation.status === 'running') {
     return (
       <section className="flex items-center gap-3 rounded-md border border-dashed p-6 text-sm text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-        Simulation in progress — Claude is reading the linked assets and walking the scenario…
+        Simulation in progress — {assistant.label} is reading the linked assets and walking the
+        scenario…
       </section>
     );
   }
@@ -186,8 +189,8 @@ export function SimulationDetail({
             <MarkdownView content={simulation.scenario} />
           ) : (
             <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-              No scenario was provided for this run — Claude derived one silently from the goal, and
-              it wasn't captured.
+              No scenario was provided for this run — the assistant derived one silently from the
+              goal, and it wasn't captured.
             </p>
           )}
         </TabsContent>
@@ -461,6 +464,7 @@ function RunStats({ simulation }: { simulation: Simulation }) {
     (stats?.input_tokens ?? 0) +
     (stats?.cache_read_tokens ?? 0) +
     (stats?.cache_creation_tokens ?? 0);
+  const count = (n: number | null | undefined) => (n == null ? 'not reported' : String(n));
 
   const rows: { label: string; value: string; title?: string }[] = [];
   if (durationMs != null && durationMs > 0) {
@@ -471,14 +475,21 @@ function RunStats({ simulation }: { simulation: Simulation }) {
     rows.push({
       label: 'Tokens',
       value: `${formatTokens(tokensIn)} in · ${formatTokens(stats.output_tokens)} out`,
-      title: `input ${stats.input_tokens ?? 0} · cache read ${stats.cache_read_tokens ?? 0} · cache write ${stats.cache_creation_tokens ?? 0} · output ${stats.output_tokens}`,
+      title: `input ${count(stats.input_tokens)} · cache read ${count(stats.cache_read_tokens)} · cache write ${count(stats.cache_creation_tokens)} · output ${stats.output_tokens}`,
     });
   }
   if (stats?.cost_usd != null) {
     rows.push({
       label: 'Cost',
       value: `$${stats.cost_usd.toFixed(stats.cost_usd < 0.1 ? 3 : 2)}`,
-      title: 'As reported by the claude CLI (covered by your subscription)',
+      title: "As reported by the agent's CLI",
+    });
+  } else if (stats) {
+    // Codex reports no USD cost; $0 would claim the run was free.
+    rows.push({
+      label: 'Cost',
+      value: 'not reported',
+      title: "The agent's CLI reported no cost for this run",
     });
   }
   if (rows.length === 0) return null;
@@ -506,9 +517,12 @@ function formatTokens(count: number): string {
   return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
 }
 
-/** "claude-opus-4-6" → "opus-4-6"; strips a trailing -YYYYMMDD date too. */
+/** "claude-opus-4-6-20250101" → "opus-4-6", "gpt-5-2025-08-07" → "gpt-5" (gpt- stays: "5" alone names nothing). */
 function shortModel(model: string): string {
-  return model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+  return model
+    .replace(/^claude-/, '')
+    .replace(/-\d{8}$/, '')
+    .replace(/-\d{4}-\d{2}-\d{2}$/, '');
 }
 
 const IMPACT_STYLES: Record<SimulationSuggestion['impact'], string> = {

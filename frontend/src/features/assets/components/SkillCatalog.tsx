@@ -10,6 +10,7 @@ import { Skeleton } from '~/components/ui/skeleton';
 import { EmptyState } from '~/components/EmptyState';
 import { useDebouncedValue } from '~/lib/hooks';
 import { installedSkillsQueryAtom, skillCatalogQueryAtom } from '../queries';
+import { installedInLabel } from '../targets';
 import { LicenseBadge } from './LicenseBadge';
 import { SkillPreviewDialog } from './SkillPreviewDialog';
 
@@ -97,7 +98,14 @@ export function SkillCatalog() {
                       {REGISTRY_LABEL[skill.registry] ?? skill.registry}
                     </Badge>
                     <LicenseBadge license={skill.license} resolved={skill.license_resolved} />
-                    {skill.installed ? <Badge variant="outline">Installed</Badge> : null}
+                    {skill.installed ? (
+                      <Badge variant="outline">
+                        Installed
+                        {installedInLabel(skill.installed_in)
+                          ? ` · ${installedInLabel(skill.installed_in)}`
+                          : null}
+                      </Badge>
+                    ) : null}
                     {skill.installed && updateAvailable.has(skill.skill) ? (
                       <Badge>Update available</Badge>
                     ) : null}

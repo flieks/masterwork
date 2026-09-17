@@ -7,7 +7,7 @@ export type AssetKind = 'skill' | 'agent';
  * do so without dragging the client (and `import.meta.env`) along.
  */
 
-/** Default provider; plugin assets use "claude-plugin" (read-only). */
+/** Default provider; plugin assets use "claude-plugin" / "codex-plugin" (read-only). */
 export const PROVIDER = 'claude';
 
 export function buildAssetId(kind: AssetKind, name: string, provider = PROVIDER): string {
@@ -25,6 +25,16 @@ export function parseAssetId(id: string): ParsedAssetId | null {
   const [provider, kind, ...rest] = id.split(':');
   if (!provider || (kind !== 'skill' && kind !== 'agent') || rest.length === 0) return null;
   return { provider, kind, name: rest.join(':') };
+}
+
+/** A skill shipped inside a Claude Code or Codex plugin: managed by its marketplace, read-only here. */
+export function isPluginProvider(provider: string): boolean {
+  return provider === 'claude-plugin' || provider === 'codex-plugin';
+}
+
+/** Codex custom agents are TOML (`~/.codex/agents/*.toml`), not markdown with YAML frontmatter. */
+export function isTomlAsset(path: string): boolean {
+  return path.toLowerCase().endsWith('.toml');
 }
 
 export function assetListPath(kind: AssetKind): string {

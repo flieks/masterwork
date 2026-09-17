@@ -1,5 +1,10 @@
 import { useAtom } from 'jotai';
-import { analyticsIncludeChildrenAtom, analyticsIncludeInspectionAtom } from '../queries';
+import { agentFilterCaption } from '~/features/sessions/runs';
+import {
+  analyticsIncludeChildrenAtom,
+  analyticsIncludeInspectionAtom,
+  analyticsSourceAtom,
+} from '../queries';
 import { AnalyticsFilters } from './AnalyticsFilters';
 import { GateStatsSection } from './GateStatsSection';
 import { ModelStatsSection } from './ModelStatsSection';
@@ -42,10 +47,13 @@ export function AnalyticsPanel() {
 function PopulationNote() {
   const [includeInspection] = useAtom(analyticsIncludeInspectionAtom);
   const [includeChildren] = useAtom(analyticsIncludeChildrenAtom);
+  const [source] = useAtom(analyticsSourceAtom);
+  const narrowed = agentFilterCaption(source);
 
   return (
     <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
       All four tables read the same population, so their numbers can be compared.{' '}
+      {narrowed ? `${narrowed}. ` : null}
       {includeInspection
         ? "Counting masterwork's own analysis runs — every figure below is partly a measure of masterwork inspecting assets."
         : "Masterwork's own analysis runs are left out."}{' '}

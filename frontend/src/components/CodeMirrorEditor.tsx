@@ -15,6 +15,7 @@ export default function CodeMirrorEditor({
   maxHeight,
   className,
   ariaLabel,
+  language = 'markdown',
 }: CodeEditorProps) {
   const dark = usePrefersDark();
 
@@ -31,10 +32,11 @@ export default function CodeMirrorEditor({
         theme={dark ? githubDark : githubLight}
         minHeight={minHeight}
         maxHeight={maxHeight}
-        extensions={[
-          markdown({ base: markdownLanguage, codeLanguages: [] }),
-          EditorView.lineWrapping,
-        ]}
+        extensions={
+          language === 'markdown'
+            ? [markdown({ base: markdownLanguage, codeLanguages: [] }), EditorView.lineWrapping]
+            : [EditorView.lineWrapping]
+        }
         basicSetup={{
           lineNumbers: true,
           foldGutter: false,

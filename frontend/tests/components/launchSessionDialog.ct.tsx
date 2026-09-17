@@ -43,7 +43,19 @@ async function mockLauncher(page: Page) {
     const url = request.url();
 
     if (url.includes('/settings') && request.method() === 'GET') {
-      await json(route, 200, { projects_root: PROJECTS_ROOT });
+      await json(route, 200, {
+        projects_root: PROJECTS_ROOT,
+        assistant_agent: 'codex',
+        agents: [
+          {
+            id: 'claude',
+            label: 'Claude Code',
+            installed: true,
+            bin_path: '/usr/local/bin/claude',
+          },
+          { id: 'codex', label: 'Codex', installed: true, bin_path: '/opt/homebrew/bin/codex' },
+        ],
+      });
       return;
     }
     if (url.includes('/launcher/projects') && request.method() === 'GET') {
@@ -101,6 +113,23 @@ test('the request is required before Launch is enabled, project options come fro
 
   await page.getByLabel('Request').fill('Add a subtract function');
   await expect(launch).toBeEnabled();
+});
+
+test('the dialog names the agent the run will use and where to change it', async ({
+  mount,
+  page,
+}) => {
+  await mockLauncher(page);
+
+  await mount(
+    <TestProviders>
+      <LaunchSessionDialog open onOpenChange={() => {}} />
+    </TestProviders>,
+  );
+
+  await expect(
+    page.getByText('Runs on Codex — switch the assistant in the sidebar to use another agent.'),
+  ).toBeVisible();
 });
 
 test('the mode radio defaults to autonomous; picking interview changes what gets posted', async ({

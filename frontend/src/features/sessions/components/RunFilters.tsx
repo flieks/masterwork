@@ -1,9 +1,14 @@
 import { useAtom, type PrimitiveAtom } from 'jotai';
 import { cn } from '~/lib/utils';
-import { statusFilterAtom, workflowFilterAtom } from '../queries';
+import {
+  AGENT_FILTER_OPTIONS,
+  sourceFilterAtom,
+  statusFilterAtom,
+  workflowFilterAtom,
+} from '../queries';
 
-interface FilterOption {
-  value: string | null;
+interface FilterOption<T extends string | null = string | null> {
+  value: T;
   label: string;
 }
 
@@ -25,10 +30,11 @@ const STATUS_OPTIONS: FilterOption[] = [
   { value: 'abandoned', label: 'Abandoned' },
 ];
 
-/** Workflow + status, straight onto the list query's params. */
+/** Agent + workflow + status, straight onto the list query's params. */
 export function RunFilters() {
   return (
     <div className="flex flex-wrap items-center gap-3">
+      <SegmentedFilter atom={sourceFilterAtom} label="Agent" options={AGENT_FILTER_OPTIONS} />
       <SegmentedFilter atom={workflowFilterAtom} label="Workflow" options={WORKFLOW_OPTIONS} />
       <SegmentedFilter atom={statusFilterAtom} label="Status" options={STATUS_OPTIONS} />
     </div>
@@ -36,14 +42,14 @@ export function RunFilters() {
 }
 
 /** The backend does the filtering — these only decide what the query asks for. */
-function SegmentedFilter({
+function SegmentedFilter<T extends string | null>({
   atom,
   label,
   options,
 }: {
-  atom: PrimitiveAtom<string | null>;
+  atom: PrimitiveAtom<T>;
   label: string;
-  options: FilterOption[];
+  options: FilterOption<T>[];
 }) {
   const [selected, setSelected] = useAtom(atom);
 

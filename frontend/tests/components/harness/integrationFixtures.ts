@@ -24,6 +24,7 @@ export function integration(
     config_path: '/home/dev/.claude/settings.json',
     script_path: '/home/dev/.masterwork/hooks/claude_code.py',
     backup_path: null,
+    note: null,
     ...overrides,
   };
 }
@@ -39,6 +40,11 @@ const CODEX_EVENTS = [
   'Interrupt',
   'SessionEnd',
 ];
+
+export const CODEX_TRUST_NOTE =
+  'Codex runs a hook you configured only after you trust it: after connecting (and ' +
+  'after every repair, since trust is tied to the hook definition), open /hooks in ' +
+  "Codex and trust masterwork's entries, or no session is recorded.";
 
 /** The Codex integration, disconnected unless overridden. */
 export function codexIntegration(
@@ -56,6 +62,7 @@ export function codexIntegration(
     config_path: '/home/dev/.codex/hooks.json',
     script_path: '/home/dev/.masterwork/hooks/codex.py',
     backup_path: null,
+    note: CODEX_TRUST_NOTE,
     ...overrides,
   };
 }

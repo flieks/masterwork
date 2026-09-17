@@ -9,6 +9,7 @@ import {
   ListTodo,
 } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { AssistantAgentSwitcher } from '~/features/settings';
 import { Logo } from './Logo';
 
 const NAV = [
@@ -18,7 +19,7 @@ const NAV = [
   { to: '/work', label: 'Work', icon: ListTodo },
   { to: '/sessions', label: 'Sessions', icon: Activity },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
-  { to: '/instructions', label: 'CLAUDE.md', icon: FileText },
+  { to: '/instructions', label: 'Instructions', icon: FileText },
 ];
 
 export function Layout() {
@@ -51,11 +52,14 @@ export function Layout() {
           ))}
         </ul>
 
+        <div className="border-t px-4 py-3">
+          <AssistantAgentSwitcher />
+        </div>
+
         <div className="border-t px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
           Local developer tool. Reads skills &amp; agents from{' '}
-          <code className="font-mono">~/.claude</code>,{' '}
-          <code className="font-mono">~/.codex</code> and{' '}
-          <code className="font-mono">~/.agents</code>.
+          <code className="font-mono">~/.claude</code>, <code className="font-mono">~/.codex</code>{' '}
+          and <code className="font-mono">~/.agents</code>.
         </div>
       </nav>
 

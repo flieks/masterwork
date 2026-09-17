@@ -43,7 +43,7 @@ export function StartPromptDialog({ started, onClose }: StartPromptDialogProps) 
               <DialogDescription>
                 {started.response.launched
                   ? 'The session was launched; this is the prompt it received.'
-                  : 'Launch is deferred — masterwork has no session-launch path yet, so nothing was started. Copy this prompt into Claude Code to run it yourself.'}
+                  : 'Launch is deferred — masterwork has no session-launch path yet, so nothing was started. Copy this prompt into Claude Code or Codex to run it yourself.'}
               </DialogDescription>
             </DialogHeader>
 

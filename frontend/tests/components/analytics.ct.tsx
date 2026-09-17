@@ -17,12 +17,14 @@ const CORS = {
 };
 
 /** Route each aggregate by its own path — the panel asks for all four at once. */
-async function mockAnalytics(page: Page): Promise<void> {
+async function mockAnalytics(page: Page): Promise<{ urls: string[] }> {
+  const urls: string[] = [];
   await page.route('**/api/v1/**', async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS, body: '' });
       return;
     }
+    urls.push(route.request().url());
     const { pathname } = new URL(route.request().url());
     const body = pathname.endsWith('/gates')
       ? GATE_STATS
@@ -40,6 +42,7 @@ async function mockAnalytics(page: Page): Promise<void> {
       body: JSON.stringify(body),
     });
   });
+  return { urls };
 }
 
 function mountPanel(mount: Parameters<Parameters<typeof test>[1]>[0]['mount']) {
@@ -162,4 +165,22 @@ test('a gate that never failed keeps its checks visible and folds only its split
   await expect(boundary.getByRole('cell', { name: 'plan' })).toBeHidden();
   await summary.click();
   await expect(boundary.getByRole('cell', { name: 'plan' })).toBeVisible();
+});
+
+test('the agent filter reaches all four aggregates at once', async ({ mount, page }) => {
+  const { urls } = await mockAnalytics(page);
+  const panel = await mountPanel(mount);
+
+  const ENDPOINTS = ['/gates', '/roles', '/runs', '/models'];
+  await expect.poll(() => ENDPOINTS.every((e) => urls.some((u) => u.includes(e)))).toBe(true);
+  expect(urls.some((u) => u.includes('source='))).toBe(false);
+
+  await panel.getByRole('group', { name: 'Agent' }).getByRole('button', { name: 'Codex' }).click();
+  // One population: every table moves with the filter, none is left on both agents.
+  await expect
+    .poll(() =>
+      ENDPOINTS.every((e) => urls.some((u) => u.includes(e) && u.includes('source=codex'))),
+    )
+    .toBe(true);
+  await expect(panel.getByText('Codex runs only.')).toBeVisible();
 });

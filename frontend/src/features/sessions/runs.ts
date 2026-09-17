@@ -1,4 +1,4 @@
-import type { CodingEvent, CodingSession, FactoryRun } from '~/api/generated';
+import type { CodingEvent, CodingSession, FactoryRun, SessionSource } from '~/api/generated';
 import { formatDuration } from '~/lib/datetime';
 import { LIVE_WINDOW_MS } from '~/lib/timeline';
 
@@ -41,7 +41,7 @@ export function waitedFor(since: string, now = Date.now()): string {
   return `waiting ${formatDuration((now - started) / 1000)}`;
 }
 
-/** True when a `claude -p` one-shot started the run — a script, hook or scheduler. */
+/** True when a headless one-shot (`claude -p`, `codex exec`) started the run — a script, hook or scheduler. */
 export function isAutomatedSession(session: CodingSession): boolean {
   return session.launch_mode === 'automated';
 }
@@ -172,6 +172,19 @@ const WINDOW_HOURS: Record<Exclude<AssetWindow, 'all'>, number> = { '24h': 24, '
 export function windowSince(window: AssetWindow, now = Date.now()): string | undefined {
   if (window === 'all') return undefined;
   return new Date(now - WINDOW_HOURS[window] * 3_600_000).toISOString();
+}
+
+/** The `source=` agent filter the runs grid, the asset rollup and analytics each offer; null is both. */
+export const AGENT_FILTER_OPTIONS: { value: SessionSource | null; label: string }[] = [
+  { value: null, label: 'All' },
+  { value: 'claude-code', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' },
+];
+
+/** "Codex runs only" for a narrowed view that shows no filter bar of its own; null when unfiltered. */
+export function agentFilterCaption(source: SessionSource | null): string | null {
+  const option = AGENT_FILTER_OPTIONS.find((o) => o.value === source);
+  return source && option ? `${option.label} runs only` : null;
 }
 
 /** "4 stage runs" — a pipeline's stages, counted. Plural that reads right at one. */

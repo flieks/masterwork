@@ -23,6 +23,7 @@ import {
   installedSkillsQueryAtom,
   updateFromUpstreamMutationAtom,
 } from '../queries';
+import { skillTargetDir } from '../targets';
 
 const STATUS_BADGE: Record<DriftStatus, { label: string; variant: BadgeProps['variant'] }> = {
   current: { label: 'Up to date', variant: 'success' },
@@ -116,6 +117,9 @@ function InstalledUpstreamCard({ row }: { row: InstalledSkill }) {
             {row.owner}/{row.repo}
             <ExternalLink className="size-3" />
           </a>
+          {row.location ? (
+            <span className="text-xs text-muted-foreground">in {skillTargetDir(row.location)}</span>
+          ) : null}
           <DriftBadge status={status} />
           {!result && row.last_checked_at ? (
             <span className="text-xs text-muted-foreground">

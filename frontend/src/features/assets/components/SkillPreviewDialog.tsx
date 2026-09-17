@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAtom } from 'jotai';
 import { ExternalLink } from 'lucide-react';
-import type { CatalogSkill } from '~/api/generated';
+import type { CatalogSkill, SkillTarget } from '~/api/generated';
 import { apiErrorMessage } from '~/api/client';
 import { MarkdownView } from '~/components/MarkdownView';
 import { Badge } from '~/components/ui/badge';
@@ -17,7 +17,10 @@ import {
 import { Skeleton } from '~/components/ui/skeleton';
 import { toast } from '~/components/ui/sonner';
 import { absoluteDate, relativeTime } from '~/lib/datetime';
+import { cn } from '~/lib/utils';
+import { useAssistantAgent } from '~/features/settings';
 import { catalogSkillKey, catalogSkillQueryAtom, installSkillMutationAtom } from '../queries';
+import { installedInLabel, SKILL_TARGETS, skillTargetDir } from '../targets';
 import { LicenseBadge } from './LicenseBadge';
 
 interface SkillPreviewDialogProps {
@@ -50,9 +53,14 @@ export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) 
   // An unlicensed skill, and a reinstall over an existing directory, each need a
   // second, risk-naming click before anything is written.
   const [confirmingRisk, setConfirmingRisk] = useState(false);
+  // null follows the assistant agent, so a pick made before settings load isn't overwritten.
+  const [pickedTarget, setPickedTarget] = useState<SkillTarget | null>(null);
+  const assistant = useAssistantAgent();
+  const target: SkillTarget = pickedTarget ?? assistant.id ?? 'claude';
 
   useEffect(() => {
     setConfirmingRisk(false);
+    setPickedTarget(null);
   }, [skill]);
 
   if (!skill) return null;
@@ -65,8 +73,12 @@ export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) 
         repo: active.repo,
         skill: active.skill,
         overwrite: data?.installed ?? false,
+        // A reinstall replaces the copy where it lives; the backend ignores target then.
+        target,
       });
-      toast.success(`Installed ${active.name}`);
+      toast.success(`Installed ${active.name}`, {
+        description: data?.installed ? undefined : `Into ${skillTargetDir(target)}`,
+      });
       onClose();
     } catch (err) {
       toast.error('Could not install this skill', { description: apiErrorMessage(err) });
@@ -118,6 +130,11 @@ export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) 
                   {data.installed_by_masterwork ? 'Installed' : 'Already on disk'}
                   {data.installed_version ? ` · v${data.installed_version}` : ''}
                 </Badge>
+              ) : null}
+              {data.installed && installedInLabel(data.installed_in) ? (
+                <span className="text-xs text-muted-foreground">
+                  in {installedInLabel(data.installed_in)}
+                </span>
               ) : null}
               {data.differs_from_installed === true ? (
                 <Badge variant="destructive">Your copy differs</Badge>
@@ -184,7 +201,10 @@ export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) 
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:items-center">
+          {data && !data.installed ? (
+            <TargetPicker value={target} onChange={setPickedTarget} disabled={installing} />
+          ) : null}
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -206,5 +226,55 @@ export function SkillPreviewDialog({ skill, onClose }: SkillPreviewDialogProps) 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Which skills folder a new install lands in; defaults to the agent masterwork runs on. */
+function TargetPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: SkillTarget;
+  onChange: (next: SkillTarget) => void;
+  disabled: boolean;
+}) {
+  return (
+    // order-last: the footer stacks column-reverse on phones, which would put this under the buttons.
+    <div className="order-last flex flex-wrap items-center gap-1.5 sm:order-none sm:mr-auto">
+      <span id="install-target-label" className="text-xs text-muted-foreground">
+        Install into
+      </span>
+      <div
+        role="radiogroup"
+        aria-labelledby="install-target-label"
+        className="inline-flex rounded-md border p-0.5"
+      >
+        {SKILL_TARGETS.map((option) => (
+          <label
+            key={option.value}
+            title={option.dir}
+            className={cn(
+              'cursor-pointer rounded-sm px-2 py-1 text-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
+              value === option.value
+                ? 'bg-secondary font-medium text-secondary-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+              disabled && 'cursor-not-allowed opacity-60',
+            )}
+          >
+            <input
+              type="radio"
+              name="install-target"
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+              disabled={disabled}
+              className="sr-only"
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }

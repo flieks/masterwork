@@ -158,7 +158,9 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
           description={
             debouncedQuery.trim()
               ? 'Try a different search term.'
-              : `Install ${copy.noun} under ~/.claude${kind === 'skill' ? ', ~/.codex or ~/.agents' : ''} to see them here.`
+              : kind === 'skill'
+                ? `Install ${copy.noun} under ~/.claude, ~/.codex or ~/.agents to see them here.`
+                : `Install ${copy.noun} under ~/.claude/agents or ~/.codex/agents to see them here.`
           }
         />
       ) : view === 'grid' ? (
@@ -184,7 +186,7 @@ export function AssetListPage({ kind }: { kind: AssetKind }) {
           Globally installed {copy.noun}
           {kind === 'skill'
             ? ' across Claude Code, Codex and the shared ~/.agents folder'
-            : ' under ~/.claude'}
+            : ' across Claude Code (~/.claude/agents) and Codex (~/.codex/agents)'}
           . Search matches title, description, and file content.
         </p>
       </header>

@@ -144,10 +144,66 @@ test('an asset path follows the provider convention, and unresolved has none', (
     '/agents/general-purpose',
   );
   // Plugin assets carry their provider in `?p=`, exactly as the asset pages expect.
-  expect(assetUsePath({ kind: 'skill', name: 'docx', asset_id: 'claude-plugin:skill:docx' })).toBe(
-    '/skills/docx?p=claude-plugin',
-  );
+  expect(
+    assetUsePath({
+      kind: 'skill',
+      name: 'docx',
+      asset_id: 'claude-plugin:skill:docx',
+      asset_found: true,
+    }),
+  ).toBe('/skills/docx?p=claude-plugin');
   expect(assetUsePath(assetUse('agent', 'subagent', 78, null))).toBeNull();
+});
+
+test('a Codex run links to Codex, shared and Codex-plugin pages alike', () => {
+  const resolved = (kind: string, name: string, asset_id: string) =>
+    assetUsePath(assetUse(kind, name, 1, null, { asset_id }));
+
+  expect(resolved('skill', 'tdd', 'codex:skill:tdd')).toBe('/skills/tdd?p=codex');
+  expect(resolved('skill', 'tdd', 'generic:skill:tdd')).toBe('/skills/tdd?p=generic');
+  expect(resolved('agent', 'reviewer', 'codex:agent:reviewer')).toBe('/agents/reviewer?p=codex');
+  // The plugin's own colon stays in the name, encoded, so the detail page rebuilds the same id.
+  expect(resolved('skill', 'figma:implement', 'codex-plugin:skill:figma:implement')).toBe(
+    '/skills/figma%3Aimplement?p=codex-plugin',
+  );
+});
+
+test('a use of something no longer installed has no page to link to', () => {
+  expect(
+    assetUsePath(
+      assetUse('agent', 'explorer', 2, null, {
+        asset_id: 'codex:agent:explorer',
+        asset_found: false,
+      }),
+    ),
+  ).toBeNull();
+});
+
+test('an uninstalled asset renders as plain text that says why', async ({ mount, page }) => {
+  await mount(
+    <TestProviders>
+      <SessionAssets
+        session={chatRun({
+          source: 'codex',
+          assets: [
+            assetUse('skill', 'tdd', 3, 'main', { asset_id: 'codex:skill:tdd' }),
+            assetUse('agent', 'explorer', 2, 'main', {
+              asset_id: 'codex:agent:explorer',
+              asset_found: false,
+            }),
+          ],
+        })}
+      />
+    </TestProviders>,
+  );
+
+  await expect(page.getByRole('link', { name: /tdd/ })).toHaveAttribute(
+    'href',
+    '/skills/tdd?p=codex',
+  );
+  await expect(page.getByRole('link', { name: /explorer/ })).toHaveCount(0);
+  const chip = page.getByText('explorer', { exact: true }).locator('..');
+  await expect(chip).toHaveAttribute('title', /Not installed on this machine now/);
 });
 
 test('the uses bar is scaled to real names, not to the unresolved bucket', () => {
@@ -161,4 +217,16 @@ test('the uses bar is scaled to real names, not to the unresolved bucket', () =>
   expect(usesBarPct(smallest, rows)).toBe(25);
   // The bucket itself is not hidden — just capped.
   expect(usesBarPct(unresolved, rows)).toBe(100);
+});
+
+test("a Codex run's unresolved bucket does not blame Claude Code", async ({ mount, page }) => {
+  await mount(
+    <TestProviders>
+      <SessionAssets session={chatRun({ source: 'codex' })} />
+    </TestProviders>,
+  );
+
+  const chip = page.getByText('subagent', { exact: true }).locator('..');
+  await expect(chip).toHaveAttribute('title', /did not record which agent made these calls/);
+  await expect(chip).not.toHaveAttribute('title', /Claude Code/);
 });

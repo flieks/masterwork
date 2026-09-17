@@ -107,8 +107,24 @@ export const FACTORY_LANES: AgentLane[] = [
   lane('document', { model: 'haiku' }),
 ];
 
-export function assetUse(kind: string, name: string, uses: number, lane: string | null): AssetUse {
-  return { kind, name, asset_id: `claude:${kind}:${name}`, lane, uses };
+export function assetUse(
+  kind: string,
+  name: string,
+  uses: number,
+  lane: string | null,
+  overrides: Partial<AssetUse> = {},
+): AssetUse {
+  // The unresolved bucket names no installed asset, as the API reports it.
+  const found = !(kind === 'agent' && name === 'subagent');
+  return {
+    kind,
+    name,
+    asset_id: `claude:${kind}:${name}`,
+    asset_found: found,
+    lane,
+    uses,
+    ...overrides,
+  };
 }
 
 export function factoryRun(overrides: Partial<CodingSessionDetail> = {}): CodingSessionDetail {
@@ -251,6 +267,7 @@ export function assetUsageRows(): CodingAssetUsage[] {
     kind,
     name,
     asset_id: `claude:${kind}:${name}`,
+    asset_found: !(kind === 'agent' && name === 'subagent'),
     sessions,
     uses,
     last_used_at: lastUsedAt,

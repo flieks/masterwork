@@ -3,8 +3,6 @@ import { atomFamily, atomWithStorage } from 'jotai/utils';
 import { atomWithMutation, atomWithQuery, queryClientAtom } from 'jotai-tanstack-query';
 import { api } from '~/api/client';
 import type {
-  AppSettings,
-  AppSettingsUpdateRequest,
   CodingEvent,
   CodingSession,
   CodingSessionDetail,
@@ -19,8 +17,10 @@ import type {
   LauncherProject,
   LauncherProjectCreateRequest,
   SessionLaunchListItem,
+  SessionSource,
   SessionLaunchRead,
 } from '~/api/generated';
+import { LAUNCHER_PROJECTS_QUERY_KEY } from '~/features/settings/queries';
 import { windowSince, type AssetWindow } from './runs';
 
 const POLL_MS = 2500;
@@ -34,8 +34,10 @@ const MAX_EVENT_PAGES = 20;
 // The run vocabulary lives in a client-free leaf (`runs.ts`) so it can be used
 // without pulling the API client in; re-exported here as the feature's surface.
 export {
+  AGENT_FILTER_OPTIONS,
   INTERRUPTED_NEVER_DERIVED,
   LIVE_WINDOW_MS,
+  agentFilterCaption,
   isAutomatedSession,
   isSessionLive,
   projectTint,
@@ -49,20 +51,10 @@ export {
   type RunTitle,
 } from './runs';
 
-const LAUNCHER_PROJECTS_QUERY_KEY = ['launcherProjects'];
-const APP_SETTINGS_QUERY_KEY = ['appSettings'];
-
 /** The launcher's project picker — immediate subdirectories of projects_root. */
 export const launcherProjectsQueryAtom = atomWithQuery(() => ({
   queryKey: LAUNCHER_PROJECTS_QUERY_KEY,
-  queryFn: async (): Promise<LauncherProject[]> =>
-    (await api.launcher.listLauncherProjects()).data,
-}));
-
-/** projects_root and any other persisted app setting. */
-export const appSettingsQueryAtom = atomWithQuery(() => ({
-  queryKey: APP_SETTINGS_QUERY_KEY,
-  queryFn: async (): Promise<AppSettings> => (await api.settings.getSettings()).data,
+  queryFn: async (): Promise<LauncherProject[]> => (await api.launcher.listLauncherProjects()).data,
 }));
 
 export const createLauncherProjectMutationAtom = atomWithMutation((get) => ({
@@ -70,17 +62,6 @@ export const createLauncherProjectMutationAtom = atomWithMutation((get) => ({
     api.launcher.createLauncherProject(body).then((r) => r.data),
   onSuccess: () =>
     get(queryClientAtom).invalidateQueries({ queryKey: LAUNCHER_PROJECTS_QUERY_KEY }),
-}));
-
-export const updateSettingsMutationAtom = atomWithMutation((get) => ({
-  mutationFn: (body: AppSettingsUpdateRequest): Promise<AppSettings> =>
-    api.settings.updateSettings(body).then((r) => r.data),
-  onSuccess: () => {
-    const queryClient = get(queryClientAtom);
-    queryClient.invalidateQueries({ queryKey: APP_SETTINGS_QUERY_KEY });
-    // A new root points at a different set of project folders.
-    queryClient.invalidateQueries({ queryKey: LAUNCHER_PROJECTS_QUERY_KEY });
-  },
 }));
 
 const FACTORY_RUNS_QUERY_KEY = ['factoryRuns'];
@@ -137,10 +118,9 @@ export const dismissFactoryRunMutationAtom = atomWithMutation((get) => ({
     body: FactoryRunDismissRequest;
     dismissed: boolean;
   }): Promise<FactoryRun> =>
-    (dismissed
-      ? api.launcher.dismissFactoryRun(body)
-      : api.launcher.restoreFactoryRun(body)
-    ).then((r) => r.data),
+    (dismissed ? api.launcher.dismissFactoryRun(body) : api.launcher.restoreFactoryRun(body)).then(
+      (r) => r.data,
+    ),
   onSuccess: () => {
     const queryClient = get(queryClientAtom);
     queryClient.invalidateQueries({ queryKey: FACTORY_RUNS_QUERY_KEY });
@@ -168,8 +148,7 @@ export const submitInterviewAnswersMutationAtom = atomWithMutation((get) => ({
     body: InterviewAnswersRequest;
   }): Promise<InterviewResumeRead> =>
     api.launcher.submitInterviewAnswers(launchId, body).then((r) => r.data),
-  onSuccess: () =>
-    get(queryClientAtom).invalidateQueries({ queryKey: SESSION_LAUNCHES_QUERY_KEY }),
+  onSuccess: () => get(queryClientAtom).invalidateQueries({ queryKey: SESSION_LAUNCHES_QUERY_KEY }),
 }));
 
 function sessionQueryKey(sessionId: string): [string, string] {
@@ -189,6 +168,9 @@ export const workflowFilterAtom = atom<string | null>(null);
 /** `status=` filter: null means every status. */
 export const statusFilterAtom = atom<string | null>(null);
 
+/** `source=` filter: null means runs from every agent. */
+export const sourceFilterAtom = atom<SessionSource | null>(null);
+
 /**
  * All ingested root runs, in the order the backend chose — live first, then
  * most recent. Nothing re-sorts this list: the server already knows which run
@@ -202,9 +184,10 @@ export const codingSessionsQueryAtom = atomWithQuery((get) => {
   const showAutomated = get(showAutomatedAtom);
   const workflow = get(workflowFilterAtom);
   const status = get(statusFilterAtom);
+  const source = get(sourceFilterAtom);
   return {
     // Part of the key: each filter combination is a different result, cached apart.
-    queryKey: ['codingSessions', showAutomated, workflow, status],
+    queryKey: ['codingSessions', showAutomated, workflow, status, source],
     queryFn: async () =>
       (
         await api.coding.listCodingSessions(
@@ -215,6 +198,8 @@ export const codingSessionsQueryAtom = atomWithQuery((get) => {
           workflow ?? undefined,
           status ?? undefined,
           true,
+          undefined,
+          source ?? undefined,
         )
       ).data,
     refetchInterval: POLL_MS,
@@ -297,6 +282,9 @@ export const assetKindFilterAtom = atom<string | null>(null);
  */
 export const includeInspectionAtom = atom(false);
 
+/** `source=` for the rollup, shared with the drill-in for the same reason as the inspection toggle. */
+export const assetSourceFilterAtom = atom<SessionSource | null>(null);
+
 /**
  * Every asset used across every run, ranked. The window token — not the
  * computed timestamp — is the cache key: a fresh `since` on each read would
@@ -306,14 +294,16 @@ export const codingAssetUsageQueryAtom = atomWithQuery((get) => {
   const window = get(assetWindowAtom);
   const kind = get(assetKindFilterAtom);
   const includeInspection = get(includeInspectionAtom);
+  const source = get(assetSourceFilterAtom);
   return {
-    queryKey: ['codingAssetUsage', window, kind, includeInspection],
+    queryKey: ['codingAssetUsage', window, kind, includeInspection, source],
     queryFn: async () =>
       (
         await api.coding.listCodingAssetUsage(
           windowSince(window),
           kind ?? undefined,
           includeInspection,
+          source ?? undefined,
         )
       ).data,
   };

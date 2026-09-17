@@ -29,7 +29,11 @@ export function ChatWorkspace({ scope }: { scope: ChatScope }) {
       <SessionSidebar scope={scope} />
       <div className="flex min-w-0 flex-1 flex-col">
         {scope.activeSessionId ? (
-          <MessagePane key={scope.activeSessionId} sessionId={scope.activeSessionId} />
+          <MessagePane
+            key={scope.activeSessionId}
+            sessionId={scope.activeSessionId}
+            sessionAgent={sessions?.find((s) => s.id === scope.activeSessionId)?.agent ?? null}
+          />
         ) : (
           <div className="flex flex-1 items-center justify-center p-6">
             <EmptyState

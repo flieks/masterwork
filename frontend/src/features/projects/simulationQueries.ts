@@ -40,7 +40,7 @@ export const stopAutopilotMutationAtom = atomWithMutation(() => ({
 }));
 
 export const generateScenarioMutationAtom = atomWithMutation(() => ({
-  // One-shot claude -p (~10–60 s) — no client timeout, same as chat/diagram generation.
+  // One-shot agent CLI run (~10–60 s) — no client timeout, same as chat/diagram generation.
   mutationFn: (projectId: string): Promise<ScenarioGenerateResponse> =>
     api.simulations
       .generateSimulationScenario(projectId, { timeout: GENERATE_TIMEOUT_MS })

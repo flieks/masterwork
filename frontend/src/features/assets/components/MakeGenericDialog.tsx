@@ -64,8 +64,10 @@ export function MakeGenericDialog({
                 </p>
               )}
               <p>
-                The old location becomes a link to the new one, and Codex and Claude each get a link
-                in their own folder — so the skill is on disk once and every agent still finds it.
+                {provider === 'codex'
+                  ? 'The Codex folder is removed once copied, since Codex reads ~/.agents/skills itself; Claude Code gets a link in ~/.claude/skills.'
+                  : 'The old location becomes a link to the new one, so Claude Code still finds it; Codex reads ~/.agents/skills itself.'}{' '}
+                The skill ends up on disk once and every agent still loads it.
               </p>
             </div>
           </AlertDialogDescription>

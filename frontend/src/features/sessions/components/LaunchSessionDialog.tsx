@@ -17,12 +17,12 @@ import {
 } from '~/components/ui/dialog';
 import { apiErrorMessage } from '~/api/client';
 import { FolderPickerDialog } from '~/components/FolderPickerDialog';
+import { useAssistantAgent } from '~/features/settings/hooks';
+import { appSettingsQueryAtom, updateSettingsMutationAtom } from '~/features/settings/queries';
 import {
-  appSettingsQueryAtom,
   createLauncherProjectMutationAtom,
   launchSessionMutationAtom,
   launcherProjectsQueryAtom,
-  updateSettingsMutationAtom,
 } from '../queries';
 
 interface LaunchSessionDialogProps {
@@ -31,7 +31,7 @@ interface LaunchSessionDialogProps {
 }
 
 /** Starts a factory run against a picked (or freshly created) project folder —
- * always through factory/run.py, never a bare `claude` invocation. */
+ * always through factory/run.py, never a bare agent CLI invocation. */
 export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogProps) {
   const [
     {
@@ -49,14 +49,16 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
       refetch: refetchProjects,
     },
   ] = useAtom(launcherProjectsQueryAtom);
-  const [{ mutateAsync: saveSettings, isPending: isSavingRoot }] =
-    useAtom(updateSettingsMutationAtom);
+  const [{ mutateAsync: saveSettings, isPending: isSavingRoot }] = useAtom(
+    updateSettingsMutationAtom,
+  );
   const [{ mutateAsync: createProject, isPending: isCreatingProject }] = useAtom(
     createLauncherProjectMutationAtom,
   );
   const [{ mutateAsync: launchSession, isPending: isLaunching }] =
     useAtom(launchSessionMutationAtom);
   const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
+  const assistant = useAssistantAgent();
 
   const [rootDraft, setRootDraft] = useState('');
   const [projectPath, setProjectPath] = useState('');
@@ -152,7 +154,12 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
             ) : isSettingsError ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <AlertTriangle className="size-4" /> Couldn't load the projects root.
-                <Button type="button" variant="outline" size="sm" onClick={() => void refetchSettings()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refetchSettings()}
+                >
                   Retry
                 </Button>
               </p>
@@ -204,7 +211,12 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
             ) : isProjectsError ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <AlertTriangle className="size-4" /> Couldn't load projects.
-                <Button type="button" variant="outline" size="sm" onClick={() => void refetchProjects()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refetchProjects()}
+                >
                   Retry
                 </Button>
               </p>
@@ -280,6 +292,17 @@ export function LaunchSessionDialog({ open, onOpenChange }: LaunchSessionDialogP
               Interview me: pause on weak assumptions before building
             </label>
           </fieldset>
+
+          <p className="text-xs text-muted-foreground">
+            {assistant.id ? (
+              <>
+                Runs on <span className="font-medium text-foreground">{assistant.label}</span> —
+                switch the assistant in the sidebar to use another agent.
+              </>
+            ) : (
+              'Runs on the assistant picked in the sidebar.'
+            )}
+          </p>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

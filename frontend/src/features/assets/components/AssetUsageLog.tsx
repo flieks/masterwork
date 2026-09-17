@@ -9,7 +9,8 @@ import { apiErrorMessage } from '~/api/client';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
 import { cn } from '~/lib/utils';
 // The leaf, not the feature index — that one pulls the Sessions pages in.
-import { sessionDetailPath } from '~/features/sessions/runs';
+import { agentFilterCaption, sessionDetailPath } from '~/features/sessions/runs';
+import { assetSourceFilterAtom } from '~/features/sessions/queries';
 import { assetSessionUsesQueryAtom } from '../queries';
 import { callSourceLabel, noInputReason, orderedInput } from '../usage';
 
@@ -30,6 +31,9 @@ export function AssetUsageLog({ assetId }: { assetId: string }) {
     assetSessionUsesQueryAtom(assetId),
   );
   const runs = data?.length ?? 0;
+  // The rollup's agent filter narrows this log too; say so, since this page has no filter bar.
+  const [source] = useAtom(assetSourceFilterAtom);
+  const narrowed = agentFilterCaption(source);
 
   return (
     <section className="rounded-md border">
@@ -44,6 +48,7 @@ export function AssetUsageLog({ assetId }: { assetId: string }) {
         {isPending ? null : (
           <span className="text-xs font-normal text-muted-foreground">
             {runs === 0 ? 'no runs yet' : `${runs} ${runs === 1 ? 'run' : 'runs'}`}
+            {narrowed ? ` · ${narrowed}` : null}
           </span>
         )}
         <ChevronDown
@@ -67,8 +72,8 @@ export function AssetUsageLog({ assetId }: { assetId: string }) {
             </p>
           ) : data.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No recorded run has used this yet. Uses are counted from Claude Code hook events, so
-              only runs since the hooks were installed appear here.
+              No recorded run has used this yet. Uses are counted from Claude Code and Codex hook
+              events, so only runs since the hooks were installed appear here.
             </p>
           ) : (
             <div className="overflow-hidden rounded-lg border">

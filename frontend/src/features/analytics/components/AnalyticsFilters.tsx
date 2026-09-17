@@ -2,9 +2,12 @@ import { useAtom, type PrimitiveAtom } from 'jotai';
 import { GitBranch, ScanSearch } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { cn } from '~/lib/utils';
+// The leaf, not the feature index — that one pulls the Sessions pages in.
+import { AGENT_FILTER_OPTIONS } from '~/features/sessions/runs';
 import {
   analyticsIncludeChildrenAtom,
   analyticsIncludeInspectionAtom,
+  analyticsSourceAtom,
   analyticsWindowAtom,
   analyticsWorkflowAtom,
 } from '../queries';
@@ -13,7 +16,7 @@ import type { AnalyticsWindow } from '../stats';
 /**
  * One filter bar for all four aggregates.
  *
- * The API takes the same four parameters on every endpoint so the numbers share
+ * The API takes the same parameters on every endpoint so the numbers share
  * a population; putting them in four places on screen would let a reader
  * compare a gate table from last week against a role table from today.
  */
@@ -32,7 +35,7 @@ const WORKFLOWS: { value: string | null; label: string }[] = [
 ];
 
 const INSPECTION_HINT =
-  "Masterwork analyses an asset by running Claude over it, and those runs Read every linked asset's SKILL.md. Counting them measures masterwork rather than the work — and because the same exclusion applies to all four aggregates, getting it wrong does not make one number wrong, it makes every number wrong together.";
+  "Masterwork analyses an asset by running the assistant over it, and those runs read every linked asset's SKILL.md. Counting them measures masterwork rather than the work — and because the same exclusion applies to all four aggregates, getting it wrong does not make one number wrong, it makes every number wrong together.";
 
 const CHILDREN_HINT =
   "A pipeline's headless stage child is the inside view of a stage already counted on its parent: the stage's cost, verdict and corrections are reported there. Counting both puts the same work in twice and adds a main role that did the pipeline's work a second time.";
@@ -43,6 +46,7 @@ export function AnalyticsFilters() {
       <div className="flex flex-wrap items-center gap-3">
         <Segmented atom={analyticsWindowAtom} label="Since" options={WINDOWS} />
         <Segmented atom={analyticsWorkflowAtom} label="Workflow" options={WORKFLOWS} />
+        <Segmented atom={analyticsSourceAtom} label="Agent" options={AGENT_FILTER_OPTIONS} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <PopulationToggle

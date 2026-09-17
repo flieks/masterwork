@@ -37,6 +37,7 @@ const USAGE: CodingAssetUsage[] = [
     kind: 'skill',
     name: 'tdd',
     asset_id: 'claude:skill:tdd',
+    asset_found: true,
     sessions: 3,
     uses: 7,
     last_used_at: '2026-08-09T14:02:01.000Z',

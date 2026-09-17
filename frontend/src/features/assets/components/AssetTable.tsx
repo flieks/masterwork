@@ -58,7 +58,7 @@ export function AssetTable({ kind, assets, captions }: AssetTableProps) {
                 <td className="max-w-[16rem] px-4 py-2.5 font-medium" title={asset.title}>
                   <span className="flex items-center gap-2">
                     <span className="truncate">{asset.title}</span>
-                    {asset.disabled ? <DisabledBadge /> : null}
+                    {asset.disabled ? <DisabledBadge disabledBy={asset.disabled_by} /> : null}
                   </span>
                   {captions?.get(asset.name) ? (
                     <p className="truncate text-xs font-normal text-muted-foreground">
@@ -76,6 +76,7 @@ export function AssetTable({ kind, assets, captions }: AssetTableProps) {
                       provider={asset.provider}
                       agents={asset.agents}
                       disabled={asset.disabled}
+                      disabledBy={asset.disabled_by}
                     />
                     {asset.generic_twin ? (
                       <>

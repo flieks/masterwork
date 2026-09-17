@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
+import { atSentenceStart } from '~/features/settings/agents';
 
 /** Assistant-side "thinking" placeholder: pulsing dots + an elapsed counter. */
-export function ThinkingIndicator() {
+export function ThinkingIndicator({ agentLabel }: { agentLabel: string }) {
   const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
@@ -25,7 +26,9 @@ export function ThinkingIndicator() {
             />
           ))}
         </span>
-        <span>Claude is thinking{seconds > 0 ? ` · ${seconds}s` : '…'}</span>
+        <span>
+          {atSentenceStart(agentLabel)} is thinking{seconds > 0 ? ` · ${seconds}s` : '…'}
+        </span>
       </div>
     </div>
   );

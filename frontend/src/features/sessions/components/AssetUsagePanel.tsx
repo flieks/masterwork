@@ -8,9 +8,17 @@ import { EmptyState } from '~/components/EmptyState';
 import { apiErrorMessage } from '~/api/client';
 import { relativeTime, absoluteDateTime } from '~/lib/datetime';
 import { cn } from '~/lib/utils';
-import { assetUsePath, isUnresolvedAsset, UNRESOLVED_HINT, usesBarPct } from '../assets';
 import {
+  assetUsePath,
+  isUnresolvedAsset,
+  NOT_INSTALLED_HINT,
+  UNRESOLVED_HINT,
+  usesBarPct,
+} from '../assets';
+import {
+  AGENT_FILTER_OPTIONS,
   assetKindFilterAtom,
+  assetSourceFilterAtom,
   assetWindowAtom,
   codingAssetUsageQueryAtom,
   includeInspectionAtom,
@@ -69,12 +77,13 @@ const KINDS: { value: string | null; label: string }[] = [
 ];
 
 const INSPECTION_HINT =
-  "Masterwork analyses an asset by running Claude over it, and those runs Read every linked asset's SKILL.md. Counting them ranks assets by how often masterwork inspected them rather than by the work they did, so they are left out unless you ask.";
+  "Masterwork analyses an asset by running the assistant over it, and those runs read every linked asset's SKILL.md. Counting them ranks assets by how often masterwork inspected them rather than by the work they did, so they are left out unless you ask.";
 
 function AssetFilters() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-3">
+        <Segmented atom={assetSourceFilterAtom} label="Agent" options={AGENT_FILTER_OPTIONS} />
         <Segmented atom={assetKindFilterAtom} label="Kind" options={KINDS} />
         <Segmented atom={assetWindowAtom} label="Used" options={WINDOWS} />
       </div>
@@ -109,7 +118,7 @@ function InspectionToggle() {
 function InspectionNote() {
   return (
     <p className="text-xs text-muted-foreground">
-      Counting masterwork&rsquo;s own analysis runs, which Read every linked asset&rsquo;s SKILL.md
+      Counting masterwork&rsquo;s own analysis runs, which read every linked asset&rsquo;s SKILL.md
       — these numbers rank assets by inspection as much as by use.
     </p>
   );
@@ -204,7 +213,15 @@ function UsageRow({ row, rows }: { row: CodingAssetUsage; rows: CodingAssetUsage
               {row.name}
             </Link>
           ) : (
-            <span className="font-medium">{row.name}</span>
+            <span
+              className={cn(
+                'font-medium',
+                !row.asset_found && !unresolved && 'text-muted-foreground',
+              )}
+              title={!row.asset_found && !unresolved ? NOT_INSTALLED_HINT : undefined}
+            >
+              {row.name}
+            </span>
           )}
           {unresolved ? (
             <span

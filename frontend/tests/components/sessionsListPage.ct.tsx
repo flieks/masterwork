@@ -146,6 +146,30 @@ test('the workflow and status filters go into the request', async ({ mount, page
   await expect.poll(() => urls.at(-1)?.includes('status=') === false).toBe(true);
 });
 
+test('the agent filter goes into the request as source', async ({ mount, page }) => {
+  const { urls } = await mockSessions(page, [factoryRunSummary()]);
+
+  await mount(
+    <TestProviders>
+      <SessionsListPage />
+    </TestProviders>,
+  );
+
+  await expect(page.getByText('1 run')).toBeVisible();
+  expect(urls[0]).not.toContain('source=');
+
+  const agent = page.getByRole('group', { name: 'Agent' });
+  await agent.getByRole('button', { name: 'Claude Code' }).click();
+  await expect.poll(() => urls.some((u) => u.includes('source=claude-code'))).toBe(true);
+  await expect(agent.getByRole('button', { name: 'Claude Code' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  await agent.getByRole('button', { name: 'Codex' }).click();
+  await expect.poll(() => urls.at(-1)?.includes('source=codex') === true).toBe(true);
+});
+
 test('automated runs stay out of the grid until the toggle asks for them', async ({
   mount,
   page,

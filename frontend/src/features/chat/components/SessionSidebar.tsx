@@ -20,6 +20,8 @@ import {
 import { apiErrorMessage } from '~/api/client';
 import { relativeTime } from '~/lib/datetime';
 import { cn } from '~/lib/utils';
+import { agentIdLabel } from '~/features/settings/agents';
+import { AgentBadge } from '~/features/sessions/components/AgentBadge';
 import type { ChatScope } from '../types';
 import {
   chatSessionsQueryAtom,
@@ -112,7 +114,12 @@ function SessionRow({
         )}
       >
         <div className="truncate font-medium">{session.title}</div>
-        <div className="text-[11px] text-muted-foreground">{relativeTime(session.updated_at)}</div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          {relativeTime(session.updated_at)}
+          {session.agent ? (
+            <AgentBadge source={session.agent} title={`Ran on ${agentIdLabel(session.agent)}`} />
+          ) : null}
+        </div>
       </Link>
 
       <AlertDialog>

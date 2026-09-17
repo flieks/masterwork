@@ -39,7 +39,11 @@ export function SessionAssets({ session }: { session: CodingSession }) {
               </span>
               <div className="flex min-w-0 flex-wrap gap-1.5">
                 {group.assets.map((asset) => (
-                  <AssetChip key={`${asset.kind}:${asset.name}`} asset={asset} />
+                  <AssetChip
+                    key={`${asset.kind}:${asset.name}`}
+                    asset={asset}
+                    source={session.source}
+                  />
                 ))}
               </div>
             </div>

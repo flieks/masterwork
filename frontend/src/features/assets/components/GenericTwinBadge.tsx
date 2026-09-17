@@ -6,6 +6,7 @@ import { apiErrorMessage } from '~/api/client';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { toast } from '~/components/ui/sonner';
+import { loadedByPhrase } from '../agents';
 import { migrateAssetMutationAtom } from '../queries';
 import { MakeGenericDialog } from './MakeGenericDialog';
 
@@ -54,9 +55,9 @@ export function MergeTwinButton({ asset }: { asset: AssetSummary }) {
     try {
       const result = await migrate({ assetId: asset.id, replaceGeneric: twin === 'differs' });
       setConfirm(false);
-      const linked = result.linked_agents.join(', ') || 'no agent yet';
+      // `linked_agents` omits Codex, which needs no link since v1.50; `asset.agents` is who loads it.
       toast.success('Merged', {
-        description: `${result.asset.title} is on disk once, in ~/.agents/skills, linked into ${linked}.`,
+        description: `${result.asset.title} is on disk once, in ~/.agents/skills; ${loadedByPhrase(result.asset.agents)}.`,
       });
     } catch (err) {
       toast.error("Couldn't merge", { description: apiErrorMessage(err) });
@@ -73,9 +74,11 @@ export function MergeTwinButton({ asset }: { asset: AssetSummary }) {
         disabled={isPending}
         onClick={() => (twin === 'differs' ? setConfirm(true) : void merge())}
         title={
-          twin === 'identical'
-            ? 'Turn this folder into a link to the generic copy'
-            : 'Replace the generic copy with this one, then link it everywhere'
+          twin === 'differs'
+            ? 'Replace the generic copy with this one'
+            : asset.provider === 'codex'
+              ? 'Remove this folder: Codex already loads the generic copy'
+              : 'Turn this folder into a link to the generic copy'
         }
       >
         <GitMerge /> {isPending ? 'Merging…' : 'Merge'}

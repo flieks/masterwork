@@ -9,6 +9,8 @@ export interface CodeEditorProps {
   maxHeight?: string;
   className?: string;
   ariaLabel?: string;
+  /** "plain" for content with no language installed here, e.g. TOML. */
+  language?: 'markdown' | 'plain';
 }
 
 // CodeMirror is heavy and only needed in edit/preview flows — load it on demand.

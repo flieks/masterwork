@@ -3,6 +3,7 @@ import type { ObservabilityIntegration } from '~/api/generated';
 import { TrackingBanner } from '~/features/observability';
 import { TestProviders } from './harness/TestProviders';
 import {
+  CODEX_TRUST_NOTE,
   codexIntegration,
   disconnected,
   integration,
@@ -220,4 +221,43 @@ test('two recording agents are named together', async ({ mount, page }) => {
   );
 
   await expect(page.getByText('Recording Claude Code, Codex')).toBeVisible();
+});
+
+test("an agent's standing caveat sits under its connect control, in every state", async ({
+  mount,
+  page,
+}) => {
+  await mockManyIntegrations(page, [disconnected(), codexIntegration({ state: 'outdated' })], {});
+
+  await mount(
+    <TestProviders>
+      <TrackingBanner />
+    </TestProviders>,
+  );
+
+  // Codex has to be told to trust the hook even after a repair, so the note stays beside Repair.
+  await expect(page.getByRole('button', { name: 'Repair' })).toBeVisible();
+  await expect(page.getByText(CODEX_TRUST_NOTE)).toBeVisible();
+  await expect(page.getByText(/open \/hooks in Codex/)).toHaveCount(1);
+  // Claude Code carries no note, so nothing extra renders for it.
+  await expect(page.getByRole('button', { name: 'Connect Claude Code' })).toBeVisible();
+});
+
+test('a connected agent with a note keeps it in the Manage panel', async ({ mount, page }) => {
+  await mockManyIntegrations(
+    page,
+    [codexIntegration({ state: 'connected', detail: 'Recording.' })],
+    {},
+  );
+
+  await mount(
+    <TestProviders>
+      <TrackingBanner />
+    </TestProviders>,
+  );
+
+  await expect(page.getByText('Recording Codex')).toBeVisible();
+  await expect(page.getByText(CODEX_TRUST_NOTE)).toBeHidden();
+  await page.getByRole('button', { name: 'Manage' }).click();
+  await expect(page.getByText(CODEX_TRUST_NOTE)).toBeVisible();
 });

@@ -15,7 +15,7 @@ import type {
   UpstreamCheckResult,
 } from '~/api/generated';
 // The rollup owns the inspection scope; the drill-in follows it.
-import { includeInspectionAtom } from '~/features/sessions/queries';
+import { assetSourceFilterAtom, includeInspectionAtom } from '~/features/sessions/queries';
 import type { AssetKind } from './paths';
 
 // Identity and URLs live in a client-free leaf so the sessions screen can link
@@ -26,6 +26,8 @@ export {
   parseAssetId,
   assetListPath,
   assetDetailPath,
+  isPluginProvider,
+  isTomlAsset,
   type AssetKind,
   type ParsedAssetId,
 } from './paths';
@@ -123,13 +125,13 @@ export const assetDiagramQueryAtom = atomFamily((assetId: string) =>
  * Keyed by name rather than by asset id: a plugin asset is recorded under the
  * name Claude Code calls it by ("vercel:deploy"), while its id names the
  * provider that installed it. The Sessions rollup shares this query's key, so
- * it and these pages hit one cache entry — hence the trailing `false`, which is
- * the rollup's `include_inspection` default. These pages have no toggle: a card
+ * it and these pages hit one cache entry — hence the trailing `false, null`, the
+ * rollup's `include_inspection` and agent defaults. These pages have no toggle: a card
  * always reads the honest count.
  */
 export const assetUsageByNameAtom = atomFamily((kind: AssetKind) =>
   atomWithQuery(() => ({
-    queryKey: ['codingAssetUsage', 'all', kind, false],
+    queryKey: ['codingAssetUsage', 'all', kind, false, null],
     queryFn: async (): Promise<Map<string, CodingAssetUsage>> => {
       const { data } = await api.coding.listCodingAssetUsage(undefined, kind, false);
       return new Map(data.map((row) => [row.name, row]));
@@ -139,23 +141,31 @@ export const assetUsageByNameAtom = atomFamily((kind: AssetKind) =>
 
 /**
  * The runs that used one asset, newest first, each with the calls it made.
- * Scoped by the rollup's inspection toggle so the drill-in counts the same runs
- * the table that linked here did.
+ * Scoped by the rollup's inspection and agent filters so the drill-in counts the
+ * same runs the table that linked here did.
  */
 export const assetSessionUsesQueryAtom = atomFamily((assetId: string) =>
   atomWithQuery((get) => {
     const includeInspection = get(includeInspectionAtom);
+    const source = get(assetSourceFilterAtom);
     return {
-      queryKey: ['assetSessionUses', assetId, includeInspection],
+      queryKey: ['assetSessionUses', assetId, includeInspection, source],
       queryFn: async (): Promise<AssetSessionUse[]> =>
-        (await api.coding.listAssetSessionUses(assetId, undefined, includeInspection)).data,
+        (
+          await api.coding.listAssetSessionUses(
+            assetId,
+            undefined,
+            includeInspection,
+            source ?? undefined,
+          )
+        ).data,
       enabled: assetId.length > 0,
     };
   }),
 );
 
 export const generateAssetDiagramMutationAtom = atomWithMutation(() => ({
-  // One-shot claude -p (up to 300 s) — no client timeout, same as chat sends.
+  // One-shot agent CLI run (up to 300 s) — no client timeout, same as chat sends.
   mutationFn: (assetId: string): Promise<AssetDiagram> =>
     api.assets.generateAssetDiagram(assetId, { timeout: GENERATE_TIMEOUT_MS }).then((r) => r.data),
 }));

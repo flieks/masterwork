@@ -1,12 +1,13 @@
 import { atom } from 'jotai';
 import { atomWithQuery } from 'jotai-tanstack-query';
 import { api } from '~/api/client';
+import type { SessionSource } from '~/api/generated';
 import { analyticsSince, type AnalyticsWindow } from './stats';
 
 /**
- * The four cross-run aggregates, and the four filters they share.
+ * The four cross-run aggregates, and the filters they share.
  *
- * The API takes the same four parameters on every endpoint deliberately, so the
+ * The API takes the same parameters on every endpoint deliberately, so the
  * numbers describe one population. They are therefore one set of atoms read by
  * all four queries — there is no way to filter the gate table without the role
  * table moving with it, because a screen where they disagreed would be lying.
@@ -43,13 +44,17 @@ export const analyticsIncludeInspectionAtom = atom(false);
  */
 export const analyticsIncludeChildrenAtom = atom(false);
 
+/** `source=`: null counts runs from every agent. */
+export const analyticsSourceAtom = atom<SessionSource | null>(null);
+
 interface SharedFilters {
   since: string | undefined;
   workflow: string | undefined;
   includeInspection: boolean;
   includeChildren: boolean;
+  source: SessionSource | undefined;
   /** The window token, not the computed timestamp — see below. */
-  key: readonly [AnalyticsWindow, string | null, boolean, boolean];
+  key: readonly [AnalyticsWindow, string | null, boolean, boolean, SessionSource | null];
 }
 
 /**
@@ -62,12 +67,14 @@ const sharedFiltersAtom = atom<SharedFilters>((get) => {
   const workflow = get(analyticsWorkflowAtom);
   const includeInspection = get(analyticsIncludeInspectionAtom);
   const includeChildren = get(analyticsIncludeChildrenAtom);
+  const source = get(analyticsSourceAtom);
   return {
     since: analyticsSince(window),
     workflow: workflow ?? undefined,
     includeInspection,
     includeChildren,
-    key: [window, workflow, includeInspection, includeChildren] as const,
+    source: source ?? undefined,
+    key: [window, workflow, includeInspection, includeChildren, source] as const,
   };
 });
 
@@ -77,11 +84,13 @@ const sharedFiltersAtom = atom<SharedFilters>((get) => {
  * recorded before them contributes nothing until it is backfilled.
  */
 export const gateStatsQueryAtom = atomWithQuery((get) => {
-  const { since, workflow, includeInspection, includeChildren, key } = get(sharedFiltersAtom);
+  const { since, workflow, includeInspection, includeChildren, source, key } =
+    get(sharedFiltersAtom);
   return {
     queryKey: ['gateStats', ...key],
     queryFn: async () =>
-      (await api.coding.listGateStats(since, workflow, includeInspection, includeChildren)).data,
+      (await api.coding.listGateStats(since, workflow, includeInspection, includeChildren, source))
+        .data,
   };
 });
 
@@ -91,17 +100,20 @@ export const gateStatsQueryAtom = atomWithQuery((get) => {
  * never re-sorted here: the ranking is the answer.
  */
 export const roleStatsQueryAtom = atomWithQuery((get) => {
-  const { since, workflow, includeInspection, includeChildren, key } = get(sharedFiltersAtom);
+  const { since, workflow, includeInspection, includeChildren, source, key } =
+    get(sharedFiltersAtom);
   return {
     queryKey: ['roleStats', ...key],
     queryFn: async () =>
-      (await api.coding.listRoleStats(since, workflow, includeInspection, includeChildren)).data,
+      (await api.coding.listRoleStats(since, workflow, includeInspection, includeChildren, source))
+        .data,
   };
 });
 
 /** One point per run, oldest first — read left to right, that is the trend. */
 export const runStatsQueryAtom = atomWithQuery((get) => {
-  const { since, workflow, includeInspection, includeChildren, key } = get(sharedFiltersAtom);
+  const { since, workflow, includeInspection, includeChildren, source, key } =
+    get(sharedFiltersAtom);
   return {
     queryKey: ['runStats', ...key, RUN_TREND_LIMIT],
     queryFn: async () =>
@@ -112,6 +124,7 @@ export const runStatsQueryAtom = atomWithQuery((get) => {
           includeInspection,
           includeChildren,
           RUN_TREND_LIMIT,
+          source,
         )
       ).data,
   };
@@ -119,10 +132,12 @@ export const runStatsQueryAtom = atomWithQuery((get) => {
 
 /** Every model, busiest first, with the unnamed row kept and sorted last. */
 export const modelStatsQueryAtom = atomWithQuery((get) => {
-  const { since, workflow, includeInspection, includeChildren, key } = get(sharedFiltersAtom);
+  const { since, workflow, includeInspection, includeChildren, source, key } =
+    get(sharedFiltersAtom);
   return {
     queryKey: ['modelStats', ...key],
     queryFn: async () =>
-      (await api.coding.listModelStats(since, workflow, includeInspection, includeChildren)).data,
+      (await api.coding.listModelStats(since, workflow, includeInspection, includeChildren, source))
+        .data,
   };
 });

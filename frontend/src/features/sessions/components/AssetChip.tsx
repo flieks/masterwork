@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Bot, Boxes, HelpCircle } from 'lucide-react';
 import type { AssetUse } from '~/api/generated';
 import { cn } from '~/lib/utils';
-import { assetUsePath, isUnresolvedAsset, UNRESOLVED_HINT } from '../assets';
+import { assetUsePath, isUnresolvedAsset, NOT_INSTALLED_HINT, unresolvedHint } from '../assets';
 
 const KIND_ICON = { skill: Boxes, agent: Bot } as const;
 
@@ -19,10 +19,13 @@ const BASE =
 export function AssetChip({
   asset,
   asLink = true,
+  source,
   className,
 }: {
   asset: AssetUse;
   asLink?: boolean;
+  /** The run's agent (`claude-code`, `codex`), which decides how an unresolved bucket is explained. */
+  source?: string;
   className?: string;
 }) {
   const unresolved = isUnresolvedAsset(asset);
@@ -42,7 +45,7 @@ export function AssetChip({
   if (unresolved) {
     return (
       <span
-        title={UNRESOLVED_HINT}
+        title={unresolvedHint(source)}
         className={cn(BASE, 'border-dashed text-muted-foreground', className)}
       >
         {body}
@@ -50,10 +53,14 @@ export function AssetChip({
     );
   }
 
-  const title = `${asset.kind} ${asset.name} — used ${asset.uses}×`;
+  const used = `${asset.kind} ${asset.name} — used ${asset.uses}×`;
+  const title = asset.asset_found ? used : `${NOT_INSTALLED_HINT} · ${used}`;
   if (!href) {
     return (
-      <span title={title} className={cn(BASE, className)}>
+      <span
+        title={title}
+        className={cn(BASE, !asset.asset_found && 'text-muted-foreground', className)}
+      >
         {body}
       </span>
     );

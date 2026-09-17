@@ -42,7 +42,7 @@ export function AssetGrid({ kind, assets, captions }: AssetGridProps) {
                 <CardTitle className="truncate" title={asset.title}>
                   {asset.title}
                 </CardTitle>
-                {asset.disabled ? <DisabledBadge /> : null}
+                {asset.disabled ? <DisabledBadge disabledBy={asset.disabled_by} /> : null}
               </div>
             </CardHeader>
             <CardContent className="flex h-full flex-col gap-3 pb-20">
@@ -62,6 +62,7 @@ export function AssetGrid({ kind, assets, captions }: AssetGridProps) {
                     provider={asset.provider}
                     agents={asset.agents}
                     disabled={asset.disabled}
+                    disabledBy={asset.disabled_by}
                   />
                   {asset.generic_twin ? (
                     <>

@@ -8,9 +8,11 @@ interface ComposerProps {
   onChange: (value: string) => void;
   onSend: () => void;
   disabled?: boolean;
+  /** Who answers: the active assistant's label, or the neutral fallback while settings load. */
+  agentLabel: string;
 }
 
-export function Composer({ value, onChange, onSend, disabled }: ComposerProps) {
+export function Composer({ value, onChange, onSend, disabled, agentLabel }: ComposerProps) {
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -28,7 +30,7 @@ export function Composer({ value, onChange, onSend, disabled }: ComposerProps) {
           disabled={disabled}
           rows={2}
           aria-label="Message"
-          placeholder="Ask Claude to refine a skill or agent…  (Enter to send, Shift+Enter for newline)"
+          placeholder={`Ask ${agentLabel} to refine a skill or agent…  (Enter to send, Shift+Enter for newline)`}
           className="max-h-40 resize-none"
         />
         <Button

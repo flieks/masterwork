@@ -14,8 +14,8 @@ export function usageLabel(usage: CodingAssetUsage | undefined): string | null {
 }
 
 /**
- * What each signal means, in the words of the person reading the log. Only two
- * of the four carry arguments at all, which is why the source is shown next to
+ * What each signal means, in the words of the person reading the log. Only some
+ * of them carry arguments at all, which is why the source is shown next to
  * them rather than left implicit.
  */
 export const CALL_SOURCE_LABELS: Record<string, string> = {
@@ -23,6 +23,7 @@ export const CALL_SOURCE_LABELS: Record<string, string> = {
   spawn_call: 'Spawned',
   skill_read: 'SKILL.md read',
   subagent_stop: 'Subagent finished',
+  skill_mention: '$-mention in a prompt',
 };
 
 export function callSourceLabel(source: string): string {

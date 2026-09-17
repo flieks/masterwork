@@ -8,6 +8,8 @@ import { MarkdownView } from '~/components/MarkdownView';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
+import { useAssistantAgent } from '~/features/settings/hooks';
+import { atSentenceStart } from '~/features/settings/agents';
 import { auditGeneralityMutationAtom } from '../queries';
 
 /** Generality tab: audits the linked skills/agents for scenario-specific
@@ -16,6 +18,7 @@ import { auditGeneralityMutationAtom } from '../queries';
  * Persisted on the project, so it survives reloads. */
 export function ProjectGeneralityTab({ project }: { project: Project }) {
   const [{ mutateAsync: audit, isPending }] = useAtom(auditGeneralityMutationAtom);
+  const assistant = useAssistantAgent();
   const queryClient = useQueryClient();
 
   async function handleAudit() {
@@ -50,7 +53,8 @@ export function ProjectGeneralityTab({ project }: { project: Project }) {
 
       {isPending && (
         <p className="mt-4 text-xs text-muted-foreground">
-          Claude is reading every linked asset — this takes up to a minute.
+          {atSentenceStart(assistant.label)} is reading every linked asset — this takes up to a
+          minute.
         </p>
       )}
 

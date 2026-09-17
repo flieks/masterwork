@@ -22,14 +22,14 @@ export const baseURL: string = import.meta.env.VITE_API_URL ?? 'http://localhost
 // so the axios instance's baseURL must be the ORIGIN only (basePath = '').
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-// A `claude -p` round trip takes 30–120s (backend caps at 300s). Disable the
+// An agent CLI round trip (`claude -p` / `codex exec`) takes 30–120s (backend caps at 300s). Disable the
 // client timeout for these long calls so a valid in-flight request is never
 // aborted; pass via the generated method's `options` arg.
 export const CHAT_TIMEOUT_MS = 0;
-// Diagram generation is the same one-shot claude -p round trip — no timeout.
+// Diagram generation is the same one-shot agent CLI round trip — no timeout.
 export const GENERATE_TIMEOUT_MS = 0;
 // A work sync is a WIQL query plus batched item reads against Azure DevOps —
-// routinely past the 30s default, but bounded, unlike the claude -p calls.
+// routinely past the 30s default, but bounded, unlike the agent CLI calls.
 export const WORK_SYNC_TIMEOUT_MS = 120_000;
 
 /** Shared axios instance. baseURL is the origin; `/api/v1` is baked into paths. */

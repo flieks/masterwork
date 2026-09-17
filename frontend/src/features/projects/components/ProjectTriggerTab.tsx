@@ -8,13 +8,16 @@ import { MarkdownView } from '~/components/MarkdownView';
 import { toast } from '~/components/ui/sonner';
 import { apiErrorMessage } from '~/api/client';
 import { absoluteDateTime, relativeTime } from '~/lib/datetime';
+import { useAssistantAgent } from '~/features/settings/hooks';
+import { atSentenceStart } from '~/features/settings/agents';
 import { generateTriggerMutationAtom } from '../queries';
 
-/** Trigger tab: a generated guide on how to phrase Claude Code prompts so this
+/** Trigger tab: a generated guide on how to phrase prompts to the active agent so this
  * project's toolkit fires — entry asset, ready-to-paste prompts, the real
  * trigger phrases per asset, and how the chain runs. Persisted on the project. */
 export function ProjectTriggerTab({ project }: { project: Project }) {
   const [{ mutateAsync: generate, isPending }] = useAtom(generateTriggerMutationAtom);
+  const assistant = useAssistantAgent();
   const queryClient = useQueryClient();
 
   async function handleGenerate() {
@@ -33,8 +36,8 @@ export function ProjectTriggerTab({ project }: { project: Project }) {
         <div>
           <h2 className="text-lg font-semibold">Trigger guide</h2>
           <p className="text-sm text-muted-foreground">
-            How to phrase a Claude Code prompt so this toolkit fires — entry point, example prompts,
-            and each asset's real trigger phrases.
+            How to phrase {assistant.id ? `a ${assistant.label}` : 'a'} prompt so this toolkit fires
+            — entry point, example prompts, and each asset&apos;s real trigger phrases.
           </p>
         </div>
         <Button size="sm" onClick={handleGenerate} disabled={isPending}>
@@ -45,7 +48,8 @@ export function ProjectTriggerTab({ project }: { project: Project }) {
 
       {isPending && (
         <p className="mt-4 text-xs text-muted-foreground">
-          Claude is reading every linked asset file — this takes a few minutes.
+          {atSentenceStart(assistant.label)} is reading every linked asset file — this takes a few
+          minutes.
         </p>
       )}
 

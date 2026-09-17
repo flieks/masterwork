@@ -187,3 +187,51 @@ test('autopilot scenario rotation is mirrored into the textarea', async ({ mount
   await expect(page.getByLabel('Scenario to simulate')).toHaveValue(rotated);
   await expect(page.getByText('Autopilot run 2/5')).toBeVisible();
 });
+
+test('a Codex run shows its cost as not reported, never $0, and a readable gpt model', async ({
+  mount,
+  page,
+}) => {
+  await mockApi(page, {
+    simulations: [
+      makeSimulation({
+        status: 'completed',
+        score: 72,
+        verdict: 'Mostly there.',
+        checklist: [],
+        control_run: false,
+        completed_at: '2026-07-18T11:05:00Z',
+        stats: {
+          model: 'gpt-5-2025-08-07',
+          duration_ms: 42_000,
+          num_turns: 3,
+          cost_usd: null,
+          input_tokens: 1200,
+          output_tokens: 300,
+          cache_read_tokens: null,
+          cache_creation_tokens: null,
+        },
+      }),
+    ],
+  });
+
+  await mount(
+    <TestProviders>
+      <ProjectSimulationTab project={makeProject()} />
+    </TestProviders>,
+  );
+
+  const stat = (label: string) =>
+    page
+      .locator('dl > div')
+      .filter({ has: page.getByRole('term').getByText(label, { exact: true }) })
+      .getByRole('definition');
+
+  await expect(stat('Cost')).toHaveText('not reported');
+  await expect(page.getByText('$0')).toHaveCount(0);
+  await expect(stat('Model')).toHaveText('gpt-5');
+  await expect(page.locator('dl > div').filter({ hasText: 'Tokens' })).toHaveAttribute(
+    'title',
+    /cache read not reported · cache write not reported/,
+  );
+});

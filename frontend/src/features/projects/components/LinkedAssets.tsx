@@ -136,7 +136,7 @@ function UnknownGroup({ ids }: { ids: string[] }) {
           return (
             <span
               key={id}
-              title={`${id} — not installed under ~/.claude`}
+              title={`${id} — not installed`}
               className="inline-flex items-center rounded-md border border-dashed px-2.5 py-1 font-mono text-xs text-muted-foreground"
             >
               {parsed?.name ?? id}

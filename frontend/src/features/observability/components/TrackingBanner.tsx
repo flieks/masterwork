@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAtom } from 'jotai';
-import { Activity, Ban, Loader2, Plug, RefreshCw } from 'lucide-react';
+import { Activity, Ban, Info, Loader2, Plug, RefreshCw } from 'lucide-react';
 import type { ObservabilityIntegration } from '~/api/generated';
 import { apiErrorMessage } from '~/api/client';
 import { Button } from '~/components/ui/button';
@@ -88,55 +88,77 @@ function IntegrationRow({ integration }: { integration: ObservabilityIntegration
   const busy = connecting || disconnecting;
   const connected = integration.state === 'connected';
 
-  async function run(action: (id: string) => Promise<ObservabilityIntegration>, done: string) {
+  async function run(
+    action: (id: string) => Promise<ObservabilityIntegration>,
+    done: string,
+    description?: string,
+  ) {
     try {
       await action(integration.id);
-      toast(done);
+      toast(done, { description });
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
   }
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 space-y-1">
-        <p className="text-sm font-medium">{integration.label}</p>
-        <p className="text-sm text-muted-foreground">{integration.detail}</p>
-        {connected ? (
-          <p className="truncate font-mono text-[11px] text-muted-foreground">
-            {integration.config_path}
-          </p>
-        ) : null}
-      </div>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium">{integration.label}</p>
+          <p className="text-sm text-muted-foreground">{integration.detail}</p>
+          {connected ? (
+            <p className="truncate font-mono text-[11px] text-muted-foreground">
+              {integration.config_path}
+            </p>
+          ) : null}
+        </div>
 
-      {connected ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => run(disconnect, `${integration.label} is no longer recording.`)}
-        >
-          {disconnecting ? <Loader2 className="size-4 animate-spin" /> : <Ban className="size-4" />}
-          Disconnect
-        </Button>
-      ) : (
-        <Button
-          size="sm"
-          disabled={busy || integration.state === 'unavailable'}
-          onClick={() =>
-            run(connect, `${integration.label} is recording. New sessions appear here.`)
-          }
-        >
-          {connecting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : integration.state === 'outdated' ? (
-            <RefreshCw className="size-4" />
-          ) : (
-            <Plug className="size-4" />
-          )}
-          {integration.state === 'outdated' ? 'Repair' : `Connect ${integration.label}`}
-        </Button>
-      )}
+        {connected ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => run(disconnect, `${integration.label} is no longer recording.`)}
+          >
+            {disconnecting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Ban className="size-4" />
+            )}
+            Disconnect
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            disabled={busy || integration.state === 'unavailable'}
+            onClick={() =>
+              run(
+                connect,
+                `${integration.label} is recording. New sessions appear here.`,
+                // The step the user still owns right after connecting (Codex hook trust).
+                integration.note ?? undefined,
+              )
+            }
+          >
+            {connecting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : integration.state === 'outdated' ? (
+              <RefreshCw className="size-4" />
+            ) : (
+              <Plug className="size-4" />
+            )}
+            {integration.state === 'outdated' ? 'Repair' : `Connect ${integration.label}`}
+          </Button>
+        )}
+      </div>
+      {integration.note ? (
+        // A standing caveat (Codex: trust the hook in /hooks) — true in every state, so always shown.
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>{integration.note}</span>
+        </p>
+      ) : null}
     </div>
   );
 }
