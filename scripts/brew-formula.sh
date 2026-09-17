@@ -22,13 +22,13 @@ class Masterwork < Formula
     # The launcher installs its own backend and frontend dependencies on first run.
     (bin/"masterwork").write <<~SH
       #!/bin/bash
-      exec "#{Formula["node"].opt_bin}/node" "#{libexec}/bin/masterwork.mjs" "\$@"
+      exec "#{formula_opt_bin("node")}/node" "#{libexec}/bin/masterwork.mjs" "\$@"
     SH
   end
 
   test do
     # The launcher has no --help; starting servers is not a brew test.
-    assert_predicate libexec/"bin/masterwork.mjs", :exist?
+    assert_path_exists libexec/"bin/masterwork.mjs"
   end
 end
 RUBY
