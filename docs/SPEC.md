@@ -3,7 +3,7 @@
 ## What it is
 
 A local web app for developers to manage everything globally installed for their
-AI coding tools: skills and subagents (Claude Code today; Cursor/Copilot/Codex
+AI coding tools: skills and subagents (Claude Code and Codex today; Cursor/Gemini
 later). Browse them, search them, edit their markdown, and refine them through a
 chatbot that proposes changes the user can accept or reject.
 
@@ -13,11 +13,13 @@ chatbot that proposes changes the user can accept or reject.
   nothing about assets is stored in the DB.
   - `kind`: `skill` | `agent`
   - `provider`: which folder it belongs to — `claude`, `claude-plugin`, `codex`,
-    `generic` (the shared `~/.agents/skills`), or `masterwork` (factory roles)
+    `codex-plugin`, `generic` (the shared `~/.agents/skills`), or `masterwork`
+    (factory roles)
   - Claude provider roots: skills `~/.claude/skills/<name>/SKILL.md`,
-    agents `~/.claude/agents/<name>.md`; Codex: `~/.codex/skills/<name>/SKILL.md`;
-    generic: `~/.agents/skills/<name>/SKILL.md`, reached by Claude and Codex only
-    through a symlink in their own folder (`agents` lists which ones link to it)
+    agents `~/.claude/agents/<name>.md`; Codex: skills
+    `~/.codex/skills/<name>/SKILL.md`, agents `~/.codex/agents/<name>.toml`;
+    generic: `~/.agents/skills/<name>/SKILL.md`, loaded by Codex directly and by
+    Claude only through a symlink in `~/.claude/skills` (`agents` lists who loads it)
   - `id` is the stable slug `"{provider}:{kind}:{name}"`, e.g. `claude:skill:frontend-dev`
   - title/description parsed from YAML frontmatter when present, else derived from filename
 - **ChatSession / ChatMessage / Proposal** — stored in the app database (see API
@@ -61,9 +63,9 @@ chatbot that proposes changes the user can accept or reject.
 
 ## Non-goals (v1)
 
-- Auth (single-user local tool), streaming chat responses, non-Claude providers
-  (but the provider interface must make adding them trivial), project-local
-  (non-global) assets.
+- Auth (single-user local tool), streaming chat responses, project-local
+  (non-global) assets. (Non-Claude providers were a v1 non-goal; Codex is
+  supported since v1.45 for sessions and v1.48 for the assistant.)
 
 ---
 
@@ -122,3 +124,30 @@ sits alongside the skills and agents it governs, so the app shows it too.
 
 It is deliberately **not** an asset: it has no frontmatter, no id, and lives
 outside the provider roots — which keeps chat proposals unable to write it.
+
+---
+
+# v1.48 — Claude Code or Codex, everywhere
+
+Every feature works for a Codex user as well as a Claude Code user.
+
+- **One assistant setting.** The sidebar picks the agent that runs every AI
+  feature: chat, project summary/links/trigger guide/generality, simulations,
+  diagrams, skill match and factory launches. Unset, it defaults to the first
+  installed of Claude Code, Codex. Binaries are found on PATH or in their app
+  bundles (Codex ships inside `/Applications/ChatGPT.app`).
+- **Runners.** `claude -p` with read-only tools, or `codex exec --json` in the
+  read-only sandbox with web search off; both get the system prompt on every
+  turn. A chat remembers which agent owns its CLI session; switching agents
+  starts a fresh session with the transcript carried over.
+- **Instructions** (`/instructions`, sidebar "Instructions"): tabs for
+  `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, with a warning when a non-empty
+  `~/.codex/AGENTS.override.md` shadows AGENTS.md.
+- **Factory.** `factory/run.py --agent codex` runs stages in Codex's
+  workspace-write or read-only sandbox; the run record keeps the agent for
+  `--resume`. Codex reports no price, so `max_cost_usd` is not enforceable there
+  and `max_tokens` is the cap.
+- **Codex assets** (v1.49): custom agents in `~/.codex/agents/*.toml`, plugin
+  skills, skills disabled in `config.toml`, and catalog installs targeted at
+  Claude, Codex or the shared `~/.agents` folder.
+

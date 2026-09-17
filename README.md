@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/masterwork?color=cb3837&logo=npm)](https://www.npmjs.com/package/masterwork)
 [![CI](https://github.com/flieks/masterwork/actions/workflows/ci.yml/badge.svg)](https://github.com/flieks/masterwork/actions/workflows/ci.yml)
 [![License: Elastic-2.0](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-masterwork--site.vercel.app-0f2a3d)](https://masterwork-site.vercel.app)
+[![Website](https://img.shields.io/badge/website-masterwork.sh-0f2a3d)](https://masterwork.sh)
 
 A local workbench for the skills and subagents your AI coding agents use — browse
 them across Claude Code, Codex and the shared `~/.agents` folder, edit them,
@@ -26,7 +26,8 @@ against — that's the hard part. Masterwork is built for that second half.
   agents that actually load it, so a copy nothing reads is visible instead of
   silent.
 - **Install from the catalog** — search skills.sh and GitHub's `claude-skills`
-  topic in one box, read the `SKILL.md` before you commit to it, and install.
+  topic in one box, read the `SKILL.md` before you commit to it, and install it
+  for Claude Code, Codex, or the shared folder both load.
   Unlicensed skills say so and take a second click.
 - **Simulate** — run a skill against a scenario, score the result against a
   checklist, and see exactly which criteria it missed. Re-run after edits to
@@ -43,8 +44,10 @@ against — that's the hard part. Masterwork is built for that second half.
 - **Work** — your backlog next to the pull requests waiting on you, with each
   PR's review comments read in place and handed to a fresh coding session to
   answer.
-- **Global instructions** — edit your agent's root instructions file in the same
-  place as everything else.
+- **Global instructions** — edit Claude Code's `CLAUDE.md` and Codex's
+  `AGENTS.md` in the same place as everything else.
+- **Either agent drives it** — pick Claude Code or Codex in the sidebar and every
+  AI feature (chat, summaries, simulations, diagrams, the factory) runs on it.
 
 ![The same two skills in two folders — one Claude loads, one nothing loads yet](https://raw.githubusercontent.com/flieks/masterwork/main/docs/images/agents.png)
 
@@ -53,16 +56,18 @@ against — that's the hard part. Masterwork is built for that second half.
 - macOS or Linux
 - Python 3.13+ and [uv](https://docs.astral.sh/uv/)
 - Node 20+
-- The [Claude Code](https://claude.com/claude-code) CLI, signed in
-- Codex is optional: its skills folder is read when it exists, and its sessions
-  can be recorded once it has run on the machine (`~/.codex` exists)
+- [Claude Code](https://claude.com/claude-code) or
+  [Codex](https://developers.openai.com/codex) signed in, or both. The assistant
+  runs on whichever you pick in the sidebar; skills and sessions are read for
+  every agent present on the machine
 
 No database server needed — it uses SQLite at `~/.masterwork/masterwork.db` and
 stores only chat sessions and simulation history. Your skills stay on disk.
 Postgres is supported too: set `DATABASE_URL` and the same migrations apply.
 
-The built-in assistant shells out to your local `claude` binary, so it runs on
-your existing subscription. **No API key, no inference bill.**
+The built-in assistant shells out to your local `claude` or `codex` binary, so it
+runs on your existing subscription. **No API key, no inference bill.** Codex
+reports tokens but no price, so its runs show cost as not reported.
 
 ## Quick start
 
@@ -100,15 +105,16 @@ npm run dev        # http://localhost:5192
 
 ## Where skills live
 
-`SKILL.md` is the same file for every agent, but each agent reads only its own
-folder: Claude Code `~/.claude/skills`, Codex `~/.codex/skills`. The way to share
-one is `~/.agents/skills`, the folder each agent links into its own.
+`SKILL.md` is the same file for every agent, but the folders differ: Claude Code
+reads only `~/.claude/skills`; Codex reads `~/.codex/skills` and the shared
+`~/.agents/skills`. The shared folder is the way to keep one copy: Codex loads it
+directly, Claude Code through a link in its own folder.
 
 Masterwork lists all three and says which agents load each skill — **Claude
-only**, **Generic · Claude, Codex**, or **Generic · unlinked** for a shared copy
-nothing links to yet. **Make generic** does the move: the folder goes to
-`~/.agents/skills`, the old location becomes a link to it, and every other agent
-gets a link too, so the skill is on disk once and every agent still finds it. An
+only**, **Codex only**, **Generic · Claude, Codex**, or **Generic · Codex** for a
+shared copy Claude Code has no link to yet. **Make generic** does the move: the
+folder goes to `~/.agents/skills` and Claude Code gets a link to it, so the skill
+is on disk once and every agent still finds it. An
 identical copy already in the shared folder is adopted instead of duplicated; a
 copy that differs stops and asks before anything is overwritten. A skill can also
 be switched off without deleting it: it moves to `.disabled/` inside the same
@@ -123,7 +129,8 @@ The **Catalog** tab searches skills.sh and GitHub's `topic:claude-skills` at onc
 merges the results, and shows you the `SKILL.md` before you install anything.
 Licensing is on the card: a GitHub repo with no license means all rights
 reserved, not unknown, so installing one takes a second click that names the
-risk. Uninstall only removes what masterwork installed, never a skill you wrote.
+risk. Pick where it goes: Claude Code, Codex, or the shared `~/.agents` folder.
+Uninstall only removes what masterwork installed, never a skill you wrote.
 An installed skill's page can check it against its source on demand: it tells
 you whether you edited it, whether the repo moved on, or both, shows the
 `SKILL.md` diff, and updates in place — asking first when that would overwrite
@@ -170,7 +177,9 @@ whole setup. For Claude Code it:
 - leaves every other hook in that file exactly as it was.
 
 Codex gets the same treatment with its own forwarder and nine hooks in
-`~/.codex/hooks.json`; `config.toml` is never written. From then on each session
+`~/.codex/hooks.json`; `config.toml` is never written. Codex only runs a hook you
+have trusted, so after Connect (and after a Repair) open `/hooks` in Codex and
+trust masterwork's entries. From then on each session
 posts its start, prompts, tool calls, subagent spawns, the moments it goes
 blocked on you, and its exit to `http://localhost:8008/api/v1/hooks/events`, and
 every run is badged with the agent that ran it. **Disconnect** in the same place
@@ -204,8 +213,8 @@ frontend/   React + Vite + TS · Jotai + jotai-tanstack-query · react-router-do
 backend/    FastAPI · Pydantic v2 · SQLAlchemy 2.0 async · Alembic · uv
             - assets:        scans every skills root (~/.claude, ~/.codex, ~/.agents)
             - skills:        community catalog search, install and uninstall
-            - instructions:  the global CLAUDE.md
-            - chat:          claude -p subprocess runner, proposals, apply-changes
+            - instructions:  the global CLAUDE.md and AGENTS.md
+            - chat:          claude -p / codex exec runner, proposals, apply-changes
             - simulations:   scored dry-runs with checklist grading and run memory
             - sessions:      hook ingest, plus the per-agent wiring that installs it
             - work:          the backlog and pull requests, delegated to sessions
@@ -219,7 +228,8 @@ simulation history — nothing that can't be rebuilt.
 
 This tool edits files in your home directory, so the boundaries are explicit:
 
-- The assistant is given **read-only tools**. It cannot write anything.
+- The assistant runs **read-only**: Claude Code with read-only tools, Codex in
+  its read-only sandbox. It cannot write anything.
 - The only file outside masterwork's own home it ever writes is your agent's
   hook config, only when you click **Connect**, and only after backing it up.
 - Every change arrives as a **proposal** you review and accept.
