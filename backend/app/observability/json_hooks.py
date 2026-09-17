@@ -96,6 +96,8 @@ class JsonHooksIntegration:
     # before a background POST lands. Everything else runs async.
     sync_events: ClassVar[frozenset[str]] = frozenset({"SessionEnd"})
     hook_timeout: ClassVar[int] = 5
+    # Per-event overrides for agents that clamp some events' timeouts.
+    event_timeouts: ClassVar[dict[str, int]] = {}
     # Shown with every status; see IntegrationStatus.note.
     note: ClassVar[str | None] = None
 
@@ -242,7 +244,7 @@ class JsonHooksIntegration:
         entry: dict[str, Any] = {
             "type": "command",
             "command": command,
-            "timeout": self.hook_timeout,
+            "timeout": self.event_timeouts.get(event, self.hook_timeout),
         }
         if event not in self.sync_events:
             entry["async"] = True

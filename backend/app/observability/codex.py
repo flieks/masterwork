@@ -47,6 +47,8 @@ class CodexIntegration(JsonHooksIntegration):
     label = "Codex"
     events = EVENTS
     note = TRUST_NOTE
+    # Codex clamps these to 3s and warns on every start when asked for more.
+    event_timeouts = {"SessionEnd": 3, "Interrupt": 3}
 
     def __init__(
         self,

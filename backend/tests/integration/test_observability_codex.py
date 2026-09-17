@@ -133,6 +133,11 @@ async def test_connect_installs_hooks_and_the_forwarder(client: AsyncClient, wir
     assert settings["hooks"]["SessionEnd"][0]["hooks"][0].get("async") is None
     assert settings["hooks"]["Stop"][0]["hooks"][0]["async"] is True
     assert all("matcher" not in group for groups in settings["hooks"].values() for group in groups)
+    # Codex clamps these two to 3s and warns on every start otherwise.
+    timeouts = {event: settings["hooks"][event][0]["hooks"][0]["timeout"] for event in EVENTS}
+    assert timeouts.pop("SessionEnd") == 3
+    assert timeouts.pop("Interrupt") == 3
+    assert set(timeouts.values()) == {5}
 
 
 async def test_connect_is_idempotent(client: AsyncClient, wire: Path) -> None:
